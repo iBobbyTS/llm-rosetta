@@ -29,6 +29,8 @@ from llm_rosetta._vendor.httpserver import JSONResponse, Response, StreamingResp
 from llm_rosetta import get_converter_for_provider
 from llm_rosetta.auto_detect import ProviderType
 from llm_rosetta.converters.base.context import ConversionContext
+from llm_rosetta.shims import get_shim, resolve_transforms
+from llm_rosetta.shims.transforms import Transform, apply_transforms
 
 
 from .logging import (
@@ -346,6 +348,37 @@ _default_metadata_store = ProviderMetadataStore()
 
 
 # ---------------------------------------------------------------------------
+# Shim transform resolution
+# ---------------------------------------------------------------------------
+
+
+_EMPTY_TRANSFORMS: tuple[Transform, ...] = ()
+
+
+def _resolve_target_transforms(
+    shim_name: str | None,
+    model: str,
+) -> tuple[tuple[Transform, ...], tuple[Transform, ...]]:
+    """Look up target-side transforms from the shim registry.
+
+    Args:
+        shim_name: Registered shim name (e.g. ``"volcengine"``), or ``None``.
+        model: Model name for model-level transform lookup.
+
+    Returns:
+        ``(from_transforms, to_transforms)`` ready for ``apply_transforms``.
+        Both are empty tuples when no shim is found.
+    """
+    if shim_name is None:
+        return _EMPTY_TRANSFORMS, _EMPTY_TRANSFORMS
+    shim = get_shim(shim_name)
+    if shim is None:
+        return _EMPTY_TRANSFORMS, _EMPTY_TRANSFORMS
+    model_shim = shim.get_model_shim(model) if model else None
+    return resolve_transforms(shim, model_shim)
+
+
+# ---------------------------------------------------------------------------
 # Core proxy handlers
 # ---------------------------------------------------------------------------
 
@@ -359,11 +392,15 @@ async def handle_non_streaming(
     *,
     metadata_store: ProviderMetadataStore | None = None,
     extra_headers: dict[str, str] | None = None,
+    target_shim_name: str | None = None,
 ) -> Response:
     """Non-streaming proxy: convert -> forward -> convert back -> respond."""
     store = metadata_store or _default_metadata_store
     source_converter = get_converter_for_provider(source_provider)
     target_converter = get_converter_for_provider(target_provider)
+
+    # Resolve target-side transforms from shim registry
+    target_from_t, target_to_t = _resolve_target_transforms(target_shim_name, model)
 
     # Shared context for the conversion pipeline
     ctx = ConversionContext()
@@ -394,6 +431,10 @@ async def handle_non_streaming(
         )
     if ctx.warnings:
         logger.warning("Conversion warnings: %s", ctx.warnings)
+
+    # 2b. Apply target shim to_transforms (e.g. strip unsupported fields)
+    if target_to_t:
+        target_body = apply_transforms(target_to_t, target_body)
 
     # 3. Build upstream request
     url, headers, upstream_body = prepare_upstream(
@@ -434,6 +475,9 @@ async def handle_non_streaming(
     # 6. Target response -> IR
     try:
         upstream_json = upstream_resp.json()
+        # 6a. Apply target shim from_transforms (normalise response dialect)
+        if target_from_t:
+            upstream_json = apply_transforms(target_from_t, upstream_json)
         ir_response = target_converter.response_from_provider(
             upstream_json, context=ctx
         )
@@ -518,6 +562,7 @@ async def _stream_event_generator(
     format_sse: Any,
     store: ProviderMetadataStore,
     model: str,
+    target_from_transforms: tuple[Transform, ...] = (),
 ) -> AsyncIterator[str]:
     """Stream SSE events from upstream, converting each chunk."""
     from_ctx = target_converter.create_stream_context()  # upstream -> IR
@@ -553,6 +598,10 @@ async def _stream_event_generator(
                 continue
 
             chunk_count += 1
+
+            # Apply target shim from_transforms to normalise chunk dialect
+            if target_from_transforms:
+                chunk = apply_transforms(target_from_transforms, chunk)
 
             ir_events = target_converter.stream_response_from_provider(
                 chunk, context=from_ctx
@@ -594,11 +643,15 @@ async def handle_streaming(
     *,
     metadata_store: ProviderMetadataStore | None = None,
     extra_headers: dict[str, str] | None = None,
+    target_shim_name: str | None = None,
 ) -> Response | StreamingResponse:
     """Streaming proxy: convert -> forward -> stream-convert back -> SSE."""
     store = metadata_store or _default_metadata_store
     source_converter = get_converter_for_provider(source_provider)
     target_converter = get_converter_for_provider(target_provider)
+
+    # Resolve target-side transforms from shim registry
+    target_from_t, target_to_t = _resolve_target_transforms(target_shim_name, model)
 
     # Shared context for the request conversion phase
     ctx = ConversionContext()
@@ -630,6 +683,10 @@ async def handle_streaming(
     if ctx.warnings:
         logger.warning("Conversion warnings: %s", ctx.warnings)
 
+    # 2b. Apply target shim to_transforms (e.g. strip unsupported fields)
+    if target_to_t:
+        target_body = apply_transforms(target_to_t, target_body)
+
     # 3. Build upstream request (with stream=True)
     url, headers, upstream_body = prepare_upstream(
         target_provider,
@@ -659,6 +716,7 @@ async def handle_streaming(
             format_sse=format_sse,
             store=store,
             model=model,
+            target_from_transforms=target_from_t,
         ),
         content_type="text/event-stream",
     )

@@ -135,13 +135,17 @@ class GatewayConfig:
         from llm_rosetta.shims import resolve_base
 
         self.provider_types: dict[str, str] = {}
+        self.provider_shim_names: dict[str, str | None] = {}
         for name, cfg in self._raw_providers.items():
             if "shim" in cfg:
                 self.provider_types[name] = resolve_base(cfg["shim"])
+                self.provider_shim_names[name] = cfg["shim"]
             elif "type" in cfg:
                 self.provider_types[name] = cfg["type"]
+                self.provider_shim_names[name] = cfg["type"]
             else:
                 self.provider_types[name] = name
+                self.provider_shim_names[name] = name
 
         # Parse models — supports both string and dict formats:
         #   "model": "provider"                     (legacy)
@@ -237,14 +241,18 @@ class GatewayConfig:
         """First configured key (for backward-compat middleware init)."""
         return self.api_keys[0]["key"] if self.api_keys else None
 
-    def resolve_model(self, model: str) -> tuple[str, ProviderInfo]:
-        """Return (provider_type, provider_info) for a model name.
+    def resolve_model(self, model: str) -> tuple[str, ProviderInfo, str | None]:
+        """Return (provider_type, provider_info, shim_name) for a model name.
 
         ``provider_type`` is the API standard (e.g. ``"openai_chat"``),
         resolved from the provider's ``type`` field or its name as fallback.
+
+        ``shim_name`` is the original shim/type identifier before base
+        resolution (e.g. ``"volcengine"``), used for transform lookup.
 
         Raises KeyError if the model is not in the routing table.
         """
         provider_name = self.models[model]
         provider_type = self.provider_types[provider_name]
-        return provider_type, self.providers[provider_name]
+        shim_name = self.provider_shim_names.get(provider_name)
+        return provider_type, self.providers[provider_name], shim_name

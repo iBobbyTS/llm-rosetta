@@ -64,7 +64,9 @@ async def _proxy_handler(
 
     # Resolve target provider
     try:
-        target_provider_str, provider_info = _config.resolve_model(model)
+        target_provider_str, provider_info, target_shim_name = _config.resolve_model(
+            model
+        )
         target_provider = cast(ProviderType, target_provider_str)
     except KeyError:
         configured = ", ".join(sorted(_config.models.keys()))
@@ -112,6 +114,7 @@ async def _proxy_handler(
                 model,
                 metadata_store=store,
                 extra_headers=extra_headers,
+                target_shim_name=target_shim_name,
             )
         else:
             response = await handle_non_streaming(
@@ -122,6 +125,7 @@ async def _proxy_handler(
                 model,
                 metadata_store=store,
                 extra_headers=extra_headers,
+                target_shim_name=target_shim_name,
             )
         status_code = response.status_code
         if status_code >= 400 and hasattr(response, "body"):
