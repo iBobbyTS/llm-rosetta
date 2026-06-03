@@ -1066,6 +1066,8 @@ function applyI18n() {
   if (keysData) renderKeys();
   if (currentTab === 'dashboard') loadMetrics();
   if (currentTab === 'logs') loadLogs();
+  // Re-render DB status footer with cached data
+  if (_lastPersistence != null) renderPersistence(_lastPersistence, _lastTotalReq);
 }
 
 // ===================== State =====================
@@ -2063,10 +2065,17 @@ function fmtBytes(n) {
   return (n / (1024 * 1024 * 1024)).toFixed(2) + ' G';
 }
 
+// Cache latest persistence data so the footer can be re-rendered on
+// language change without an extra API call.
+let _lastPersistence = null;
+let _lastTotalReq = 0;
+
 // Render the persistent DB status footer.  Hidden when the metrics
 // snapshot lacks a persistence block (no config file, in-memory only).
 // totalReq is the MetricsCollector total_requests counter (lifetime).
 function renderPersistence(p, totalReq) {
+  _lastPersistence = p;
+  _lastTotalReq = totalReq;
   const el = document.getElementById('dbFooter');
   if (!el) return;
   if (!p) { el.classList.add('hidden'); return; }
