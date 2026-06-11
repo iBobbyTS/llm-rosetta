@@ -1,7 +1,14 @@
 """Provider shim layer — identity cards for LLM providers.
 
 Importing this package automatically registers the built-in shims
-(OpenAI, Anthropic, Google, DeepSeek, Volcengine, etc.).
+(OpenAI, Anthropic, Google, DeepSeek, Volcengine, etc.) and discovers
+any plugin shims declared via ``llm_rosetta.shim_providers`` entry points.
+
+Public API:
+
+- **Registration** (startup): ``register_shim``, ``load_providers_from_dir``
+- **Query** (per request): ``get_shim``, ``list_shims``, ``resolve_base``
+- **Transforms**: ``apply_transforms``, ``strip_fields``, ``rename_field``, ``set_defaults``
 """
 
 from .provider_shim import (

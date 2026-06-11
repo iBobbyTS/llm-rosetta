@@ -3,6 +3,11 @@
 A **ProviderShim** is a lightweight identity card that declares which API
 standard (converter) a provider uses, along with connection defaults and
 optional transforms to bridge schema differences.
+
+The global registry (``_SHIM_REGISTRY``) is a plain dict populated at
+import time by ``shims/__init__.py``.  Registration functions
+(``register_shim``, ``load_providers_from_dir``) write to it; query
+functions (``get_shim``, ``list_shims``) read from it.
 """
 
 from __future__ import annotations

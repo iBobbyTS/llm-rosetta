@@ -1,15 +1,51 @@
-"""Scan provider directories and register shims from YAML + transforms.py.
+"""Provider shim loading — built-in directory scan + plugin entry points.
 
+Shim lifecycle
+--------------
+**Registration** (startup, once):
+
+1. ``load_providers()`` scans the built-in ``providers/`` directory via
+   ``load_providers_from_dir()``, registering each shim found.
+2. It then discovers ``llm_rosetta.shim_providers`` entry points and
+   calls each plugin callable, which may register additional shims.
+
+**Usage** (per request):
+
+- ``get_shim(name)`` looks up a registered shim by name.
+- The gateway / ``convert()`` injects the shim's reasoning config
+  and applies transforms around the converter.
+
+Directory layout
+----------------
 Each subdirectory that contains a ``provider.yaml`` is treated as a leaf
 provider definition.  An optional ``transforms.py`` alongside the YAML
-may export ``to_transforms`` and/or ``from_transforms`` tuples to bridge
-schema differences between the provider and its base converter.
+may export ``to_transforms`` and/or ``from_transforms`` tuples.
 
 **Grouped directories** are also supported: a child directory that does
 NOT contain ``provider.yaml`` but DOES contain subdirectories with one is
-treated as a *group folder*.  This keeps related shims together (e.g.
-``argo/anthropic/`` and ``argo/openai_chat/``) without bloating the
-top-level provider list.  Only one level of nesting is supported.
+treated as a *group folder* (e.g. ``argo/anthropic/``, ``argo/openai_chat/``).
+
+Plugin shims
+------------
+Downstream packages register shims via entry points::
+
+    # pyproject.toml
+    [project.entry-points."llm_rosetta.shim_providers"]
+    my_provider = "my_package.shims:register_shims"
+
+The callable receives no arguments.  Most plugins simply call
+``load_providers_from_dir()`` to scan their own YAML directory::
+
+    from pathlib import Path
+    from llm_rosetta.shims import load_providers_from_dir
+
+    def register_shims():
+        return load_providers_from_dir(Path(__file__).parent / "providers")
+
+For advanced use cases (conditional registration, dynamic shims),
+call ``register_shim()`` directly instead of scanning a directory.
+The callable may optionally return ``list[ProviderShim]`` for inclusion
+in ``load_providers()``'s combined result.
 """
 
 from __future__ import annotations
