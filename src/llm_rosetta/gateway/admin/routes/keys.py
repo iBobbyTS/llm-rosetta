@@ -54,7 +54,7 @@ async def create_api_key(request: Any) -> Response:
 
     label = body.get("label", "")
     manual_key = body.get("key")
-    key_value = manual_key if manual_key else f"rsk-{secrets.token_hex(16)}"
+    key_value = manual_key if manual_key else f"rsk-{secrets.token_hex(24)}"
 
     entry = {
         "id": uuid.uuid4().hex[:8],
@@ -195,6 +195,56 @@ async def delete_api_key(request: Any, **kwargs: Any) -> Response:
         )
 
     return JSONResponse({"ok": True, "deleted": key_id})
+
+
+async def rotate_api_key(request: Any, **kwargs: Any) -> Response:
+    """Rotate an API key: generate a new value, keep the same id and label."""
+    config_path = _get_config_path(request)
+    if not config_path:
+        return JSONResponse({"error": "No config file path available"}, status_code=500)
+
+    key_id = request.path_params["key_id"]
+
+    try:
+        data = load_config_raw(config_path)
+    except Exception as exc:
+        return JSONResponse({"error": f"Failed to read config: {exc}"}, status_code=500)
+
+    keys = data.get("server", {}).get("api_keys", [])
+    target = None
+    for entry in keys:
+        if entry.get("id") == key_id:
+            target = entry
+            break
+
+    if target is None:
+        return JSONResponse({"error": f"Key '{key_id}' not found"}, status_code=404)
+
+    new_key = f"rsk-{secrets.token_hex(24)}"
+    target["key"] = new_key
+    target["rotated"] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        write_config(config_path, data)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Failed to write config: {exc}"}, status_code=500
+        )
+
+    try:
+        _reload_gateway_config(request, config_path)
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "error": f"Config saved but reload failed: {exc}",
+                "saved": True,
+                "reloaded": False,
+            },
+            status_code=500,
+        )
+
+    # Return the new key exactly once so the user can copy it
+    return JSONResponse({"ok": True, "id": key_id, "key": new_key})
 
 
 async def reveal_api_key(request: Any, **kwargs: Any) -> Response:

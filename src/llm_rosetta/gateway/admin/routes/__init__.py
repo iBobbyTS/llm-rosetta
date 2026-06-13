@@ -46,6 +46,7 @@ from .keys import (
     get_api_keys,
     get_internal_token,
     reveal_api_key,
+    rotate_api_key,
     update_api_key,
 )
 from .observability import (
@@ -105,6 +106,7 @@ def register_admin_routes(app: Any) -> None:
     app.route("/admin/api/keys/<key_id>", methods=["PUT"])(update_api_key)
     app.route("/admin/api/keys/<key_id>", methods=["DELETE"])(delete_api_key)
     app.route("/admin/api/keys/<key_id>/reveal", methods=["GET"])(reveal_api_key)
+    app.route("/admin/api/keys/<key_id>/rotate", methods=["POST"])(rotate_api_key)
     app.route("/admin/api/internal-token", methods=["GET"])(get_internal_token)
     # Async model test
     app.route("/admin/api/test", methods=["POST"])(start_test)

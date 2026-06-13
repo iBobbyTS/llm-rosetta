@@ -868,7 +868,7 @@ const I18N = {
     'label.globalProxy.hint':'Applies to all providers unless overridden per-provider.',
     'btn.save':'Save', 'modal.settings':'Settings', 'label.theme':'Theme', 'label.language':'Language', 'theme.light':'Light', 'theme.dark':'Dark', 'btn.cancel':'Cancel', 'btn.close':'Close',
     'btn.addProvider':'+ Add Provider', 'btn.addModel':'+ Add Model',
-    'btn.edit':'Edit', 'btn.delete':'Delete', 'btn.resetFilters':'Reset Filters',
+    'btn.edit':'Edit', 'btn.delete':'Delete', 'btn.rotate':'Rotate', 'btn.resetFilters':'Reset Filters',
     'btn.prev':'Prev', 'btn.next':'Next', 'btn.test':'Test',
     'label.providerName':'Provider Name', 'label.providerType':'Provider Type',
     'label.selectOne':'— select —',
@@ -923,7 +923,7 @@ const I18N = {
     'keys.description':'Manage gateway API keys used to authenticate requests to /v1/* endpoints.',
     'keys.copyWarning':'Copy this key now. It will not be shown again in full.',
     'keys.noKeys':'No API keys configured. Endpoints are open without authentication.',
-    'toast.keySaved':'API key created',
+    'toast.keySaved':'API key created', 'toast.keyRotated':'API key \'{label}\' rotated',
     'toast.keyDeleted':'API key deleted',
     'toast.keyLabelUpdated':'Label updated',
     'toast.keyCopied':'Key copied to clipboard',
@@ -970,7 +970,7 @@ const I18N = {
     'modal.settings':'\u8bbe\u7f6e', 'label.theme':'\u4e3b\u9898', 'label.language':'\u8bed\u8a00', 'theme.light':'\u6d45\u8272', 'theme.dark':'\u6df1\u8272',
     'btn.save':'\u4fdd\u5b58', 'btn.cancel':'\u53d6\u6d88', 'btn.close':'\u5173\u95ed',
     'btn.addProvider':'+ \u6dfb\u52a0\u670d\u52a1\u5546', 'btn.addModel':'+ \u6dfb\u52a0\u6a21\u578b',
-    'btn.edit':'\u7f16\u8f91', 'btn.delete':'\u5220\u9664', 'btn.resetFilters':'\u91cd\u7f6e\u8fc7\u6ee4\u5668',
+    'btn.edit':'\u7f16\u8f91', 'btn.delete':'\u5220\u9664', 'btn.rotate':'\u8f6e\u6362', 'btn.resetFilters':'\u91cd\u7f6e\u8fc7\u6ee4\u5668',
     'btn.prev':'\u4e0a\u4e00\u9875', 'btn.next':'\u4e0b\u4e00\u9875', 'btn.test':'\u6d4b\u8bd5',
     'label.providerName':'\u670d\u52a1\u5546\u540d\u79f0', 'label.providerType':'\u670d\u52a1\u5546\u7c7b\u578b',
     'label.selectOne':'\u2014 \u8bf7\u9009\u62e9 \u2014',
@@ -1025,7 +1025,7 @@ const I18N = {
     'keys.description':'\u7ba1\u7406\u7f51\u5173 API \u5bc6\u94a5\uff0c\u7528\u4e8e\u8ba4\u8bc1 /v1/* \u7aef\u70b9\u7684\u8bf7\u6c42\u3002',
     'keys.copyWarning':'\u8bf7\u7acb\u5373\u590d\u5236\u6b64\u5bc6\u94a5\u3002\u5b8c\u6574\u5bc6\u94a5\u4ec5\u663e\u793a\u4e00\u6b21\u3002',
     'keys.noKeys':'\u672a\u914d\u7f6e API \u5bc6\u94a5\u3002\u7aef\u70b9\u5f00\u653e\u65e0\u9700\u8ba4\u8bc1\u3002',
-    'toast.keySaved':'API \u5bc6\u94a5\u5df2\u521b\u5efa',
+    'toast.keySaved':'API \u5bc6\u94a5\u5df2\u521b\u5efa', 'toast.keyRotated':'API \u5bc6\u94a5 \'{label}\' \u5df2\u8f6e\u6362',
     'toast.keyDeleted':'API \u5bc6\u94a5\u5df2\u5220\u9664',
     'toast.keyLabelUpdated':'\u6807\u7b7e\u5df2\u66f4\u65b0',
     'toast.keyCopied':'\u5bc6\u94a5\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f',
@@ -2013,7 +2013,7 @@ function renderKeys() {
           <button class="key-btn" onclick="copyKeyById('${k.id}')" title="Copy"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
         </span>` : ''}</div></td>
       <td>${created}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="deleteKey('${k.id}','${esc(k.label || k.id)}', this)">${t('btn.delete')}</button></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="rotateKey('${k.id}','${esc(k.label || k.id)}', this)">${t('btn.rotate')}</button> <button class="btn btn-sm btn-danger" onclick="deleteKey('${k.id}','${esc(k.label || k.id)}', this)">${t('btn.delete')}</button></td>
     </tr>`;
   }).join('');
 }
@@ -2337,6 +2337,21 @@ function deleteModel(name, btn) {
 function deleteKey(id, label, btn) {
   if (!btn) { _doDeleteKey(id, label); return; }
   inlineConfirm(btn, () => _doDeleteKey(id, label));
+}
+
+function rotateKey(id, label, btn) {
+  inlineConfirm(btn, async () => {
+    const res = await api.post(`/admin/api/keys/${encodeURIComponent(id)}/rotate`);
+    if (res.ok) {
+      showToast(t('toast.keyRotated', {label}));
+      // Show the new key for one-time copy
+      document.getElementById('createdKeyValue').value = res.key;
+      document.getElementById('keyCreatedModal').classList.add('open');
+      loadKeys();
+    } else {
+      showToast(res.error || 'Failed', 'error');
+    }
+  });
 }
 
 function resetLogFilters() {
