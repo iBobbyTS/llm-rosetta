@@ -352,6 +352,13 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
 .prefix-group label { font-size:13px;white-space:nowrap; }
 .prefix-group input { flex:1;max-width:240px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:var(--mono); }
 .prefix-preview { font-size:12px;color:var(--text-dim);margin:4px 0 8px 0;font-family:var(--mono); }
+.fetch-type-group { margin:10px 0 4px; }
+.fetch-type-group > label { font-size:13px;font-weight:500;margin-bottom:4px;display:block; }
+.fetch-type-radios { display:flex;gap:14px;margin:4px 0 8px; }
+.fetch-type-radios label { font-size:13px;cursor:pointer;display:flex;align-items:center;gap:4px; }
+.fetch-caps-row { display:flex;align-items:center;gap:12px;flex-wrap:wrap; }
+.fetch-caps-row > label:first-child { font-size:13px;font-weight:500;white-space:nowrap; }
+.fetch-caps-row label { font-size:13px;cursor:pointer;display:flex;align-items:center;gap:4px; }
 
 /* Login overlay */
 .login-overlay {
@@ -705,6 +712,20 @@ body { padding-bottom: 26px; }
         <label data-i18n="label.modelPrefix">Prefix:</label>
         <input id="fetchPrefix" placeholder="e.g. myprefix/">
       </div>
+      <div class="fetch-type-group">
+        <label data-i18n="label.modelType">Model Type</label>
+        <div class="fetch-type-radios">
+          <label><input type="radio" name="fetchModelType" value="llm" checked onchange="onFetchTypeChange()"> <span data-i18n="label.llm">LLM</span></label>
+          <label><input type="radio" name="fetchModelType" value="embedding" onchange="onFetchTypeChange()"> <span data-i18n="label.embedding">Embedding</span></label>
+        </div>
+      </div>
+      <div class="fetch-caps-row" id="fetchCapsRow">
+        <label data-i18n="label.capabilities">Capabilities</label>
+        <label><input type="checkbox" id="fetchCapText" checked> text</label>
+        <label><input type="checkbox" id="fetchCapVision"> vision</label>
+        <label><input type="checkbox" id="fetchCapTools" checked> tools</label>
+        <label><input type="checkbox" id="fetchCapReasoning"> reasoning</label>
+      </div>
     </div>
     <div id="fetchModelsLoading" style="display:none;text-align:center;padding:20px;color:var(--text-dim)">
       Loading models...
@@ -909,6 +930,9 @@ const I18N = {
     'modal.fetchModels':'Fetch Models from Provider',
     'label.selectProvider':'Select Provider',
     'label.modelPrefix':'Prefix:',
+    'label.modelType':'Model Type',
+    'label.llm':'LLM',
+    'label.embedding':'Embedding',
     'fetch.loading':'Fetching models...',
     'fetch.count':'{checked} / {total} selected',
     'fetch.noModels':'No models found from this provider.',
@@ -1008,6 +1032,9 @@ const I18N = {
     'modal.fetchModels':'\u4ece\u670d\u52a1\u5546\u83b7\u53d6\u6a21\u578b',
     'label.selectProvider':'\u9009\u62e9\u670d\u52a1\u5546',
     'label.modelPrefix':'\u524d\u7f00\uff1a',
+    'label.modelType':'\u6a21\u578b\u7c7b\u578b',
+    'label.llm':'LLM',
+    'label.embedding':'Embedding',
     'fetch.loading':'\u6b63\u5728\u83b7\u53d6\u6a21\u578b...',
     'fetch.count':'{checked} / {total} \u5df2\u9009',
     'fetch.noModels':'\u672a\u4ece\u8be5\u670d\u52a1\u5546\u627e\u5230\u6a21\u578b\u3002',
@@ -1790,7 +1817,30 @@ function openFetchModelsModal() {
   document.getElementById('fetchPrefix').value = '';
   document.getElementById('fetchModelSearch').value = '';
   document.getElementById('fetchAddBtn').disabled = true;
+  // Reset type/capability selectors
+  document.querySelector('input[name="fetchModelType"][value="llm"]').checked = true;
+  document.getElementById('fetchCapText').checked = true;
+  document.getElementById('fetchCapVision').checked = false;
+  document.getElementById('fetchCapTools').checked = true;
+  document.getElementById('fetchCapReasoning').checked = false;
+  document.getElementById('fetchCapsRow').style.display = '';
   document.getElementById('fetchModelsModal').classList.add('open');
+}
+
+function onFetchTypeChange() {
+  const isLLM = document.querySelector('input[name="fetchModelType"]:checked').value === 'llm';
+  document.getElementById('fetchCapsRow').style.display = isLLM ? '' : 'none';
+}
+
+function _getFetchCapabilities() {
+  const type = document.querySelector('input[name="fetchModelType"]:checked').value;
+  if (type === 'embedding') return ['embedding'];
+  const caps = [];
+  if (document.getElementById('fetchCapText').checked) caps.push('text');
+  if (document.getElementById('fetchCapVision').checked) caps.push('vision');
+  if (document.getElementById('fetchCapTools').checked) caps.push('tools');
+  if (document.getElementById('fetchCapReasoning').checked) caps.push('reasoning');
+  return caps.length > 0 ? caps : ['text'];
 }
 
 async function doFetchModels() {
@@ -1896,7 +1946,7 @@ async function bulkAddFetchedModels() {
         provider: _fetchProvider,
         models: toAdd,
         prefix: prefix,
-        capabilities: ['text', 'vision', 'tools'],
+        capabilities: _getFetchCapabilities(),
       });
       if (res.ok) {
         addedCount = (res.added || []).length;
