@@ -131,11 +131,6 @@ ir_messages.extend(openai_conv.response_from_provider(openai_response))
 google_request = google_conv.request_to_provider({"messages": ir_messages})
 ```
 
-## 相关项目
-
-- [ToolRegistry](https://github.com/Oaklight/toolregistry) — 一个轻量级 Python 框架，用于管理和动态注册工具，支持 LLM 集成。
-- [ToolRegistry-Hub](https://github.com/Oaklight/toolregistry-hub) — 基于 ToolRegistry 构建的即用型 MCP 工具服务器，提供网页搜索、计算器、日期时间等开箱即用的工具。
-
 ## 引用
 
 如果您在研究中使用了 LLM-Rosetta，请引用我们的论文：

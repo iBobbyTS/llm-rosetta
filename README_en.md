@@ -131,11 +131,6 @@ ir_messages.extend(openai_conv.response_from_provider(openai_response))
 google_request = google_conv.request_to_provider({"messages": ir_messages})
 ```
 
-## Related Projects
-
-- [ToolRegistry](https://github.com/Oaklight/toolregistry) — A lightweight Python framework for managing and dynamically registering tools with LLM integration support.
-- [ToolRegistry-Hub](https://github.com/Oaklight/toolregistry-hub) — A ready-to-use MCP tool server built on ToolRegistry, providing web search, calculator, datetime, and more out of the box.
-
 ## Citation
 
 If you use LLM-Rosetta in your research, please cite our paper:
