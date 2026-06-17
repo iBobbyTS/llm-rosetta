@@ -1,0 +1,79 @@
+# ── Secrets & credentials (CRITICAL) ──────────────────
+.env
+.env.*
+.envrc
+*.key
+*.pem
+*.p12
+*.jks
+credentials*
+service-account*
+config.jsonc
+
+# ── Git ───────────────────────────────────────────────
+.git/
+.gitignore
+.gitmodules
+
+# ── IDE & editor ─────────────────────────────────────
+.vscode/
+.idea/
+.kilocode/
+*.swp
+*.swo
+*~
+
+# ── AI coding agents ─────────────────────────────────
+.claude/
+.opencode/
+.codex/
+CLAUDE.md
+AGENTS.md
+
+# ── Python artifacts ─────────────────────────────────
+__pycache__/
+*.py[codz]
+*.egg-info/
+*.egg
+.eggs/
+build/
+# NOTE: dist/ is intentionally NOT ignored — local wheels
+# are copied from dist/ during the Docker build.
+sdist/
+wheels/
+.venv/
+venv/
+env/
+.pixi/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.complexipy_cache/
+htmlcov/
+.coverage
+.coverage.*
+.tox/
+.nox/
+
+# ── Documentation (git worktrees) ────────────────────
+docs_en/
+docs_zh/
+
+# ── Tests (not needed in production image) ───────────
+tests/
+examples/
+
+# ── CI / misc ────────────────────────────────────────
+.github/
+*.md
+!docker/*.md
+LICENSE
+Makefile
+pyproject.toml
+.pre-commit-config.yaml
+.cursorignore
+.cursorindexingignore
+.playwright-mcp/
+tmp/
+REVIEW_*
+TEMP_*
