@@ -207,6 +207,49 @@ result = run_sync(
 - **No AI co-author tags in commits.** Do not add `Co-authored-by` lines for AI
   tools in git commit messages. Disclose AI usage in PR descriptions instead.
 
+## Release process
+
+Releases are triggered manually via GitHub Actions, not by tag push.
+
+### Steps
+
+1. **Bump version** in `src/llm_rosetta/__init__.py`
+2. **Update changelogs** — move `[Unreleased]` entries into a versioned section
+   (`## vX.Y.Z — YYYY-MM-DD`) in both `docs_en/docs/changelog.md` and
+   `docs_zh/docs/changelog.md`. Commit and push both doc worktrees.
+3. **Commit and tag**:
+   ```bash
+   git add src/llm_rosetta/__init__.py
+   git commit -m "release: vX.Y.Z"
+   git tag vX.Y.Z
+   git push origin master vX.Y.Z
+   ```
+4. **Trigger the Release workflow** (builds wheel → publishes to PyPI →
+   triggers Docker build automatically):
+   ```bash
+   gh workflow run "Release" --repo Oaklight/llm-rosetta -f version=X.Y.Z
+   ```
+5. **Create GitHub Release** (optional — the Release workflow also creates one,
+   but you can create it manually first for custom release notes):
+   ```bash
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."
+   ```
+
+### Dev deployment (pre-release testing)
+
+```bash
+make deploy-dev SSH_TARGET=cloud.usa2
+```
+
+Builds a dev wheel from the current working tree, packages it into a Docker
+image tagged `dev-test`, and deploys to the remote host via `docker save |
+zstd | ssh`. The dev image version includes the git commit hash (e.g.
+`0.6.11.dev0+gaa73770`).
+
+**Important**: `make deploy-dev` builds from the **working tree**, not from
+the committed state. Always `git pull` and verify no dirty files in `src/`
+before deploying — otherwise the image may not contain the expected code.
+
 ## Documentation
 
 User-facing docs live on **orphan branches** (`docs-en`, `docs-zh`), mounted
