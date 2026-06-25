@@ -35,7 +35,7 @@ from .shims import (
     unregister_shim,
 )
 
-__version__ = "0.6.12"
+__version__ = "0.7.0a0"
 
 __all__ = [
     # Converters
