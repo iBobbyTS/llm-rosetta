@@ -2508,7 +2508,7 @@ async function loadProfilingResults() {
     if (empty) empty.style.display = 'none';
     tbody.innerHTML = results.map((r, i) => {
       const ts = r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : '-';
-      const mode = r.is_stream ? '⇅ stream' : '⬡ sync';
+      const mode = r.is_stream ? 'stream' : 'sync';
       const dur = typeof r.duration_ms === 'number' ? r.duration_ms.toFixed(0) + ' ms' : '-';
       return `<tr>
         <td>${esc(ts)}</td>
@@ -2516,7 +2516,7 @@ async function loadProfilingResults() {
         <td>${esc(r.source || '-')} → ${esc(r.target || '-')}</td>
         <td>${mode}</td>
         <td>${dur}</td>
-        <td><button class="btn btn-sm" onclick="viewFlamegraph(${i})">🔥 View</button></td>
+        <td><button class="btn btn-sm" onclick="viewFlamegraph(${i})"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:middle;margin-right:2px"><path d="M8 14c-2.5 0-5-1.5-5-5 0-2 1-3.5 2.5-5.5C7 1.5 8 1 8 1s1 .5 2.5 2.5C12 5.5 13 7 13 9c0 3.5-2.5 5-5 5z"/><path d="M8 14c-1.5 0-2.5-1-2.5-3 0-1 .5-2 1.5-3 .5-.5 1-1 1-1s.5.5 1 1c1 1 1.5 2 1.5 3 0 2-1 3-2.5 3z"/></svg> View</button></td>
       </tr>`;
     }).join('');
   } catch (e) { /* ignore */ }
@@ -2527,7 +2527,8 @@ async function toggleProfiling() {
     await api.post('/admin/api/profiling/disable');
   } else {
     const n = parseInt(document.getElementById('profilingCount')?.value || '5', 10);
-    await api.post('/admin/api/profiling/enable', { requests: Math.max(1, Math.min(100, n)) });
+    const res = await api.post('/admin/api/profiling/enable', { requests: Math.max(1, Math.min(100, n)) });
+    if (res && res.error) { showToast(res.error, 'error'); return; }
   }
   await loadProfilingStatus();
 }
@@ -2537,9 +2538,15 @@ async function clearProfilingResults() {
   await loadProfilingResults();
 }
 
-function viewFlamegraph(index) {
+async function viewFlamegraph(index) {
   const url = '/admin/api/profiling/results/' + index + '?format=html';
-  window.open(url, '_blank');
+  try {
+    const r = await fetch(url, {headers: _adminHeaders(), cache: 'no-store'});
+    if (!r.ok) { showToast('Failed to load flamegraph', 'error'); return; }
+    const html = await r.text();
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+  } catch (e) { showToast('Failed to load flamegraph', 'error'); }
 }
 
 // Format bytes as "1.4 M", "832 K", "5.4 G". Fixed-width-ish for footer.
