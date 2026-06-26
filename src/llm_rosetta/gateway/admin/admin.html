@@ -605,6 +605,28 @@ body { padding-bottom: 26px; }
         <tbody id="providerBreakdown"></tbody>
       </table></div>
     </div>
+    <div class="section" id="profilingSection">
+      <h2 style="margin-bottom:12px" data-i18n="section.profiling">Profiling</h2>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <span id="profilingBadge" class="badge" style="padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600">OFF</span>
+        <label style="font-size:13px" data-i18n="profiling.requests">Requests:</label>
+        <input type="number" id="profilingCount" value="5" min="1" max="100" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">
+        <button class="btn btn-sm" onclick="toggleProfiling()" id="profilingToggleBtn" data-i18n="profiling.enable">Enable</button>
+        <button class="btn btn-sm" onclick="clearProfilingResults()" data-i18n="profiling.clear">Clear</button>
+      </div>
+      <div class="table-scroll"><table>
+        <thead><tr>
+          <th data-i18n="col.time">Time</th>
+          <th data-i18n="col.model">Model</th>
+          <th data-i18n="col.sourceTarget">Source &rarr; Target</th>
+          <th data-i18n="col.mode">Mode</th>
+          <th data-i18n="col.duration">Duration</th>
+          <th data-i18n="profiling.flamegraph">Flamegraph</th>
+        </tr></thead>
+        <tbody id="profilingResults"></tbody>
+      </table></div>
+      <div id="profilingEmpty" class="empty" data-i18n="profiling.empty">No profiling results. Enable profiling and send requests.</div>
+    </div>
   </div>
 
   <!-- Request Log Tab -->
@@ -961,6 +983,11 @@ const I18N = {
     'stat.activeStreams':'Active Streams', 'stat.uptime':'Uptime',
     'chart.throughput':'Throughput (req/s)', 'chart.latency':'Latency (ms)',
     'section.breakdown':'Per-Provider Breakdown',
+    'section.profiling':'Profiling',
+    'profiling.enable':'Enable', 'profiling.disable':'Disable', 'profiling.clear':'Clear',
+    'profiling.requests':'Requests:', 'profiling.flamegraph':'Flamegraph',
+    'profiling.empty':'No profiling results. Enable profiling and send requests.',
+    'profiling.remaining':'{n} remaining',
     'filter.allModels':'All Models', 'filter.allProviders':'All Providers',
     'filter.allStatus':'All Status', 'filter.ok':'OK (2xx/3xx)', 'filter.error':'Error (4xx/5xx)',
     'test.text':'Simple Text', 'test.stream':'Stream',
@@ -1071,6 +1098,11 @@ const I18N = {
     'stat.activeStreams':'\u6d3b\u8dc3\u6d41', 'stat.uptime':'\u8fd0\u884c\u65f6\u95f4',
     'chart.throughput':'\u541e\u5410\u91cf (req/s)', 'chart.latency':'\u5ef6\u8fdf (ms)',
     'section.breakdown':'\u670d\u52a1\u65b9\u7edf\u8ba1',
+    'section.profiling':'\u6027\u80fd\u5206\u6790',
+    'profiling.enable':'\u542f\u7528', 'profiling.disable':'\u505c\u6b62', 'profiling.clear':'\u6e05\u7a7a',
+    'profiling.requests':'\u8bf7\u6c42\u6570\uff1a', 'profiling.flamegraph':'\u706b\u7130\u56fe',
+    'profiling.empty':'\u6682\u65e0\u5206\u6790\u7ed3\u679c\u3002\u542f\u7528\u540e\u53d1\u9001\u8bf7\u6c42\u5373\u53ef\u91c7\u96c6\u3002',
+    'profiling.remaining':'\u5269\u4f59 {n} \u4e2a',
     'filter.allModels':'\u5168\u90e8\u6a21\u578b', 'filter.allProviders':'\u5168\u90e8\u670d\u52a1\u65b9',
     'filter.allStatus':'\u5168\u90e8\u72b6\u6001', 'filter.ok':'\u6b63\u5e38 (2xx/3xx)', 'filter.error':'\u9519\u8bef (4xx/5xx)',
     'test.text':'\u7b80\u5355\u6587\u672c', 'test.stream':'\u6d41\u5f0f',
@@ -2433,6 +2465,81 @@ async function loadMetrics() {
   drawChart('chartLatency', data.series, 'avg_ms', 'ms');
   renderProviderBreakdown(data);
   renderPersistence(data.persistence, data.total_requests);
+  loadProfilingStatus();
+  loadProfilingResults();
+}
+
+// ===================== Profiling =====================
+let _profilingEnabled = false;
+
+async function loadProfilingStatus() {
+  try {
+    const s = await api.get('/admin/api/profiling/status');
+    _profilingEnabled = s.enabled;
+    const badge = document.getElementById('profilingBadge');
+    const btn = document.getElementById('profilingToggleBtn');
+    if (badge) {
+      if (s.enabled) {
+        badge.textContent = t('profiling.remaining').replace('{n}', s.remaining);
+        badge.style.background = 'var(--green, #22c55e)';
+        badge.style.color = '#fff';
+      } else {
+        badge.textContent = 'OFF';
+        badge.style.background = 'var(--text-dim, #888)';
+        badge.style.color = '#fff';
+      }
+    }
+    if (btn) btn.textContent = s.enabled ? t('profiling.disable') : t('profiling.enable');
+  } catch (e) { /* ignore */ }
+}
+
+async function loadProfilingResults() {
+  try {
+    const data = await api.get('/admin/api/profiling/results');
+    const tbody = document.getElementById('profilingResults');
+    const empty = document.getElementById('profilingEmpty');
+    if (!tbody) return;
+    const results = data.results || [];
+    if (results.length === 0) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = '';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    tbody.innerHTML = results.map((r, i) => {
+      const ts = r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : '-';
+      const mode = r.is_stream ? '⇅ stream' : '⬡ sync';
+      const dur = typeof r.duration_ms === 'number' ? r.duration_ms.toFixed(0) + ' ms' : '-';
+      return `<tr>
+        <td>${esc(ts)}</td>
+        <td>${esc(r.model || '-')}</td>
+        <td>${esc(r.source || '-')} → ${esc(r.target || '-')}</td>
+        <td>${mode}</td>
+        <td>${dur}</td>
+        <td><button class="btn btn-sm" onclick="viewFlamegraph(${i})">🔥 View</button></td>
+      </tr>`;
+    }).join('');
+  } catch (e) { /* ignore */ }
+}
+
+async function toggleProfiling() {
+  if (_profilingEnabled) {
+    await api.post('/admin/api/profiling/disable');
+  } else {
+    const n = parseInt(document.getElementById('profilingCount')?.value || '5', 10);
+    await api.post('/admin/api/profiling/enable', { requests: Math.max(1, Math.min(100, n)) });
+  }
+  await loadProfilingStatus();
+}
+
+async function clearProfilingResults() {
+  await api.del('/admin/api/profiling/results');
+  await loadProfilingResults();
+}
+
+function viewFlamegraph(index) {
+  const url = '/admin/api/profiling/results/' + index + '?format=html';
+  window.open(url, '_blank');
 }
 
 // Format bytes as "1.4 M", "832 K", "5.4 G". Fixed-width-ish for footer.
