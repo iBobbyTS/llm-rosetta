@@ -62,6 +62,7 @@ from .observability import (
 from .profiling import (
     clear_profiling_results,
     disable_profiling,
+    download_profiling_results,
     enable_profiling,
     get_profiling_result,
     get_profiling_results,
@@ -129,6 +130,9 @@ def register_admin_routes(app: Any) -> None:
     app.route("/admin/api/profiling/results", methods=["GET"])(get_profiling_results)
     app.route("/admin/api/profiling/results/<index>", methods=["GET"])(
         get_profiling_result
+    )
+    app.route("/admin/api/profiling/results/download", methods=["GET"])(
+        download_profiling_results
     )
     app.route("/admin/api/profiling/results", methods=["DELETE"])(
         clear_profiling_results

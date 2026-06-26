@@ -224,6 +224,32 @@ async def get_profiling_result(request: Any, **kwargs: Any) -> Response:
     return JSONResponse(result)
 
 
+async def download_profiling_results(request: Any) -> Response:
+    """Download all profiling results as a ZIP archive."""
+    import io
+    import zipfile
+
+    state: ProfilerState = request.app.profiler_state
+    if not state.results:
+        return JSONResponse({"error": "No results to download"}, status_code=404)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, r in enumerate(state.results):
+            model = r.get("model", "unknown").replace("/", "_").replace(":", "_")
+            ts = r.get("timestamp", "")[:19].replace(":", "")
+            filename = f"profile-{i}-{model}-{ts}.html"
+            zf.writestr(filename, r.get("html", ""))
+    buf.seek(0)
+
+    return Response(
+        body=buf.getvalue(),
+        status_code=200,
+        content_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=profiling-results.zip"},
+    )
+
+
 async def clear_profiling_results(request: Any) -> Response:
     """Clear all profiling results."""
     state: ProfilerState = request.app.profiler_state
