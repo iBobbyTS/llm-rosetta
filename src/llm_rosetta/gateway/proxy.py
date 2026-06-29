@@ -474,6 +474,8 @@ async def handle_streaming(
             extra_headers=extra_headers,
         )
     except UpstreamConnectionError as exc:
+        # Connection-level failure — no upstream HTTP response exists, so
+        # the gateway synthesizes an error message and returns 502.
         error_msg = str(exc)
         dump_error(
             persistence,
@@ -496,9 +498,9 @@ async def handle_streaming(
             profile,
         )
 
-    # If the upstream responded with an error status (e.g. 400 token limit,
-    # 429 rate limit), return a proper error response with the correct HTTP
-    # status code so the client SDK can surface the real error message.
+    # Application-level error — upstream returned a valid HTTP response with
+    # a 4xx/5xx status.  Pass the original body through as-is so the client
+    # SDK can parse the real error (e.g. "context_length_exceeded").
     if stream.is_error:
         error_text = await stream.read_error()
         await stream.close()
