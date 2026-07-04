@@ -465,6 +465,7 @@ async def handle_streaming(
 
     # Phase 3: Open upstream connection and check for immediate errors
     # *before* committing to a 200 StreamingResponse.
+    t_connect = time.perf_counter()
     try:
         stream = await transport.send_streaming(
             provider_info,
@@ -474,6 +475,9 @@ async def handle_streaming(
             extra_headers=extra_headers,
         )
     except UpstreamConnectionError as exc:
+        profile["stream_connect_ms"] = round(
+            (time.perf_counter() - t_connect) * 1000, 2
+        )
         # Connection-level failure — no upstream HTTP response exists, so
         # the gateway synthesizes an error message and returns 502.
         error_msg = str(exc)
@@ -497,6 +501,8 @@ async def handle_streaming(
             ),
             profile,
         )
+
+    profile["stream_connect_ms"] = round((time.perf_counter() - t_connect) * 1000, 2)
 
     # Application-level error — upstream returned a valid HTTP response with
     # a 4xx/5xx status.  Pass the original body through as-is so the client
