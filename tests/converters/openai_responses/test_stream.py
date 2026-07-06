@@ -666,6 +666,33 @@ class TestStreamResponseFromProviderWithContext:
         assert types[-1] == "stream_end"
         assert ctx.is_ended is True
 
+    def test_response_completed_with_tool_search_sets_tool_calls(self):
+        """tool_search_call in response.completed keeps Codex in the tool loop."""
+        ctx = OpenAIResponsesStreamContext()
+        ctx.mark_started()
+        item = {
+            "type": "tool_search_call",
+            "id": "tsc_123",
+            "call_id": "call_123",
+            "status": "completed",
+            "execution": "client",
+            "arguments": {"query": "multi-agent", "limit": 8},
+        }
+        event = {
+            "type": "response.completed",
+            "response": {
+                "status": "completed",
+                "output": [item],
+            },
+        }
+        events = cast(
+            list[Any],
+            self.converter.stream_response_from_provider(event, context=ctx),
+        )
+        finish_events = [e for e in events if e["type"] == "finish"]
+        assert finish_events[0]["finish_reason"]["reason"] == "tool_calls"
+        assert ctx.passthrough_output_items == [item]
+
     def test_response_failed_emits_stream_end(self):
         """response.failed with context emits StreamEndEvent after FinishEvent."""
         ctx = OpenAIResponsesStreamContext()
@@ -741,6 +768,45 @@ class TestStreamResponseFromProviderWithContext:
         }
         events = self.converter.stream_response_from_provider(event)
         assert events == []
+
+    def test_output_item_added_tool_search_passthrough(self):
+        """tool_search_call output items round-trip as provider passthrough."""
+        ctx_from = OpenAIResponsesStreamContext()
+        ctx_to = OpenAIResponsesStreamContext()
+        event = {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+                "type": "tool_search_call",
+                "id": "tsc_123",
+                "call_id": "call_123",
+                "status": "completed",
+                "execution": "client",
+                "arguments": {
+                    "query": "multi-agent subagent spawn",
+                    "limit": 8,
+                },
+            },
+        }
+
+        events = cast(
+            list[Any],
+            self.converter.stream_response_from_provider(event, context=ctx_from),
+        )
+
+        assert len(events) == 1
+        assert events[0]["type"] == "provider_passthrough"
+        assert events[0]["provider"] == "openai_responses"
+        assert events[0]["payload"] == event
+        assert ctx_from.passthrough_output_items == [event["item"]]
+
+        restored = cast(
+            dict[str, Any],
+            self.converter.stream_response_to_provider(events[0], context=ctx_to),
+        )
+        assert restored["type"] == "response.output_item.added"
+        assert restored["item"]["type"] == "tool_search_call"
+        assert restored["item"]["call_id"] == "call_123"
 
     def test_content_part_added_emits_content_block_start(self):
         """response.content_part.added with context emits ContentBlockStartEvent."""
@@ -1612,3 +1678,69 @@ class TestCustomToolCallStreaming:
         )
         assert restored["type"] == "response.custom_tool_call_input.delta"
         assert restored["delta"] == "search query"
+
+    def test_tool_search_call_stream_round_trip_completed_output(self):
+        """tool_search_call survives streaming provider → IR → provider conversion."""
+        ctx_from = OpenAIResponsesStreamContext()
+        ctx_to = OpenAIResponsesStreamContext()
+
+        tool_search_item = {
+            "type": "tool_search_call",
+            "id": "tsc_123",
+            "call_id": "call_123",
+            "status": "completed",
+            "execution": "client",
+            "arguments": {"query": "multi-agent", "limit": 8},
+        }
+        chunks = [
+            {
+                "type": "response.created",
+                "response": {
+                    "id": "resp_123",
+                    "object": "response",
+                    "model": "gpt-5.5",
+                    "created_at": 123,
+                    "status": "in_progress",
+                    "output": [],
+                },
+            },
+            {
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "item": tool_search_item,
+            },
+            {
+                "type": "response.completed",
+                "response": {
+                    "id": "resp_123",
+                    "object": "response",
+                    "model": "gpt-5.5",
+                    "created_at": 123,
+                    "status": "completed",
+                    "output": [tool_search_item],
+                },
+            },
+        ]
+
+        restored_events: list[dict[str, Any]] = []
+        for chunk in chunks:
+            ir_events = cast(
+                list[Any],
+                self.converter.stream_response_from_provider(chunk, context=ctx_from),
+            )
+            for ir_event in ir_events:
+                restored = self.converter.stream_response_to_provider(
+                    ir_event, context=ctx_to
+                )
+                if isinstance(restored, list):
+                    restored_events.extend(cast(list[dict[str, Any]], restored))
+                elif restored:
+                    restored_events.append(cast(dict[str, Any], restored))
+
+        completed = [
+            event
+            for event in restored_events
+            if event.get("type") == "response.completed"
+        ]
+        assert completed
+        assert completed[-1]["response"]["output"] == [tool_search_item]

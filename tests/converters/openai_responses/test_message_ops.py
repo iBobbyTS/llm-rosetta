@@ -480,6 +480,38 @@ class TestOpenAIResponsesMessageOps:
         assert result[0]["type"] == "system_event"
         assert result[0]["event_type"] == "session_start"
 
+    def test_p_tool_search_output_passthrough_round_trip(self):
+        """Codex tool_search_output survives request item conversion."""
+        item = {
+            "type": "tool_search_output",
+            "call_id": "call_123",
+            "status": "completed",
+            "execution": "client",
+            "tools": [
+                {
+                    "type": "namespace",
+                    "name": "multi_agent_v1",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "name": "spawn_agent",
+                            "parameters": {"type": "object", "properties": {}},
+                        }
+                    ],
+                }
+            ],
+        }
+
+        ir_messages = cast(list[Any], self.message_ops.p_messages_to_ir([item]))
+        assert len(ir_messages) == 1
+        assert ir_messages[0]["role"] == "assistant"
+        assert ir_messages[0]["content"] == []
+        assert ir_messages[0]["metadata"]["custom"]["_passthrough_items"] == [item]
+
+        restored, warnings = self.message_ops.ir_messages_to_p(ir_messages)
+        assert warnings == []
+        assert restored == [item]
+
     def test_p_consecutive_tool_calls_grouped(self):
         """Test consecutive function_call items are grouped into one assistant message."""
         result = cast(

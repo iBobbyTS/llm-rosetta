@@ -35,6 +35,14 @@ from .content_ops import OpenAIResponsesContentOps
 from .tool_ops import OpenAIResponsesToolOps
 
 
+RESPONSES_PASSTHROUGH_ITEM_TYPES = frozenset(
+    {
+        "tool_search_call",
+        "tool_search_output",
+    }
+)
+
+
 class OpenAIResponsesMessageOps(BaseMessageOps):
     """OpenAI Responses API message conversion operations.
 
@@ -388,15 +396,28 @@ class OpenAIResponsesMessageOps(BaseMessageOps):
                     current_message = None
                 ir_input.append(self._make_system_event(item))
 
+            elif item_type in RESPONSES_PASSTHROUGH_ITEM_TYPES:
+                current_message = self._handle_p_passthrough_item(
+                    item, current_message, ir_input
+                )
+
             elif isinstance(item_type, str) and ":" in item_type:
                 current_message = self._handle_p_extension_item(
                     item, current_message, ir_input
                 )
 
-        if current_message and current_message.get("content"):
+        if current_message and self._message_has_payload(current_message):
             ir_input.append(current_message)
 
         return ir_input
+
+    @staticmethod
+    def _message_has_payload(message: dict[str, Any]) -> bool:
+        """Return whether a buffered IR message contains content or passthrough."""
+        if message.get("content"):
+            return True
+        custom = (message.get("metadata") or {}).get("custom", {})
+        return bool(custom.get("_passthrough_items"))
 
     @staticmethod
     def _make_system_event(item: dict[str, Any]) -> dict[str, Any]:
@@ -421,6 +442,28 @@ class OpenAIResponsesMessageOps(BaseMessageOps):
             custom.setdefault("_passthrough_items", []).append(dict(item))
             return current_message
         if current_message:
+            ir_input.append(current_message)
+        return {
+            "role": "assistant",
+            "content": [],
+            "metadata": {"custom": {"_passthrough_items": [dict(item)]}},
+        }
+
+    @staticmethod
+    def _handle_p_passthrough_item(
+        item: dict[str, Any],
+        current_message: dict[str, Any] | None,
+        ir_input: list[Any],
+    ) -> dict[str, Any]:
+        """Preserve Responses client-executed items opaquely."""
+        if current_message and current_message.get("role") == "assistant":
+            metadata = current_message.setdefault("metadata", {})
+            custom = metadata.setdefault("custom", {})
+            custom.setdefault("_passthrough_items", []).append(dict(item))
+            return current_message
+        if current_message and OpenAIResponsesMessageOps._message_has_payload(
+            current_message
+        ):
             ir_input.append(current_message)
         return {
             "role": "assistant",

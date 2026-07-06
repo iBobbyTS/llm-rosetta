@@ -66,6 +66,7 @@ from .ir import (
     ToolCallDeltaEvent,
     FinishEvent,
     UsageEvent,
+    ProviderPassthroughEvent,
     # Backward compatibility types
     IRInput,
     IRInputSimple,
@@ -131,6 +132,7 @@ __all__ = [
     "ToolCallDeltaEvent",
     "FinishEvent",
     "UsageEvent",
+    "ProviderPassthroughEvent",
     # Backward compatibility types
     "IRInput",
     "IRInputSimple",

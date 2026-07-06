@@ -123,6 +123,7 @@ from .stream import (
     ContentBlockStartEvent,
     FinishEvent,
     IRStreamEvent,
+    ProviderPassthroughEvent,
     ReasoningDeltaEvent,
     StreamEndEvent,
     StreamStartEvent,
@@ -238,6 +239,7 @@ __all__ = [
     "ToolCallDeltaEvent",
     "FinishEvent",
     "UsageEvent",
+    "ProviderPassthroughEvent",
     # ========== 向后兼容类型 Backward compatibility types ==========
     "IRInput",
     "IRInputSimple",

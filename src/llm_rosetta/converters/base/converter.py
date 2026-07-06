@@ -72,6 +72,7 @@ class BaseConverter(ABC):
         "tool_call_delta": "_handle_tool_call_delta_to_p",
         "finish": "_handle_finish_to_p",
         "usage": "_handle_usage_to_p",
+        "provider_passthrough": "_handle_provider_passthrough_to_p",
     }
 
     # ==================== 顶层转换接口 Top-level conversion interface ====================
@@ -305,6 +306,17 @@ class BaseConverter(ABC):
             The (possibly modified) result.
         """
         return result
+
+    @staticmethod
+    def _handle_provider_passthrough_to_p(
+        event: IRStreamEvent,
+        context: StreamContext | None,
+    ) -> dict[str, Any]:
+        """Drop provider-specific opaque events by default.
+
+        Same-format converters can override this to re-emit the native payload.
+        """
+        return {}
 
     # ==================== Provider-specific helpers (abstract) ====================
 

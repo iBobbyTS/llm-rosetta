@@ -32,6 +32,7 @@ class OpenAIResponsesStreamContext(StreamContext):
     item_id: str = ""
     accumulated_text: str = ""
     content_part_done_emitted: bool = False
+    passthrough_output_items: list[dict] = field(default_factory=list)
     _sequence_number: int = 0
 
     @classmethod
@@ -63,6 +64,8 @@ class OpenAIResponsesStreamContext(StreamContext):
         ctx._tool_call_args = base._tool_call_args
         ctx._tool_call_order = base._tool_call_order
         ctx._tool_call_types = base._tool_call_types
+        if hasattr(base, "passthrough_output_items"):
+            ctx.passthrough_output_items = base.passthrough_output_items
         return ctx
 
     def register_tool_call_item(self, tool_call_id: str, item_id: str) -> None:
@@ -78,3 +81,16 @@ class OpenAIResponsesStreamContext(StreamContext):
         super().register_tool_call_item(tool_call_id, item_id)
         if tool_call_id and item_id:
             self.item_id_to_call_id[item_id] = tool_call_id
+
+    def add_passthrough_output_item(self, item: dict) -> None:
+        """Remember an opaque Responses output item for response.completed."""
+        item_id = item.get("id")
+        call_id = item.get("call_id")
+        for idx, existing in enumerate(self.passthrough_output_items):
+            if item_id and existing.get("id") == item_id:
+                self.passthrough_output_items[idx] = dict(item)
+                return
+            if call_id and existing.get("call_id") == call_id:
+                self.passthrough_output_items[idx] = dict(item)
+                return
+        self.passthrough_output_items.append(dict(item))

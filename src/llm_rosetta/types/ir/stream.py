@@ -171,6 +171,19 @@ class UsageEvent(TypedDict):
     usage: Required[UsageInfo]
 
 
+class ProviderPassthroughEvent(TypedDict):
+    """Provider-native stream event that has no portable IR representation.
+
+    This is intentionally opaque. It lets same-format proxy paths preserve
+    provider-specific client-executed items while other providers can ignore
+    the event if they do not know how to render it.
+    """
+
+    type: Required[Literal["provider_passthrough"]]
+    provider: Required[str]
+    payload: Required[dict[str, Any]]
+
+
 # ============================================================================
 # Union type
 # ============================================================================
@@ -186,6 +199,7 @@ IRStreamEvent = Union[
     ToolCallDeltaEvent,
     FinishEvent,
     UsageEvent,
+    ProviderPassthroughEvent,
 ]
 
 # ============================================================================
@@ -203,5 +217,6 @@ __all__ = [
     "ToolCallDeltaEvent",
     "FinishEvent",
     "UsageEvent",
+    "ProviderPassthroughEvent",
     "IRStreamEvent",
 ]

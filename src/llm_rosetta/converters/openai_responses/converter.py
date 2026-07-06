@@ -34,6 +34,7 @@ from ...types.ir.stream import (
     ToolCallDeltaEvent,
     ToolCallStartEvent,
     UsageEvent,
+    ProviderPassthroughEvent,
 )
 from ..base import BaseConverter
 from ..base.context import ConversionContext, StreamContext
@@ -54,6 +55,14 @@ from .content_ops import OpenAIResponsesContentOps
 from .message_ops import OpenAIResponsesMessageOps
 from .tool_ops import OpenAIResponsesToolOps
 from .utils import build_message_preamble_events, resolve_call_id
+
+
+RESPONSES_PASSTHROUGH_OUTPUT_ITEM_TYPES = frozenset(
+    {
+        "tool_search_call",
+        "tool_search_output",
+    }
+)
 
 
 class OpenAIResponsesConverter(BaseConverter):
@@ -855,6 +864,16 @@ class OpenAIResponsesConverter(BaseConverter):
                 # ``ContentBlockStartEvent`` here would cause duplicate
                 # ``response.content_part.added`` events on round-trip.
                 pass
+            elif item_type in RESPONSES_PASSTHROUGH_OUTPUT_ITEM_TYPES:
+                if isinstance(context, OpenAIResponsesStreamContext):
+                    context.add_passthrough_output_item(item)
+                events.append(
+                    ProviderPassthroughEvent(
+                        type="provider_passthrough",
+                        provider=self._CONVERTER_TAG,
+                        payload=dict(chunk),
+                    )
+                )
 
     def _handle_content_part_added_from_p(
         self,
@@ -916,6 +935,16 @@ class OpenAIResponsesConverter(BaseConverter):
                 call_id = item.get("call_id", "")
                 if call_id:
                     context.set_tool_call_args(call_id, item.get("input", ""))
+        elif item_type in RESPONSES_PASSTHROUGH_OUTPUT_ITEM_TYPES:
+            if isinstance(context, OpenAIResponsesStreamContext):
+                context.add_passthrough_output_item(item)
+            events.append(
+                ProviderPassthroughEvent(
+                    type="provider_passthrough",
+                    provider=self._CONVERTER_TAG,
+                    payload=dict(chunk),
+                )
+            )
 
     def _handle_function_call_args_delta_from_p(
         self,
@@ -1013,7 +1042,17 @@ class OpenAIResponsesConverter(BaseConverter):
         output_items = response.get("output", [])
         if isinstance(output_items, list):
             for item in output_items:
-                if isinstance(item, dict) and item.get("type") == "function_call":
+                if not isinstance(item, dict):
+                    continue
+                item_type = item.get("type")
+                if item_type in RESPONSES_PASSTHROUGH_OUTPUT_ITEM_TYPES and isinstance(
+                    context, OpenAIResponsesStreamContext
+                ):
+                    context.add_passthrough_output_item(item)
+                if (
+                    item_type == "function_call"
+                    or item_type in RESPONSES_PASSTHROUGH_OUTPUT_ITEM_TYPES
+                ):
                     reason = "tool_calls"
                     break
 
@@ -1300,6 +1339,23 @@ class OpenAIResponsesConverter(BaseConverter):
             "delta": event["reasoning"],
         }
 
+    def _handle_provider_passthrough_to_p(
+        self,
+        event: ProviderPassthroughEvent,
+        context: StreamContext | None,
+    ) -> dict[str, Any]:
+        if event.get("provider") != self._CONVERTER_TAG:
+            return {}
+        payload = dict(event.get("payload", {}))
+        item = payload.get("item")
+        if (
+            isinstance(context, OpenAIResponsesStreamContext)
+            and isinstance(item, dict)
+            and item.get("type") in RESPONSES_PASSTHROUGH_OUTPUT_ITEM_TYPES
+        ):
+            context.add_passthrough_output_item(item)
+        return payload
+
     def _handle_tool_call_start_to_p(
         self,
         event: ToolCallStartEvent,
@@ -1512,6 +1568,7 @@ class OpenAIResponsesConverter(BaseConverter):
                         "status": "completed",
                     }
                 )
+        output.extend(context.passthrough_output_items)
         return output
 
     @staticmethod
