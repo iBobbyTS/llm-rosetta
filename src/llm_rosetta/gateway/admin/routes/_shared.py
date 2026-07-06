@@ -52,6 +52,7 @@ def _reload_gateway_config(request: Any, config_path: str) -> GatewayConfig:
     request.app.gateway_config = new_config
 
     _sync_auth_middleware(request.app, new_config)
+    _sync_stream_trace_state(request.app, new_config)
 
     return new_config
 
@@ -62,6 +63,13 @@ def _sync_auth_middleware(app: Any, config: GatewayConfig) -> None:
     if auth_state is not None:
         auth_state.key_set = config.api_key_set
         auth_state.labels = dict(config.api_key_labels)
+
+
+def _sync_stream_trace_state(app: Any, config: GatewayConfig) -> None:
+    """Update stream trace settings for hot-reload."""
+    stream_trace_state = getattr(app, "stream_trace_state", None)
+    if stream_trace_state is not None:
+        stream_trace_state.update(config.stream_trace)
 
 
 def _build_provider_entry(

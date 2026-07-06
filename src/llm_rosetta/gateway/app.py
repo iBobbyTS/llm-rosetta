@@ -285,6 +285,7 @@ async def _proxy_handler(
                 entry_id=pre_entry_id,
                 request_log=request_log,
                 persistence=persistence,
+                stream_trace_state=getattr(request.app, "stream_trace_state", None),
             )
         else:
             pre_entry_id = None

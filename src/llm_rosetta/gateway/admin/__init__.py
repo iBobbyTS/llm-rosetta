@@ -14,6 +14,8 @@ from llm_rosetta.observability import (
     RequestLog,
 )
 
+from ..stream_trace import StreamTraceState
+
 if TYPE_CHECKING:
     from ..config import GatewayConfig
 
@@ -116,3 +118,4 @@ def setup_admin(
     app.gateway_config = config
     app.config_path = config_path
     app.profiler_state = profiler_state
+    app.stream_trace_state = StreamTraceState(config.stream_trace)

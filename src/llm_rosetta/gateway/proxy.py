@@ -35,7 +35,7 @@ from .logging import (
     log_stream_summary,
     log_upstream_error,
 )
-from .stream_trace import StreamTraceLogger
+from .stream_trace import StreamTraceLogger, StreamTraceState
 from .transport import (
     ProviderInfo,
     UpstreamConnectionError,
@@ -441,6 +441,7 @@ async def handle_streaming(
     entry_id: str | None = None,
     request_log: Any | None = None,
     persistence: Any | None = None,
+    stream_trace_state: StreamTraceState | None = None,
 ) -> tuple[Response | StreamingResponse, dict[str, Any]]:
     """Streaming proxy: convert -> forward -> stream-convert back -> SSE.
 
@@ -565,13 +566,17 @@ async def handle_streaming(
 
     # Phase 4: No error — create stream processor and return SSE response
     request_id = extra_headers.get("x-request-id") if extra_headers else None
-    trace = StreamTraceLogger.from_env(
-        request_id=request_id,
-        request_log_id=entry_id,
-        model=model,
-        source_provider=route.source_provider,
-        target_provider=route.target_provider,
-        provider_name=route.provider_name,
+    trace = (
+        stream_trace_state.create_logger(
+            request_id=request_id,
+            request_log_id=entry_id,
+            model=model,
+            source_provider=route.source_provider,
+            target_provider=route.target_provider,
+            provider_name=route.provider_name,
+        )
+        if stream_trace_state is not None
+        else None
     )
 
     def _on_ir_event(ir_event: dict[str, Any]) -> None:

@@ -494,6 +494,7 @@ body { padding-bottom: 26px; }
   <div class="tab" data-tab="keys" data-i18n="tab.keys">API Keys</div>
   <div class="tab" data-tab="dashboard" data-i18n="tab.dashboard">Dashboard</div>
   <div class="tab" data-tab="logs" data-i18n="tab.logs">Request Log</div>
+  <div class="tab" data-tab="gateway-logs" data-i18n="tab.gatewayLogs">Gateway Logs</div>
   <div style="flex:1"></div>
   <div class="config-path" id="configPath"></div>
 </div>
@@ -655,6 +656,38 @@ body { padding-bottom: 26px; }
       <button class="btn btn-sm" id="prevPage" onclick="changePage(-1)" data-i18n="btn.prev">Prev</button>
       <span class="info" id="pageInfo"></span>
       <button class="btn btn-sm" id="nextPage" onclick="changePage(1)" data-i18n="btn.next">Next</button>
+    </div>
+  </div>
+
+  <!-- Gateway Logs Tab -->
+  <div class="tab-panel" id="tab-gateway-logs">
+    <div class="section">
+      <div class="section-header">
+        <h2 data-i18n="section.gatewayLogs">Gateway Logs</h2>
+        <button id="streamTraceSaveBtn" class="btn btn-primary btn-sm" onclick="saveStreamTraceSettings()" data-i18n="btn.save" disabled>Save</button>
+      </div>
+      <div class="provider-card" style="max-width:720px">
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px">
+            <input id="streamTraceEnabled" type="checkbox" style="width:auto">
+            <span data-i18n="label.streamTraceEnabled">Enable stream trace JSONL</span>
+          </label>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:6px" data-i18n="label.streamTraceHint">Records upstream chunks, IR events, and downstream SSE events for matching streaming requests.</div>
+        </div>
+        <div class="form-group">
+          <label data-i18n="label.streamTracePath">Trace File Path</label>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--text);padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">/Users/ibobby/.config/llm-rosetta-gateway/log.jsonl</div>
+        </div>
+        <div class="form-group">
+          <label data-i18n="label.streamTraceFilter">Filter</label>
+          <input id="streamTraceFilter" placeholder="gpt,glm,provider-name">
+          <div style="font-size:11px;color:var(--text-dim);margin-top:6px" data-i18n="label.streamTraceFilterHint">Comma-separated substrings matched against model, provider name, source provider, and target provider. Leave empty to trace all streaming requests.</div>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label data-i18n="label.streamTraceMaxChars">Max String Characters</label>
+          <input id="streamTraceMaxChars" type="number" min="1" step="1000" placeholder="20000" style="max-width:180px">
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -964,10 +997,17 @@ function setTheme(name) {
 const I18N = {
   en: {
     'tab.providers':'Providers', 'tab.models':'Models', 'tab.keys':'API Keys',
-    'tab.dashboard':'Dashboard', 'tab.logs':'Request Log',
+    'tab.dashboard':'Dashboard', 'tab.logs':'Request Log', 'tab.gatewayLogs':'Gateway Logs',
     'section.server':'Server Settings', 'section.providers':'Providers', 'section.models':'Model Routing',
+    'section.gatewayLogs':'Gateway Logs',
     'label.globalProxy':'Global Proxy URL',
     'label.globalProxy.hint':'Applies to all providers unless overridden per-provider.',
+    'label.streamTraceEnabled':'Enable stream trace JSONL',
+    'label.streamTraceHint':'Records upstream chunks, IR events, and downstream SSE events for matching streaming requests.',
+    'label.streamTracePath':'Trace File Path (fixed)',
+    'label.streamTraceFilter':'Filter',
+    'label.streamTraceFilterHint':'Comma-separated substrings matched against model, provider name, source provider, and target provider. Leave empty to trace all streaming requests.',
+    'label.streamTraceMaxChars':'Max String Characters',
     'btn.save':'Save', 'modal.settings':'Settings', 'label.theme':'Theme', 'label.language':'Language', 'theme.light':'Light', 'theme.dark':'Dark', 'btn.cancel':'Cancel', 'btn.close':'Close',
     'btn.addProvider':'+ Add Provider', 'btn.addModel':'+ Add Model',
     'btn.edit':'Edit', 'btn.delete':'Delete', 'btn.rotate':'Rotate', 'btn.resetFilters':'Reset Filters',
@@ -1002,6 +1042,7 @@ const I18N = {
     'empty.providers':'No providers configured.', 'empty.models':'No models configured.',
     'empty.logs':'No requests logged yet', 'empty.data':'No data yet',
     'toast.serverSaved':'Server settings saved',
+    'toast.streamTraceSaved':'Gateway log settings saved',
     'toast.providerSaved':"Provider '{name}' saved",
     'toast.providerDeleted':"Provider '{name}' deleted",
     'provider.enabled':'Enabled', 'provider.disabled':'Disabled',
@@ -1080,10 +1121,17 @@ const I18N = {
   zh: {
     'btn.logout':'\u9000\u51fa\u767b\u5f55',
     'tab.providers':'\u670d\u52a1\u65b9', 'tab.models':'\u6a21\u578b', 'tab.keys':'API \u5bc6\u94a5',
-    'tab.dashboard':'\u76d1\u63a7\u9762\u677f', 'tab.logs':'\u8bf7\u6c42\u65e5\u5fd7',
+    'tab.dashboard':'\u76d1\u63a7\u9762\u677f', 'tab.logs':'\u8bf7\u6c42\u65e5\u5fd7', 'tab.gatewayLogs':'\u7f51\u5173\u65e5\u5fd7',
     'section.server':'\u670d\u52a1\u5668\u8bbe\u7f6e', 'section.providers':'\u670d\u52a1\u65b9', 'section.models':'\u6a21\u578b\u8def\u7531',
+    'section.gatewayLogs':'\u7f51\u5173\u65e5\u5fd7',
     'label.globalProxy':'\u5168\u5c40\u4ee3\u7406 URL',
     'label.globalProxy.hint':'\u9002\u7528\u4e8e\u6240\u6709\u670d\u52a1\u65b9\uff0c\u9664\u975e\u5355\u72ec\u8bbe\u7f6e\u4e86\u4ee3\u7406\u3002',
+    'label.streamTraceEnabled':'\u542f\u7528\u6d41\u5f0f trace JSONL',
+    'label.streamTraceHint':'\u8bb0\u5f55\u5339\u914d\u7684\u6d41\u5f0f\u8bf7\u6c42\u7684\u4e0a\u6e38 chunk\u3001IR event \u548c\u4e0b\u6e38 SSE event\u3002',
+    'label.streamTracePath':'Trace \u6587\u4ef6\u8def\u5f84\uff08\u56fa\u5b9a\uff09',
+    'label.streamTraceFilter':'\u8fc7\u6ee4\u5668',
+    'label.streamTraceFilterHint':'\u9017\u53f7\u5206\u9694\u7684\u5b50\u4e32\uff0c\u7528\u4e8e\u5339\u914d model\u3001provider name\u3001source provider \u548c target provider\u3002\u7559\u7a7a\u5219\u8bb0\u5f55\u6240\u6709\u6d41\u5f0f\u8bf7\u6c42\u3002',
+    'label.streamTraceMaxChars':'\u5b57\u7b26\u4e32\u6700\u5927\u957f\u5ea6',
     'modal.settings':'\u8bbe\u7f6e', 'label.theme':'\u4e3b\u9898', 'label.language':'\u8bed\u8a00', 'theme.light':'\u6d45\u8272', 'theme.dark':'\u6df1\u8272',
     'btn.save':'\u4fdd\u5b58', 'btn.cancel':'\u53d6\u6d88', 'btn.close':'\u5173\u95ed',
     'btn.addProvider':'+ \u6dfb\u52a0\u670d\u52a1\u65b9', 'btn.addModel':'+ \u6dfb\u52a0\u6a21\u578b',
@@ -1119,6 +1167,7 @@ const I18N = {
     'empty.providers':'\u6682\u65e0\u670d\u52a1\u65b9\u914d\u7f6e\u3002', 'empty.models':'\u6682\u65e0\u6a21\u578b\u914d\u7f6e\u3002',
     'empty.logs':'\u6682\u65e0\u8bf7\u6c42\u8bb0\u5f55', 'empty.data':'\u6682\u65e0\u6570\u636e',
     'toast.serverSaved':'\u670d\u52a1\u5668\u8bbe\u7f6e\u5df2\u4fdd\u5b58',
+    'toast.streamTraceSaved':'\u7f51\u5173\u65e5\u5fd7\u8bbe\u7f6e\u5df2\u4fdd\u5b58',
     'toast.providerSaved':"\u670d\u52a1\u65b9 '{name}' \u5df2\u4fdd\u5b58",
     'toast.providerDeleted':"\u670d\u52a1\u65b9 '{name}' \u5df2\u5220\u9664",
     'provider.enabled':'\u5df2\u542f\u7528', 'provider.disabled':'\u5df2\u7981\u7528',
@@ -1227,6 +1276,7 @@ function applyI18n() {
   if (keysData) renderKeys();
   if (currentTab === 'dashboard') loadMetrics();
   if (currentTab === 'logs') loadLogs();
+  if (currentTab === 'gateway-logs') renderStreamTraceSettings();
   // Re-render DB status footer with cached data
   if (_lastPersistence != null) renderPersistence(_lastPersistence, _lastTotalReq);
 }
@@ -1239,6 +1289,7 @@ let keysData = null;
 let logKeyLabels = [];
 let internalToken = null;
 let logOffset = 0;
+let streamTraceBaseline = null;
 const LOG_LIMIT = 30;
 let dashboardTimer = null;
 let logTimer = null;
@@ -1588,6 +1639,7 @@ async function loadConfig() {
     _credentialVisible = configData.credential_visible !== false;
     document.getElementById('configPath').textContent = configData.config_path || '';
     document.getElementById('globalProxy').value = (configData.server && configData.server.proxy) || '';
+    renderStreamTraceSettings();
     renderProviders();
     renderModels();
     // Detect host IP in background (for proxy placeholder hints)
@@ -1608,6 +1660,49 @@ async function saveServerSettings() {
   const proxy = document.getElementById('globalProxy').value.trim();
   const res = await api.put('/admin/api/config/server', {proxy});
   if (res.ok) { showToast(t('toast.serverSaved')); loadConfig(); }
+  else { showToast(res.error || 'Failed', 'error'); }
+}
+
+function renderStreamTraceSettings() {
+  if (!configData) return;
+  const trace = (configData.server && configData.server.stream_trace) || {};
+  const enabled = document.getElementById('streamTraceEnabled');
+  if (!enabled) return;
+  streamTraceBaseline = normalizeStreamTraceSettings(trace);
+  enabled.checked = streamTraceBaseline.enabled;
+  document.getElementById('streamTraceFilter').value = streamTraceBaseline.filter;
+  document.getElementById('streamTraceMaxChars').value = streamTraceBaseline.max_string_chars;
+  updateStreamTraceSaveState();
+}
+
+function normalizeStreamTraceSettings(trace) {
+  const maxChars = parseInt(trace.max_string_chars || '20000', 10);
+  return {
+    enabled: !!trace.enabled,
+    filter: (trace.filter || '').trim(),
+    max_string_chars: Number.isFinite(maxChars) && maxChars > 0 ? maxChars : 20000
+  };
+}
+
+function readStreamTraceForm() {
+  return normalizeStreamTraceSettings({
+    enabled: document.getElementById('streamTraceEnabled').checked,
+    filter: document.getElementById('streamTraceFilter').value.trim(),
+    max_string_chars: document.getElementById('streamTraceMaxChars').value || '20000'
+  });
+}
+
+function updateStreamTraceSaveState() {
+  const btn = document.getElementById('streamTraceSaveBtn');
+  if (!btn || !streamTraceBaseline) return;
+  const current = readStreamTraceForm();
+  btn.disabled = JSON.stringify(current) === JSON.stringify(streamTraceBaseline);
+}
+
+async function saveStreamTraceSettings() {
+  const stream_trace = readStreamTraceForm();
+  const res = await api.put('/admin/api/config/server', {stream_trace});
+  if (res.ok) { showToast(t('toast.streamTraceSaved')); loadConfig(); }
   else { showToast(res.error || 'Failed', 'error'); }
 }
 
@@ -2893,6 +2988,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     stopTimers();
     if (id === 'dashboard') { loadMetrics(); dashboardTimer = setInterval(loadMetrics, 3000); }
     if (id === 'logs') { logOffset = 0; loadLogs(); logTimer = setInterval(loadLogs, 5000); }
+    if (id === 'gateway-logs') { loadConfig(); }
     if (id === 'providers' || id === 'models') { loadConfig(); }
     if (id === 'keys') { loadKeys(); }
   });
@@ -2914,6 +3010,9 @@ document.getElementById('filterModel').addEventListener('change', () => { logOff
 document.getElementById('filterProvider').addEventListener('change', () => { logOffset = 0; expandedLogRows.clear(); loadLogs(); });
 document.getElementById('filterStatus').addEventListener('change', () => { logOffset = 0; expandedLogRows.clear(); loadLogs(); });
 document.getElementById('filterApiKey').addEventListener('change', () => { logOffset = 0; expandedLogRows.clear(); loadLogs(); });
+document.getElementById('streamTraceEnabled').addEventListener('change', updateStreamTraceSaveState);
+document.getElementById('streamTraceFilter').addEventListener('input', updateStreamTraceSaveState);
+document.getElementById('streamTraceMaxChars').addEventListener('input', updateStreamTraceSaveState);
 
 // Close modal on overlay click (delegates to closeModal so abort hooks fire)
 document.querySelectorAll('.modal-overlay').forEach(m => {
@@ -3263,6 +3362,7 @@ function initApp() {
   stopTimers();
   if (currentTab === 'dashboard') { loadMetrics(); dashboardTimer = setInterval(loadMetrics, 3000); }
   if (currentTab === 'logs') { logOffset = 0; loadLogs(); logTimer = setInterval(loadLogs, 5000); }
+  if (currentTab === 'gateway-logs') { loadConfig(); }
 }
 // ===================== System Clock =====================
 (function initClock() {

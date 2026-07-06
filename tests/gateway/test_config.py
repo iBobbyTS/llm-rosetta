@@ -46,3 +46,29 @@ class TestAdminPasswordUnresolvedEnvVar:
         raw = _minimal_raw()
         cfg = GatewayConfig(raw)
         assert cfg.admin_password is None
+
+
+class TestStreamTraceConfig:
+    """server.stream_trace is parsed into runtime trace settings."""
+
+    def test_defaults_disabled(self):
+        cfg = GatewayConfig(_minimal_raw())
+
+        assert cfg.stream_trace.enabled is False
+        assert cfg.stream_trace.filter == ""
+        assert cfg.stream_trace.max_string_chars == 20_000
+
+    def test_parses_config_values(self):
+        cfg = GatewayConfig(
+            _minimal_raw(
+                stream_trace={
+                    "enabled": True,
+                    "filter": "glm,opencode",
+                    "max_string_chars": "5000",
+                }
+            )
+        )
+
+        assert cfg.stream_trace.enabled is True
+        assert cfg.stream_trace.filter == "glm,opencode"
+        assert cfg.stream_trace.max_string_chars == 5000

@@ -7,7 +7,12 @@ import json
 from typing import Any
 
 from llm_rosetta.gateway.proxy import _stream_event_generator
-from llm_rosetta.gateway.stream_trace import StreamTraceLogger
+from llm_rosetta.gateway.stream_trace import (
+    DEFAULT_TRACE_PATH,
+    StreamTraceConfig,
+    StreamTraceLogger,
+    StreamTraceState,
+)
 
 
 class _FakeStream:
@@ -76,12 +81,16 @@ def test_stream_trace_writes_jsonl_for_stream_events(tmp_path):
     assert records[0]["request_id"] == "req-123"
 
 
-def test_stream_trace_from_env_respects_filter(monkeypatch, tmp_path):
-    """Trace is enabled only when path exists and the optional filter matches."""
-    monkeypatch.setenv("LLM_ROSETTA_STREAM_TRACE_PATH", str(tmp_path / "trace.jsonl"))
-    monkeypatch.setenv("LLM_ROSETTA_STREAM_TRACE_FILTER", "glm,opencode")
+def test_stream_trace_state_respects_config_filter():
+    """Trace is enabled only when config is on and the filter matches."""
+    state = StreamTraceState(
+        StreamTraceConfig(
+            enabled=True,
+            filter="glm,opencode",
+        )
+    )
 
-    assert StreamTraceLogger.from_env(
+    logger = state.create_logger(
         request_id=None,
         request_log_id=None,
         model="glm-5.2",
@@ -89,8 +98,10 @@ def test_stream_trace_from_env_respects_filter(monkeypatch, tmp_path):
         target_provider="openai_chat",
         provider_name="Opencode Go",
     )
+    assert logger is not None
+    assert logger.path.as_posix() == DEFAULT_TRACE_PATH
     assert (
-        StreamTraceLogger.from_env(
+        state.create_logger(
             request_id=None,
             request_log_id=None,
             model="gpt-5.5",

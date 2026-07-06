@@ -10,6 +10,7 @@ from llm_rosetta.shims import get_shim, list_shims
 
 from ...config import GatewayConfig, load_config_raw, write_config
 from ...providers import known_provider_types
+from ...stream_trace import DEFAULT_MAX_CHARS
 from ._shared import (
     _build_provider_entry,
     _get_config_path,
@@ -531,6 +532,32 @@ async def put_server_settings(request: Any) -> Response:
             server["proxy"] = proxy
         else:
             server.pop("proxy", None)
+
+    if "stream_trace" in body:
+        stream_trace = body.get("stream_trace") or {}
+        if not isinstance(stream_trace, dict):
+            return JSONResponse(
+                {"error": "'stream_trace' must be an object"}, status_code=400
+            )
+
+        try:
+            max_string_chars = int(
+                stream_trace.get("max_string_chars", DEFAULT_MAX_CHARS)
+            )
+        except (TypeError, ValueError):
+            return JSONResponse(
+                {"error": "'stream_trace.max_string_chars' must be an integer"},
+                status_code=400,
+            )
+        if max_string_chars <= 0:
+            max_string_chars = DEFAULT_MAX_CHARS
+
+        next_trace = {
+            "enabled": bool(stream_trace.get("enabled", False)),
+            "filter": str(stream_trace.get("filter", "") or "").strip(),
+            "max_string_chars": max_string_chars,
+        }
+        server["stream_trace"] = next_trace
 
     try:
         write_config(config_path, data)

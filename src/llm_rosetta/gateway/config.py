@@ -12,6 +12,7 @@ from llm_rosetta.auto_detect import ProviderType
 from llm_rosetta.routing import ResolvedRoute
 
 from .providers import build_provider_info
+from .stream_trace import StreamTraceConfig
 from .transport import ProviderInfo
 
 logger = logging.getLogger("llm-rosetta-gateway")
@@ -180,6 +181,9 @@ class GatewayConfig:
         # Request-log retention knobs (consumed by setup_admin).  Kept as
         # a raw dict here so admin layer owns the resolution policy.
         self.request_log: dict[str, Any] = _server.get("request_log", {}) or {}
+        self.stream_trace: StreamTraceConfig = StreamTraceConfig.from_mapping(
+            _server.get("stream_trace", {})
+        )
 
         # Multi-key auth: server.api_keys takes precedence over server.api_key
         self.api_keys: list[dict[str, str]] = _server.get("api_keys", [])

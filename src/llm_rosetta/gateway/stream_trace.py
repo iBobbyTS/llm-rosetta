@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -13,10 +13,90 @@ from llm_rosetta.auto_detect import ProviderType
 
 logger = logging.getLogger("llm-rosetta-gateway")
 
-PATH_ENV = "LLM_ROSETTA_STREAM_TRACE_PATH"
-FILTER_ENV = "LLM_ROSETTA_STREAM_TRACE_FILTER"
-MAX_CHARS_ENV = "LLM_ROSETTA_STREAM_TRACE_MAX_CHARS"
 DEFAULT_MAX_CHARS = 20_000
+DEFAULT_TRACE_PATH = "/Users/ibobby/.config/llm-rosetta-gateway/log.jsonl"
+
+
+@dataclass
+class StreamTraceConfig:
+    """Runtime configuration for optional stream trace logging."""
+
+    enabled: bool = False
+    filter: str = ""
+    max_string_chars: int = DEFAULT_MAX_CHARS
+
+    @classmethod
+    def from_mapping(cls, value: Any) -> StreamTraceConfig:
+        """Build a trace config from ``server.stream_trace`` config data."""
+        if not isinstance(value, dict):
+            return cls()
+
+        try:
+            max_string_chars = int(value.get("max_string_chars", DEFAULT_MAX_CHARS))
+        except (TypeError, ValueError):
+            max_string_chars = DEFAULT_MAX_CHARS
+        if max_string_chars <= 0:
+            max_string_chars = DEFAULT_MAX_CHARS
+
+        return cls(
+            enabled=bool(value.get("enabled", False)),
+            filter=str(value.get("filter", "") or ""),
+            max_string_chars=max_string_chars,
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable config dict."""
+        return {
+            "enabled": self.enabled,
+            "filter": self.filter,
+            "max_string_chars": self.max_string_chars,
+        }
+
+
+class StreamTraceState:
+    """Mutable stream trace settings used by the running gateway."""
+
+    def __init__(self, config: StreamTraceConfig | None = None) -> None:
+        self.config = config or StreamTraceConfig()
+
+    def update(self, config: StreamTraceConfig) -> None:
+        """Apply new settings without restarting the gateway."""
+        self.config = config
+
+    def create_logger(
+        self,
+        *,
+        request_id: str | None,
+        request_log_id: str | None,
+        model: str,
+        source_provider: ProviderType,
+        target_provider: ProviderType,
+        provider_name: str,
+    ) -> StreamTraceLogger | None:
+        """Create a trace logger for one stream if current settings match."""
+        config = self.config
+        if not config.enabled:
+            return None
+
+        if not _matches_filter(
+            config.filter,
+            model=model,
+            source_provider=source_provider,
+            target_provider=target_provider,
+            provider_name=provider_name,
+        ):
+            return None
+
+        return StreamTraceLogger(
+            path=Path(DEFAULT_TRACE_PATH),
+            request_id=request_id,
+            request_log_id=request_log_id,
+            model=model,
+            source_provider=source_provider,
+            target_provider=target_provider,
+            provider_name=provider_name,
+            max_string_chars=config.max_string_chars,
+        )
 
 
 class StreamTraceLogger:
@@ -43,48 +123,6 @@ class StreamTraceLogger:
         self.provider_name = provider_name
         self.max_string_chars = max_string_chars
         self._disabled = False
-
-    @classmethod
-    def from_env(
-        cls,
-        *,
-        request_id: str | None,
-        request_log_id: str | None,
-        model: str,
-        source_provider: ProviderType,
-        target_provider: ProviderType,
-        provider_name: str,
-    ) -> StreamTraceLogger | None:
-        """Create a trace logger from environment variables, if enabled."""
-        path_value = os.environ.get(PATH_ENV)
-        if not path_value:
-            return None
-
-        if not _matches_filter(
-            model=model,
-            source_provider=source_provider,
-            target_provider=target_provider,
-            provider_name=provider_name,
-        ):
-            return None
-
-        try:
-            max_string_chars = int(os.environ.get(MAX_CHARS_ENV, ""))
-        except ValueError:
-            max_string_chars = DEFAULT_MAX_CHARS
-        if max_string_chars <= 0:
-            max_string_chars = DEFAULT_MAX_CHARS
-
-        return cls(
-            path=Path(path_value).expanduser(),
-            request_id=request_id,
-            request_log_id=request_log_id,
-            model=model,
-            source_provider=source_provider,
-            target_provider=target_provider,
-            provider_name=provider_name,
-            max_string_chars=max_string_chars,
-        )
 
     def log(
         self,
@@ -119,13 +157,14 @@ class StreamTraceLogger:
 
 
 def _matches_filter(
+    filter_value: str,
     *,
     model: str,
     source_provider: ProviderType,
     target_provider: ProviderType,
     provider_name: str,
 ) -> bool:
-    filter_value = os.environ.get(FILTER_ENV, "").strip()
+    filter_value = filter_value.strip()
     if not filter_value:
         return True
 
