@@ -67,6 +67,63 @@ class TestPersistenceManagerSchema:
         assert row[0] == "wal"
         pm.close()
 
+    def test_creates_tool_call_mapping_table(self, tmp_path):
+        pm = PersistenceManager(str(tmp_path))
+        row = pm._conn.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'tool_call_mappings'"
+        ).fetchone()
+        assert row[0] == "tool_call_mappings"
+        pm.close()
+
+
+class TestPersistenceManagerToolCallMappings:
+    def test_upsert_query_delete_and_cleanup(self, tmp_path):
+        pm = PersistenceManager(str(tmp_path))
+        original = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "Edit", "arguments": '{"old_string":"a"}'},
+        }
+        codex = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "apply_patch", "arguments": '{"input":"patch"}'},
+        }
+
+        pm.upsert_tool_call_mapping(
+            session_id="s1",
+            tool_call_id="call_1",
+            original_tool_call=original,
+            codex_tool_call=codex,
+            expire_at="2030-01-01T00:00:00+00:00",
+            timestamp="2026-01-01T00:00:00+00:00",
+        )
+
+        rows = pm.query_tool_call_mappings(
+            session_id="s1",
+            now="2026-01-01T00:00:00+00:00",
+        )
+        assert len(rows) == 1
+        assert rows[0]["original_tool_call"] == original
+        assert pm.count_tool_call_mappings() == 1
+
+        pm.delete_tool_call_mappings(session_id="s1", tool_call_ids=["call_1"])
+        assert pm.count_tool_call_mappings() == 0
+
+        pm.upsert_tool_call_mapping(
+            session_id="s1",
+            tool_call_id="call_1",
+            original_tool_call=original,
+            codex_tool_call=codex,
+            expire_at="2026-01-01T00:00:00+00:00",
+            timestamp="2026-01-01T00:00:00+00:00",
+        )
+        deleted = pm.cleanup_expired_tool_call_mappings("2026-01-01T00:00:01+00:00")
+        assert deleted == 1
+        assert pm.count_tool_call_mappings() == 0
+        pm.close()
+
 
 class TestPersistenceManagerRequestLog:
     def test_insert_and_query(self, tmp_path):

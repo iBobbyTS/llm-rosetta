@@ -11,6 +11,7 @@ from llm_rosetta.shims import get_shim, list_shims
 from ...config import GatewayConfig, load_config_raw, write_config
 from ...providers import known_provider_types
 from ...stream_trace import DEFAULT_MAX_CHARS
+from ...tool_adaptation import DEFAULT_TOOL_CALL_CACHE_TTL_HOURS
 from ._shared import (
     _build_provider_entry,
     _get_config_path,
@@ -41,16 +42,30 @@ def _get_version() -> str:
         return "unknown"
 
 
-def _clean_tool_adaptation(value: Any) -> dict[str, bool] | None:
+def _clean_tool_adaptation(value: Any) -> dict[str, Any] | None:
     """Normalize model-level tool adaptation settings from admin requests."""
     if not isinstance(value, dict):
         return None
 
+    try:
+        ttl_hours = float(
+            value.get("tool_call_cache_ttl_hours", DEFAULT_TOOL_CALL_CACHE_TTL_HOURS)
+        )
+    except (TypeError, ValueError):
+        ttl_hours = DEFAULT_TOOL_CALL_CACHE_TTL_HOURS
+    if ttl_hours <= 0:
+        ttl_hours = DEFAULT_TOOL_CALL_CACHE_TTL_HOURS
+
     cleaned = {
         "localize_code_editing_tools": bool(value.get("localize_code_editing_tools")),
         "remove_image_generation": bool(value.get("remove_image_generation")),
+        "tool_call_cache_ttl_hours": ttl_hours,
     }
-    return cleaned if any(cleaned.values()) else None
+    return (
+        cleaned
+        if cleaned["localize_code_editing_tools"] or cleaned["remove_image_generation"]
+        else None
+    )
 
 
 def _resolve_model_reasoning(

@@ -19,10 +19,12 @@ from llm_rosetta.gateway.tool_adaptation import (
     CodexToolLocalizationStore,
     LOCALIZED_CODE_TOOL_NAMES,
     LocalizedToolCallStreamTransformer,
+    localized_mapping_from_tool_calls,
     generated_patch_for_edit,
     localize_code_editing_chat_request,
     translate_localized_tool_call_part,
 )
+from llm_rosetta.observability.persistence import PersistenceManager
 from llm_rosetta.gateway.transport._base import UpstreamResponse, UpstreamStream
 from llm_rosetta.routing import ResolvedRoute
 
@@ -295,6 +297,229 @@ def test_gateway_non_streaming_localizes_request_and_returns_native_tool_call():
     assert json.loads(restored["arguments"])["old_string"] == "old"
 
 
+def test_persisted_mapping_restores_history_without_memory_store():
+    translated = translate_localized_tool_call_part(
+        {
+            "type": "tool_call",
+            "tool_call_id": "call_edit",
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "example.txt",
+                "old_string": "old",
+                "new_string": "new",
+            },
+        }
+    )
+    assert translated is not None
+    mapping = localized_mapping_from_tool_calls(
+        translated.mapping.original_tool_call(),
+        translated.mapping.codex_tool_call(),
+    )
+    assert mapping is not None
+    used_call_ids: set[str] = set()
+
+    adapted = localize_code_editing_chat_request(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "tool_calls": [translated.mapping.codex_tool_call()],
+                }
+            ]
+        },
+        mappings=[mapping],
+        used_call_ids=used_call_ids,
+    )
+
+    function = adapted["messages"][0]["tool_calls"][0]["function"]
+    assert function["name"] == "Edit"
+    assert json.loads(function["arguments"])["old_string"] == "old"
+    assert used_call_ids == {"call_edit"}
+
+
+def test_gateway_non_streaming_persists_and_reuses_tool_mapping(tmp_path):
+    captured_bodies: list[dict[str, Any]] = []
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_edit",
+                            "type": "function",
+                            "function": {
+                                "name": "Edit",
+                                "arguments": json.dumps(
+                                    {
+                                        "file_path": "example.txt",
+                                        "old_string": "old",
+                                        "new_string": "new",
+                                    }
+                                ),
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_bodies.append(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    persistence = PersistenceManager(str(tmp_path))
+    body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "edit example.txt"}],
+        "tools": [
+            {
+                "type": "function",
+                "name": "exec_command",
+                "parameters": {"type": "object", "properties": {}},
+            },
+            {"type": "custom", "name": "apply_patch", "description": "Apply patch"},
+        ],
+    }
+
+    async def first_run():
+        return await handle_non_streaming(
+            _route(),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_tool_store=CodexToolLocalizationStore(),
+            persistence=persistence,
+            tool_cache_session_id="window-1",
+        )
+
+    first_response, _ = asyncio.run(first_run())
+    first_output = json.loads(first_response.body)["output"][0]
+    assert persistence.count_tool_call_mappings() == 1
+
+    second_body = {
+        "model": "glm-5.2",
+        "input": [
+            {
+                "type": "custom_tool_call",
+                "call_id": "call_edit",
+                "name": "apply_patch",
+                "input": first_output["input"],
+            },
+            {"role": "user", "content": "continue"},
+        ],
+        "tools": body["tools"],
+    }
+
+    async def second_run():
+        return await handle_non_streaming(
+            _route(),
+            _provider_info(),
+            second_body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_tool_store=CodexToolLocalizationStore(),
+            persistence=persistence,
+            tool_cache_session_id="window-1",
+        )
+
+    asyncio.run(second_run())
+    restored_calls = captured_bodies[-1]["messages"][0]["tool_calls"]
+    assert restored_calls[0]["function"]["name"] == "Edit"
+    assert persistence.count_tool_call_mappings() == 1
+    persistence.close()
+
+
+def test_gateway_deletes_unused_persistent_mappings_after_request(tmp_path):
+    captured_body: dict[str, Any] = {}
+    persistence = PersistenceManager(str(tmp_path))
+    persistence.upsert_tool_call_mapping(
+        session_id="window-1",
+        tool_call_id="unused",
+        original_tool_call={
+            "id": "unused",
+            "type": "function",
+            "function": {"name": "Bash", "arguments": '{"command":"pwd"}'},
+        },
+        codex_tool_call={
+            "id": "unused",
+            "type": "function",
+            "function": {"name": "exec_command", "arguments": '{"cmd":"pwd"}'},
+        },
+        expire_at="2030-01-01T00:00:00+00:00",
+        timestamp="2026-01-01T00:00:00+00:00",
+    )
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body={
+                "id": "chatcmpl-test",
+                "object": "chat.completion",
+                "created": 123,
+                "model": "glm-5.2",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "done"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+            raw_content=b"{}",
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "hello"}],
+        "tools": [
+            {
+                "type": "function",
+                "name": "exec_command",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _route(),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_tool_store=CodexToolLocalizationStore(),
+            persistence=persistence,
+            tool_cache_session_id="window-1",
+        )
+
+    asyncio.run(run())
+    assert "messages" in captured_body
+    assert persistence.count_tool_call_mappings() == 0
+    persistence.close()
+
+
 class _ChatStream(UpstreamStream):
     def __init__(self, chunks: list[dict[str, Any]]) -> None:
         self.status_code = 200
@@ -433,6 +658,93 @@ def test_gateway_streaming_localizes_request_and_returns_native_tool_events():
     assert "response.function_call_arguments.delta" in joined
     assert '\\"cmd\\": \\"printf ok\\"' in joined
     assert '"name": "Bash"' not in joined
+
+
+def test_gateway_streaming_persists_tool_mapping(tmp_path):
+    stream = _ChatStream(
+        [
+            {
+                "id": "chatcmpl-stream",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "glm-5.2",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_bash",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "Bash",
+                                        "arguments": '{"command": "printf ok"}',
+                                    },
+                                }
+                            ]
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "id": "chatcmpl-stream",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "glm-5.2",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+            },
+        ]
+    )
+
+    async def send_streaming(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        return stream
+
+    transport = MagicMock()
+    transport.send_streaming = AsyncMock(side_effect=send_streaming)
+    persistence = PersistenceManager(str(tmp_path))
+    body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "run a command"}],
+        "tools": [
+            {
+                "type": "function",
+                "name": "exec_command",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        ],
+        "stream": True,
+    }
+
+    async def run() -> list[str]:
+        response, _ = await handle_streaming(
+            _route(),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_tool_store=CodexToolLocalizationStore(),
+            persistence=persistence,
+            tool_cache_session_id="window-1",
+        )
+        chunks: list[str] = []
+        async for chunk in response._generator:
+            chunks.append(chunk)
+        return chunks
+
+    chunks = asyncio.run(run())
+
+    assert '"name": "exec_command"' in "\n".join(chunks)
+    rows = persistence.query_tool_call_mappings(
+        session_id="window-1",
+        now="2026-01-01T00:00:00+00:00",
+    )
+    assert rows[0]["original_tool_call"]["function"]["name"] == "Bash"
+    assert rows[0]["codex_tool_call"]["function"]["name"] == "exec_command"
+    persistence.close()
 
 
 def test_safe_executor_runs_generated_bash_write_and_edit(tmp_path):

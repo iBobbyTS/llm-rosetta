@@ -153,6 +153,18 @@ class PersistenceManager:
                 ON error_dumps(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_ed_request_log
                 ON error_dumps(request_log_id);
+            CREATE TABLE IF NOT EXISTS tool_call_mappings (
+                session_id         TEXT NOT NULL,
+                tool_call_id       TEXT NOT NULL,
+                original_tool_call TEXT NOT NULL,
+                codex_tool_call    TEXT NOT NULL,
+                expire_at          TEXT NOT NULL,
+                created_at         TEXT NOT NULL,
+                updated_at         TEXT NOT NULL,
+                PRIMARY KEY (session_id, tool_call_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tcm_expire_at
+                ON tool_call_mappings(expire_at);
         """)
         self._migrate_add_columns()
 
@@ -417,6 +429,107 @@ class PersistenceManager:
         """Delete all request log entries."""
         self._conn.execute("DELETE FROM request_log")
         self._conn.commit()
+
+    # ------------------------------------------------------------------
+    # Tool call mappings
+    # ------------------------------------------------------------------
+
+    def upsert_tool_call_mapping(
+        self,
+        *,
+        session_id: str,
+        tool_call_id: str,
+        original_tool_call: dict[str, Any],
+        codex_tool_call: dict[str, Any],
+        expire_at: str,
+        timestamp: str,
+    ) -> None:
+        """Insert or refresh one persistent tool-call mapping."""
+        self._conn.execute(
+            "INSERT INTO tool_call_mappings "
+            "(session_id, tool_call_id, original_tool_call, codex_tool_call, "
+            "expire_at, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(session_id, tool_call_id) DO UPDATE SET "
+            "original_tool_call = excluded.original_tool_call, "
+            "codex_tool_call = excluded.codex_tool_call, "
+            "expire_at = excluded.expire_at, "
+            "updated_at = excluded.updated_at",
+            (
+                session_id,
+                tool_call_id,
+                json.dumps(original_tool_call, ensure_ascii=False),
+                json.dumps(codex_tool_call, ensure_ascii=False),
+                expire_at,
+                timestamp,
+                timestamp,
+            ),
+        )
+        self._conn.commit()
+
+    def query_tool_call_mappings(
+        self,
+        *,
+        session_id: str,
+        now: str,
+    ) -> list[dict[str, Any]]:
+        """Return non-expired tool-call mappings for a session."""
+        rows = self._conn.execute(
+            "SELECT tool_call_id, original_tool_call, codex_tool_call, "
+            "expire_at, created_at, updated_at "
+            "FROM tool_call_mappings "
+            "WHERE session_id = ? AND expire_at > ? "
+            "ORDER BY updated_at ASC",
+            (session_id, now),
+        ).fetchall()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                original_tool_call = json.loads(row[1])
+                codex_tool_call = json.loads(row[2])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            result.append(
+                {
+                    "session_id": session_id,
+                    "tool_call_id": row[0],
+                    "original_tool_call": original_tool_call,
+                    "codex_tool_call": codex_tool_call,
+                    "expire_at": row[3],
+                    "created_at": row[4],
+                    "updated_at": row[5],
+                }
+            )
+        return result
+
+    def delete_tool_call_mappings(
+        self,
+        *,
+        session_id: str,
+        tool_call_ids: list[str],
+    ) -> None:
+        """Delete selected tool-call mappings for a session."""
+        if not tool_call_ids:
+            return
+        self._conn.executemany(
+            "DELETE FROM tool_call_mappings WHERE session_id = ? AND tool_call_id = ?",
+            [(session_id, call_id) for call_id in tool_call_ids],
+        )
+        self._conn.commit()
+
+    def cleanup_expired_tool_call_mappings(self, now: str) -> int:
+        """Delete expired tool-call mappings and return the deleted row count."""
+        cursor = self._conn.execute(
+            "DELETE FROM tool_call_mappings WHERE expire_at <= ?",
+            (now,),
+        )
+        self._conn.commit()
+        return cursor.rowcount
+
+    def count_tool_call_mappings(self) -> int:
+        """Return the total number of persistent tool-call mappings."""
+        row = self._conn.execute("SELECT COUNT(*) FROM tool_call_mappings").fetchone()
+        return row[0] if row else 0
 
     # ------------------------------------------------------------------
     # Metrics

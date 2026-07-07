@@ -89,6 +89,7 @@ def test_put_model_persists_tool_adaptation_and_reloads_runtime_config(tmp_path)
         "tool_adaptation": {
             "localize_code_editing_tools": False,
             "remove_image_generation": True,
+            "tool_call_cache_ttl_hours": 12,
         },
     }
 
@@ -99,9 +100,11 @@ def test_put_model_persists_tool_adaptation_and_reloads_runtime_config(tmp_path)
     assert saved["models"]["gpt-test"]["tool_adaptation"] == {
         "localize_code_editing_tools": False,
         "remove_image_generation": True,
+        "tool_call_cache_ttl_hours": 12.0,
     }
     route, _provider = app.gateway_config.resolve("openai_responses", "gpt-test")
     assert route.tool_adaptation == {
         "localize_code_editing_tools": False,
         "remove_image_generation": True,
+        "tool_call_cache_ttl_hours": 12.0,
     }

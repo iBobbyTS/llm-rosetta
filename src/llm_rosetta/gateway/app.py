@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from llm_rosetta._vendor.httpserver import (
@@ -33,6 +34,8 @@ from .proxy import (
 )
 
 logger = get_logger()
+
+_TOOL_CALL_CACHE_CLEANUP_INTERVAL = 3600
 
 
 def _record_telemetry(
@@ -236,6 +239,7 @@ async def _proxy_handler(
 
     # Determine streaming
     is_stream = force_stream or detect_stream_request(source_provider, body)
+    tool_cache_session_id = request.headers.get("x-codex-window-id") or f"model:{model}"
 
     model_label = (
         f"{model} (upstream={route.upstream_model})" if route.upstream_model else model
@@ -285,6 +289,7 @@ async def _proxy_handler(
                 entry_id=pre_entry_id,
                 request_log=request_log,
                 persistence=persistence,
+                tool_cache_session_id=tool_cache_session_id,
                 stream_trace_state=getattr(request.app, "stream_trace_state", None),
             )
         else:
@@ -297,6 +302,7 @@ async def _proxy_handler(
                 metadata_store=store,
                 extra_headers=extra_headers,
                 persistence=persistence,
+                tool_cache_session_id=tool_cache_session_id,
             )
         status_code = response.status_code
         if status_code >= 400 and hasattr(response, "body"):
@@ -523,6 +529,20 @@ async def _periodic_flush(app: App) -> None:
                 logger.warning("Failed to flush metrics: %s", exc)
 
 
+async def _periodic_tool_call_mapping_cleanup(app: App) -> None:
+    """Periodically delete expired persistent tool-call mappings."""
+    while True:
+        await asyncio.sleep(_TOOL_CALL_CACHE_CLEANUP_INTERVAL)
+        persistence = getattr(app, "persistence", None)
+        if persistence is None:
+            continue
+        try:
+            now = datetime.now(UTC).isoformat()
+            persistence.cleanup_expired_tool_call_mappings(now)
+        except Exception as exc:
+            logger.warning("Failed to clean up tool-call mapping cache: %s", exc)
+
+
 def _flush_now(app: App) -> None:
     """Final synchronous flush on shutdown."""
     persistence = getattr(app, "persistence", None)
@@ -681,14 +701,18 @@ async def run_gateway(
     setattr(app, "_bind_host", host)
     setattr(app, "_bind_port", port)
     flush_task = asyncio.create_task(_periodic_flush(app))
+    tool_cache_cleanup_task = asyncio.create_task(
+        _periodic_tool_call_mapping_cleanup(app)
+    )
     try:
         await app._serve(host, port, socket=socket)
     finally:
-        flush_task.cancel()
-        try:
-            await flush_task
-        except asyncio.CancelledError:
-            pass
+        for task in (flush_task, tool_cache_cleanup_task):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         _flush_now(app)
         await close_resources(
             transport=app.transport,  # type: ignore

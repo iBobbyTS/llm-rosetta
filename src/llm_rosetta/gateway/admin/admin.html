@@ -846,6 +846,10 @@ body { padding-bottom: 26px; }
           <label><input type="checkbox" id="toolLocalizeCodeEditing"> <span data-i18n="label.localizeCodeEditingTools">Localize code editing tools</span></label>
           <label><input type="checkbox" id="toolRemoveImageGeneration"> <span data-i18n="label.removeImageGeneration">Remove `image_generation`</span></label>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+          <label style="min-width:180px;margin:0;font-size:0.85em;color:var(--text-dim);text-transform:none;letter-spacing:0" data-i18n="label.toolCallCacheTtl">Tool call mapping cache TTL (hours)</label>
+          <input id="toolCallCacheTtlHours" type="number" step="1" min="1" placeholder="24" style="flex:1">
+        </div>
       </div>
     </details>
     <div class="modal-actions">
@@ -1042,7 +1046,7 @@ const I18N = {
     'label.proxyUrl':'Proxy URL (optional, overrides global)',
     'label.modelName':'Model Name', 'label.provider':'Provider', 'label.upstreamModel':'Upstream Model', 'label.capabilities':'Capabilities',
     'label.reasoningConfig':'Reasoning Config', 'label.thinkingType':'Thinking Type', 'label.budgetRatio':'Budget Tokens Ratio', 'label.disabledStrategy':'Disabled Strategy', 'label.inheritProvider':'(inherit from provider)', 'label.inherited':'inherited',
-    'label.toolAdaptionCodex':'Tool Adaption for Codex', 'label.localizeCodeEditingTools':'Localize code editing tools', 'label.removeImageGeneration':'Remove `image_generation`',
+    'label.toolAdaptionCodex':'Tool Adaption for Codex', 'label.localizeCodeEditingTools':'Localize code editing tools', 'label.removeImageGeneration':'Remove `image_generation`', 'label.toolCallCacheTtl':'Tool call mapping cache TTL (hours)',
     'modal.addProvider':'Add Provider', 'modal.editProvider':'Edit Provider',
     'modal.addModel':'Add Model', 'modal.editModel':'Edit Model',
     'col.model':'Model', 'col.provider':'Provider', 'col.time':'Time',
@@ -1169,7 +1173,7 @@ const I18N = {
     'label.proxyUrl':'\u4ee3\u7406 URL\uff08\u53ef\u9009\uff0c\u8986\u76d6\u5168\u5c40\u8bbe\u7f6e\uff09',
     'label.modelName':'\u6a21\u578b\u540d\u79f0', 'label.provider':'\u670d\u52a1\u65b9', 'label.upstreamModel':'\u4e0a\u6e38\u6a21\u578b', 'label.capabilities':'\u80fd\u529b',
     'label.reasoningConfig':'\u63a8\u7406\u914d\u7f6e', 'label.thinkingType':'\u601d\u8003\u7c7b\u578b', 'label.budgetRatio':'\u9884\u7b97 Token \u6bd4\u4f8b', 'label.disabledStrategy':'\u7981\u7528\u7b56\u7565', 'label.inheritProvider':'(\u7ee7\u627f\u81ea Provider)', 'label.inherited':'\u7ee7\u627f',
-    'label.toolAdaptionCodex':'Tool Adaption for Codex', 'label.localizeCodeEditingTools':'\u672c\u5730\u5316\u4ee3\u7801\u7f16\u8f91\u5de5\u5177', 'label.removeImageGeneration':'\u79fb\u9664 `image_generation`',
+    'label.toolAdaptionCodex':'Tool Adaption for Codex', 'label.localizeCodeEditingTools':'\u672c\u5730\u5316\u4ee3\u7801\u7f16\u8f91\u5de5\u5177', 'label.removeImageGeneration':'\u79fb\u9664 `image_generation`', 'label.toolCallCacheTtl':'Tool call mapping cache TTL\uff08\u5c0f\u65f6\uff09',
     'modal.addProvider':'\u6dfb\u52a0\u670d\u52a1\u65b9', 'modal.editProvider':'\u7f16\u8f91\u670d\u52a1\u65b9',
     'modal.addModel':'\u6dfb\u52a0\u6a21\u578b', 'modal.editModel':'\u7f16\u8f91\u6a21\u578b',
     'col.model':'\u6a21\u578b', 'col.provider':'\u670d\u52a1\u65b9', 'col.time':'\u65f6\u95f4',
@@ -1647,6 +1651,7 @@ function openModelModal(model, provider, capabilities, upstreamModel, sourceMode
   const toolAdaptation = (info && info.tool_adaptation) || {};
   document.getElementById('toolLocalizeCodeEditing').checked = !!toolAdaptation.localize_code_editing_tools;
   document.getElementById('toolRemoveImageGeneration').checked = !!toolAdaptation.remove_image_generation;
+  document.getElementById('toolCallCacheTtlHours').value = toolAdaptation.tool_call_cache_ttl_hours != null ? toolAdaptation.tool_call_cache_ttl_hours : 24;
 
   document.getElementById('modelModal').classList.add('open');
 }
@@ -2240,6 +2245,7 @@ async function saveModel() {
   const toolAdaptation = {
     localize_code_editing_tools: document.getElementById('toolLocalizeCodeEditing').checked,
     remove_image_generation: document.getElementById('toolRemoveImageGeneration').checked,
+    tool_call_cache_ttl_hours: Number(document.getElementById('toolCallCacheTtlHours').value) || 24,
   };
   if (toolAdaptation.localize_code_editing_tools || toolAdaptation.remove_image_generation) {
     body.tool_adaptation = toolAdaptation;

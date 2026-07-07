@@ -173,8 +173,8 @@ def test_stream_trace_state_uses_configured_path(tmp_path):
     assert logger.path == trace_path
 
 
-def test_stream_trace_state_can_force_logger_when_disabled(tmp_path):
-    """Mandatory conversion traces bypass the optional enable/filter switch."""
+def test_stream_trace_state_does_not_force_logger_when_disabled(tmp_path):
+    """Disabled trace settings must prevent all stream trace files."""
     trace_path = tmp_path / "forced-stream-trace.jsonl"
     state = StreamTraceState(
         StreamTraceConfig(
@@ -194,8 +194,7 @@ def test_stream_trace_state_can_force_logger_when_disabled(tmp_path):
         force=True,
     )
 
-    assert logger is not None
-    assert logger.path == trace_path
+    assert logger is None
 
 
 def test_raw_stream_trace_records_passthrough_chunk_once(tmp_path):
@@ -235,10 +234,77 @@ def test_raw_stream_trace_records_passthrough_chunk_once(tmp_path):
     assert records[0]["data"].startswith("b'event: response.created")
 
 
-def test_responses_chat_streaming_trace_is_mandatory(tmp_path):
-    """Responses/Chat conversion traces record inbound and outbound payloads."""
-    trace_path = tmp_path / "mandatory-stream-trace.jsonl"
+def test_responses_chat_streaming_trace_respects_disabled_config(tmp_path):
+    """Responses/Chat conversion must not trace when stream trace is disabled."""
+    trace_path = tmp_path / "disabled-stream-trace.jsonl"
     state = StreamTraceState(StreamTraceConfig(enabled=False, path=str(trace_path)))
+    route = ResolvedRoute(
+        source_provider="openai_responses",
+        target_provider="openai_chat",
+        provider_name="Opencode Go",
+        upstream_model="glm-5.2",
+    )
+    provider_info = MagicMock()
+    provider_info.base_url = "https://api.example.test"
+
+    async def send_streaming(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        assert target_provider == "openai_chat"
+        assert body["messages"] == [{"role": "user", "content": "hello"}]
+        return _FakeStream(
+            [
+                {
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion.chunk",
+                    "created": 123,
+                    "model": "glm-5.2",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant", "content": "hi"},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+            ]
+        )
+
+    transport = MagicMock()
+    transport.send_streaming = AsyncMock(side_effect=send_streaming)
+    body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "hello"}],
+        "stream": True,
+    }
+
+    async def run() -> list[str]:
+        response, profile = await handle_streaming(
+            route,
+            provider_info,
+            body,
+            transport=transport,
+            extra_headers={"x-request-id": "req-conv"},
+            entry_id="log-conv",
+            stream_trace_state=state,
+        )
+        assert response.status_code == 200
+        assert "request_conversion_ms" in profile
+        chunks: list[str] = []
+        async for chunk in response._generator:
+            chunks.append(chunk)
+        return chunks
+
+    chunks = asyncio.run(run())
+
+    assert any("response.output_text.delta" in chunk for chunk in chunks)
+    assert not trace_path.exists()
+
+
+def test_responses_chat_streaming_trace_records_when_enabled(tmp_path):
+    """Responses/Chat conversion traces record inbound and outbound payloads."""
+    trace_path = tmp_path / "enabled-stream-trace.jsonl"
+    state = StreamTraceState(StreamTraceConfig(enabled=True, path=str(trace_path)))
     route = ResolvedRoute(
         source_provider="openai_responses",
         target_provider="openai_chat",

@@ -89,6 +89,7 @@ class TestModelToolAdaptation:
                 "tool_adaptation": {
                     "localize_code_editing_tools": False,
                     "remove_image_generation": True,
+                    "tool_call_cache_ttl_hours": 12,
                 },
             }
         }
@@ -99,8 +100,10 @@ class TestModelToolAdaptation:
         assert cfg.model_tool_adaptations["gpt-test"] == {
             "localize_code_editing_tools": False,
             "remove_image_generation": True,
+            "tool_call_cache_ttl_hours": 12,
         }
         assert route.tool_adaptation == {
             "localize_code_editing_tools": False,
             "remove_image_generation": True,
+            "tool_call_cache_ttl_hours": 12,
         }

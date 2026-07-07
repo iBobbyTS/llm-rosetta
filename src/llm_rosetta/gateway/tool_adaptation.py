@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
+DEFAULT_TOOL_CALL_CACHE_TTL_HOURS = 24.0
 LOCALIZED_CODE_TOOL_NAMES = frozenset({"Read", "Edit", "Write", "Glob", "Grep", "Bash"})
 NATIVE_CODE_TOOL_NAMES = frozenset(
     {"apply_patch", "exec_command", "write_stdin", "shell_command"}
@@ -31,6 +32,14 @@ class LocalizedToolMapping:
     native_name: str
     native_input: Any
     native_type: str = "function"
+
+    def original_tool_call(self) -> dict[str, Any]:
+        """Return the model-facing Chat tool call shape for persistence."""
+        return _chat_tool_call(self.call_id, self.localized_name, self.localized_input)
+
+    def codex_tool_call(self) -> dict[str, Any]:
+        """Return the Codex-native Chat tool call shape for persistence."""
+        return _chat_tool_call(self.call_id, self.native_name, self.native_input)
 
 
 class CodexToolLocalizationStore:
@@ -86,6 +95,8 @@ def localize_code_editing_chat_request(
     body: dict[str, Any],
     *,
     store: CodexToolLocalizationStore | None = None,
+    mappings: list[LocalizedToolMapping] | None = None,
+    used_call_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     """Replace Codex-native edit tools with Claude-Code-like Chat tools."""
     adapted = dict(body)
@@ -115,12 +126,39 @@ def localize_code_editing_chat_request(
                 adapted["tool_choice"] = "auto"
 
     messages = adapted.get("messages")
-    if isinstance(messages, list) and store is not None:
+    if isinstance(messages, list) and (store is not None or mappings):
         adapted["messages"] = [
-            _localize_history_message(message, store) for message in messages
+            _localize_history_message(
+                message,
+                store,
+                mappings,
+                used_call_ids=used_call_ids,
+            )
+            for message in messages
         ]
 
     return adapted
+
+
+def restore_localized_history_from_mappings(
+    body: dict[str, Any],
+    mappings: list[LocalizedToolMapping],
+) -> tuple[dict[str, Any], set[str]]:
+    """Restore localized history calls from persisted mappings.
+
+    Returns the adapted body and the set of mapping call IDs that were used.
+    """
+    adapted = dict(body)
+    messages = adapted.get("messages")
+    if not isinstance(messages, list) or not mappings:
+        return adapted, set()
+
+    used_call_ids: set[str] = set()
+    adapted["messages"] = [
+        _localize_history_message(message, None, mappings, used_call_ids=used_call_ids)
+        for message in messages
+    ]
+    return adapted, used_call_ids
 
 
 def translate_localized_ir_response(
@@ -212,8 +250,14 @@ def translate_localized_tool_call_part(
 class LocalizedToolCallStreamTransformer:
     """Buffer localized streaming tool calls and emit native Codex calls."""
 
-    def __init__(self, *, store: CodexToolLocalizationStore | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        store: CodexToolLocalizationStore | None = None,
+        on_mapping: Any | None = None,
+    ) -> None:
         self._store = store
+        self._on_mapping = on_mapping
         self._pending: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
     def transform(self, event: dict[str, Any]) -> list[dict[str, Any]]:
@@ -277,6 +321,8 @@ class LocalizedToolCallStreamTransformer:
 
             if self._store is not None:
                 self._store.remember(translated.mapping)
+            if self._on_mapping is not None:
+                self._on_mapping(translated.mapping)
             native_part = translated.part
             start_event = {
                 "type": "tool_call_start",
@@ -645,7 +691,10 @@ def _function_tool(
 
 def _localize_history_message(
     message: Any,
-    store: CodexToolLocalizationStore,
+    store: CodexToolLocalizationStore | None,
+    mappings: list[LocalizedToolMapping] | None = None,
+    *,
+    used_call_ids: set[str] | None = None,
 ) -> Any:
     if not isinstance(message, dict) or message.get("role") != "assistant":
         return message
@@ -656,7 +705,12 @@ def _localize_history_message(
     changed = False
     localized_tool_calls: list[Any] = []
     for tool_call in tool_calls:
-        localized = _localize_history_tool_call(tool_call, store)
+        localized = _localize_history_tool_call(
+            tool_call,
+            store,
+            mappings,
+            used_call_ids=used_call_ids,
+        )
         changed = changed or localized is not tool_call
         localized_tool_calls.append(localized)
     if not changed:
@@ -669,7 +723,10 @@ def _localize_history_message(
 
 def _localize_history_tool_call(
     tool_call: Any,
-    store: CodexToolLocalizationStore,
+    store: CodexToolLocalizationStore | None,
+    mappings: list[LocalizedToolMapping] | None = None,
+    *,
+    used_call_ids: set[str] | None = None,
 ) -> Any:
     if not isinstance(tool_call, dict):
         return tool_call
@@ -677,7 +734,11 @@ def _localize_history_tool_call(
     if not isinstance(function, dict):
         return tool_call
     call_id = tool_call.get("id", "")
-    mapping = store.get(call_id)
+    mapping = store.get(call_id) if store is not None else None
+    if mapping is None:
+        mapping = _mapping_for_codex_tool_call(tool_call, mappings or [])
+    if mapping is not None and used_call_ids is not None:
+        used_call_ids.add(mapping.call_id)
     if mapping is None:
         name = function.get("name")
         if name != "exec_command":
@@ -701,6 +762,92 @@ def _localize_history_tool_call(
     adapted_function["arguments"] = json.dumps(localized_input, ensure_ascii=False)
     adapted["function"] = adapted_function
     return adapted
+
+
+def _mapping_for_codex_tool_call(
+    tool_call: dict[str, Any],
+    mappings: list[LocalizedToolMapping],
+) -> LocalizedToolMapping | None:
+    for mapping in mappings:
+        if _tool_call_matches_mapping(tool_call, mapping):
+            return mapping
+    return None
+
+
+def _tool_call_matches_mapping(
+    tool_call: dict[str, Any],
+    mapping: LocalizedToolMapping,
+) -> bool:
+    if tool_call.get("id") != mapping.call_id:
+        return False
+    function = tool_call.get("function")
+    if not isinstance(function, dict) or function.get("name") != mapping.native_name:
+        return False
+    try:
+        args = json.loads(function.get("arguments") or "{}")
+    except json.JSONDecodeError:
+        return False
+    return args == mapping.native_input
+
+
+def _chat_tool_call(call_id: str, name: str, arguments: Any) -> dict[str, Any]:
+    return {
+        "id": call_id,
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": json.dumps(arguments, ensure_ascii=False)
+            if isinstance(arguments, dict)
+            else str(arguments),
+        },
+    }
+
+
+def localized_mapping_from_tool_calls(
+    original_tool_call: dict[str, Any],
+    codex_tool_call: dict[str, Any],
+) -> LocalizedToolMapping | None:
+    """Rebuild a localized mapping from persisted Chat tool-call shapes."""
+    original_function = original_tool_call.get("function")
+    codex_function = codex_tool_call.get("function")
+    if not isinstance(original_function, dict) or not isinstance(codex_function, dict):
+        return None
+    call_id = str(codex_tool_call.get("id") or original_tool_call.get("id") or "")
+    if not call_id:
+        return None
+    localized_name = original_function.get("name")
+    native_name = codex_function.get("name")
+    if not isinstance(localized_name, str) or not isinstance(native_name, str):
+        return None
+    try:
+        localized_input = json.loads(original_function.get("arguments") or "{}")
+        native_input = json.loads(codex_function.get("arguments") or "{}")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(localized_input, dict):
+        return None
+    return LocalizedToolMapping(
+        call_id=call_id,
+        localized_name=localized_name,
+        localized_input=localized_input,
+        native_name=native_name,
+        native_input=native_input,
+        native_type="custom" if native_name == "apply_patch" else "function",
+    )
+
+
+def tool_call_cache_ttl_hours(tool_adaptation: dict[str, Any] | None) -> float:
+    """Return the configured persistent tool-call mapping cache TTL in hours."""
+    if not isinstance(tool_adaptation, dict):
+        return DEFAULT_TOOL_CALL_CACHE_TTL_HOURS
+    value = tool_adaptation.get("tool_call_cache_ttl_hours")
+    try:
+        ttl = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_TOOL_CALL_CACHE_TTL_HOURS
+    if ttl <= 0:
+        return DEFAULT_TOOL_CALL_CACHE_TTL_HOURS
+    return ttl
 
 
 def _chat_tool_name(tool: Any) -> str | None:

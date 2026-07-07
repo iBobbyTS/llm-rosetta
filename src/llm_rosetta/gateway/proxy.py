@@ -17,6 +17,7 @@ from __future__ import annotations
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from llm_rosetta._vendor.httpserver import JSONResponse, Response, StreamingResponse
@@ -38,9 +39,12 @@ from .logging import (
 from .stream_trace import StreamTraceLogger, StreamTraceState
 from .tool_adaptation import (
     CodexToolLocalizationStore,
+    LocalizedToolMapping,
     LocalizedToolCallStreamTransformer,
+    localized_mapping_from_tool_calls,
     localize_code_editing_chat_request,
     should_localize_code_tools,
+    tool_call_cache_ttl_hours,
     translate_localized_ir_response,
 )
 from .transport import (
@@ -128,17 +132,6 @@ def _is_openai_responses_direct(route: ResolvedRoute) -> bool:
     ) and route.target_provider in ("openai_responses", "open_responses")
 
 
-def _requires_mandatory_stream_trace(route: ResolvedRoute) -> bool:
-    """Return true for the Codex-critical Responses/Chat conversion boundary."""
-    return (
-        route.source_provider in ("openai_responses", "open_responses")
-        and route.target_provider == "openai_chat"
-    ) or (
-        route.source_provider == "openai_chat"
-        and route.target_provider in ("openai_responses", "open_responses")
-    )
-
-
 def _tool_identifier(tool: Any) -> str | None:
     """Return the provider-facing name/type used to identify a tool definition."""
     if not isinstance(tool, dict):
@@ -216,11 +209,141 @@ def _apply_converted_request_tool_adaptation(
     route: ResolvedRoute,
     *,
     codex_tool_store: CodexToolLocalizationStore | None = None,
+    persistent_mappings: list[LocalizedToolMapping] | None = None,
+    used_mapping_call_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     """Apply tool adaptation after source request has been converted."""
     if should_localize_code_tools(route):
-        return localize_code_editing_chat_request(body, store=codex_tool_store)
+        return localize_code_editing_chat_request(
+            body,
+            store=codex_tool_store,
+            mappings=persistent_mappings,
+            used_call_ids=used_mapping_call_ids,
+        )
     return body
+
+
+def _load_persistent_tool_mappings(
+    persistence: Any | None,
+    *,
+    session_id: str | None,
+) -> list[LocalizedToolMapping]:
+    if persistence is None or not session_id:
+        return []
+    try:
+        rows = persistence.query_tool_call_mappings(
+            session_id=session_id,
+            now=datetime.now(UTC).isoformat(),
+        )
+    except Exception:
+        logger.debug("Failed to load persistent tool-call mappings", exc_info=True)
+        return []
+
+    mappings: list[LocalizedToolMapping] = []
+    for row in rows:
+        mapping = localized_mapping_from_tool_calls(
+            row.get("original_tool_call") or {},
+            row.get("codex_tool_call") or {},
+        )
+        if mapping is not None:
+            mappings.append(mapping)
+    return mappings
+
+
+def _delete_unused_persistent_tool_mappings(
+    persistence: Any | None,
+    *,
+    session_id: str | None,
+    loaded_mappings: list[LocalizedToolMapping],
+    used_call_ids: set[str],
+) -> None:
+    if persistence is None or not session_id or not loaded_mappings:
+        return
+    unused = [
+        mapping.call_id
+        for mapping in loaded_mappings
+        if mapping.call_id not in used_call_ids
+    ]
+    if not unused:
+        return
+    try:
+        persistence.delete_tool_call_mappings(
+            session_id=session_id,
+            tool_call_ids=unused,
+        )
+    except Exception:
+        logger.debug("Failed to delete unused tool-call mappings", exc_info=True)
+
+
+def _persist_tool_mapping(
+    persistence: Any | None,
+    *,
+    session_id: str | None,
+    ttl_hours: float,
+    mapping: LocalizedToolMapping,
+) -> None:
+    if persistence is None or not session_id or not mapping.call_id:
+        return
+    now = datetime.now(UTC)
+    try:
+        persistence.upsert_tool_call_mapping(
+            session_id=session_id,
+            tool_call_id=mapping.call_id,
+            original_tool_call=mapping.original_tool_call(),
+            codex_tool_call=mapping.codex_tool_call(),
+            expire_at=(now + timedelta(hours=ttl_hours)).isoformat(),
+            timestamp=now.isoformat(),
+        )
+    except Exception:
+        logger.debug("Failed to persist tool-call mapping", exc_info=True)
+
+
+def _persist_localized_response_mappings(
+    ir_response: dict[str, Any],
+    *,
+    tool_store: CodexToolLocalizationStore,
+    persistence: Any | None,
+    session_id: str | None,
+    ttl_hours: float,
+) -> None:
+    for choice in ir_response.get("choices", []):
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            continue
+        for part in message.get("content", []):
+            if not isinstance(part, dict) or part.get("type") != "tool_call":
+                continue
+            mapping = tool_store.get(part.get("tool_call_id", ""))
+            if mapping is None:
+                continue
+            _persist_tool_mapping(
+                persistence,
+                session_id=session_id,
+                ttl_hours=ttl_hours,
+                mapping=mapping,
+            )
+
+
+def _translate_and_persist_localized_response_tools(
+    ir_response: dict[str, Any],
+    route: ResolvedRoute,
+    *,
+    tool_store: CodexToolLocalizationStore,
+    persistence: Any | None,
+    session_id: str | None,
+) -> None:
+    if not should_localize_code_tools(route):
+        return
+    translate_localized_ir_response(ir_response, store=tool_store)
+    _persist_localized_response_mappings(
+        ir_response,
+        tool_store=tool_store,
+        persistence=persistence,
+        session_id=session_id,
+        ttl_hours=tool_call_cache_ttl_hours(route.tool_adaptation),
+    )
 
 
 def _create_stream_trace_logger(
@@ -231,7 +354,7 @@ def _create_stream_trace_logger(
     model: str,
     route: ResolvedRoute,
 ) -> StreamTraceLogger | None:
-    """Create a stream trace logger, forcing traces for Responses/Chat paths."""
+    """Create a stream trace logger when runtime stream tracing is enabled."""
     state = stream_trace_state or StreamTraceState()
     return state.create_logger(
         request_id=request_id,
@@ -240,7 +363,6 @@ def _create_stream_trace_logger(
         source_provider=route.source_provider,
         target_provider=route.target_provider,
         provider_name=route.provider_name,
-        force=_requires_mandatory_stream_trace(route),
     )
 
 
@@ -384,6 +506,7 @@ async def handle_non_streaming(
     codex_tool_store: CodexToolLocalizationStore | None = None,
     extra_headers: dict[str, str] | None = None,
     persistence: Any | None = None,
+    tool_cache_session_id: str | None = None,
 ) -> tuple[Response, dict[str, Any]]:
     """Non-streaming proxy: convert -> forward -> convert back -> respond.
 
@@ -396,6 +519,8 @@ async def handle_non_streaming(
     tool_store = (
         codex_tool_store if codex_tool_store is not None else _default_codex_tool_store
     )
+    persistent_mappings: list[LocalizedToolMapping] = []
+    used_mapping_call_ids: set[str] = set()
     profile: dict[str, Any] = {}
     # model was already injected into body by app.py
     model = body.get("model", "")
@@ -478,10 +603,17 @@ async def handle_non_streaming(
         )
     except ConversionError as exc:
         return error_response_for_source(route.source_provider, 400, str(exc)), profile
+    if should_localize_code_tools(route):
+        persistent_mappings = _load_persistent_tool_mappings(
+            persistence,
+            session_id=tool_cache_session_id,
+        )
     target_body = _apply_converted_request_tool_adaptation(
         target_body,
         route,
         codex_tool_store=tool_store,
+        persistent_mappings=persistent_mappings,
+        used_mapping_call_ids=used_mapping_call_ids,
     )
 
     profile.update(pipeline.profile)
@@ -509,6 +641,12 @@ async def handle_non_streaming(
             ),
             profile,
         )
+    _delete_unused_persistent_tool_mappings(
+        persistence,
+        session_id=tool_cache_session_id,
+        loaded_mappings=persistent_mappings,
+        used_call_ids=used_mapping_call_ids,
+    )
     profile["upstream_ms"] = round((time.perf_counter() - t_upstream) * 1000, 2)
 
     if resp.is_error:
@@ -544,8 +682,13 @@ async def handle_non_streaming(
     log_response(resp.body, label="UPSTREAM RESPONSE")
 
     def _on_response_ir_ready(ir_response: dict[str, Any]) -> None:
-        if should_localize_code_tools(route):
-            translate_localized_ir_response(ir_response, store=tool_store)
+        _translate_and_persist_localized_response_tools(
+            ir_response,
+            route,
+            tool_store=tool_store,
+            persistence=persistence,
+            session_id=tool_cache_session_id,
+        )
         store.cache_from_response(ir_response)
 
     try:
@@ -721,6 +864,7 @@ async def handle_streaming(
     entry_id: str | None = None,
     request_log: Any | None = None,
     persistence: Any | None = None,
+    tool_cache_session_id: str | None = None,
     stream_trace_state: StreamTraceState | None = None,
 ) -> tuple[Response | StreamingResponse, dict[str, Any]]:
     """Streaming proxy: convert -> forward -> stream-convert back -> SSE.
@@ -740,6 +884,8 @@ async def handle_streaming(
     tool_store = (
         codex_tool_store if codex_tool_store is not None else _default_codex_tool_store
     )
+    persistent_mappings: list[LocalizedToolMapping] = []
+    used_mapping_call_ids: set[str] = set()
     profile: dict[str, Any] = {}
     # model was already injected into body by app.py
     model = body.get("model", "")
@@ -873,10 +1019,17 @@ async def handle_streaming(
         )
     except ConversionError as exc:
         return error_response_for_source(route.source_provider, 400, str(exc)), profile
+    if should_localize_code_tools(route):
+        persistent_mappings = _load_persistent_tool_mappings(
+            persistence,
+            session_id=tool_cache_session_id,
+        )
     target_body = _apply_converted_request_tool_adaptation(
         target_body,
         route,
         codex_tool_store=tool_store,
+        persistent_mappings=persistent_mappings,
+        used_mapping_call_ids=used_mapping_call_ids,
     )
 
     profile.update(pipeline.profile)
@@ -925,6 +1078,12 @@ async def handle_streaming(
             ),
             profile,
         )
+    _delete_unused_persistent_tool_mappings(
+        persistence,
+        session_id=tool_cache_session_id,
+        loaded_mappings=persistent_mappings,
+        used_call_ids=used_mapping_call_ids,
+    )
 
     profile["stream_connect_ms"] = round((time.perf_counter() - t_connect) * 1000, 2)
 
@@ -980,11 +1139,23 @@ async def handle_streaming(
         if trace is not None:
             trace.log("ir_event", ir_event)
 
-    stream_transformer = (
-        LocalizedToolCallStreamTransformer(store=tool_store)
-        if should_localize_code_tools(route)
-        else None
-    )
+    if should_localize_code_tools(route):
+        ttl_hours = tool_call_cache_ttl_hours(route.tool_adaptation)
+
+        def _persist_stream_mapping(mapping: LocalizedToolMapping) -> None:
+            _persist_tool_mapping(
+                persistence,
+                session_id=tool_cache_session_id,
+                ttl_hours=ttl_hours,
+                mapping=mapping,
+            )
+
+        stream_transformer = LocalizedToolCallStreamTransformer(
+            store=tool_store,
+            on_mapping=_persist_stream_mapping,
+        )
+    else:
+        stream_transformer = None
     processor = pipeline.create_stream_processor(
         on_ir_event=_on_ir_event,
         transform_ir_event=stream_transformer.transform

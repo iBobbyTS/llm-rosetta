@@ -79,7 +79,7 @@ class StreamTraceState:
     ) -> StreamTraceLogger | None:
         """Create a trace logger for one stream if current settings match."""
         config = self.config
-        if not force and not config.enabled:
+        if not config.enabled:
             return None
 
         if not force and not _matches_filter(
