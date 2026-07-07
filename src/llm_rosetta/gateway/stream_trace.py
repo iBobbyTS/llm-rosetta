@@ -75,13 +75,14 @@ class StreamTraceState:
         source_provider: ProviderType,
         target_provider: ProviderType,
         provider_name: str,
+        force: bool = False,
     ) -> StreamTraceLogger | None:
         """Create a trace logger for one stream if current settings match."""
         config = self.config
-        if not config.enabled:
+        if not force and not config.enabled:
             return None
 
-        if not _matches_filter(
+        if not force and not _matches_filter(
             config.filter,
             model=model,
             source_provider=source_provider,

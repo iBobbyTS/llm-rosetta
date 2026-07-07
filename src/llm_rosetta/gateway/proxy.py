@@ -115,9 +115,41 @@ def extract_model(source_provider: ProviderType, body: dict[str, Any]) -> str | 
 
 def _is_openai_responses_direct(route: ResolvedRoute) -> bool:
     """Return true for same-protocol Responses requests that can pass through."""
+    return route.source_provider in (
+        "openai_responses",
+        "open_responses",
+    ) and route.target_provider in ("openai_responses", "open_responses")
+
+
+def _requires_mandatory_stream_trace(route: ResolvedRoute) -> bool:
+    """Return true for the Codex-critical Responses/Chat conversion boundary."""
     return (
         route.source_provider in ("openai_responses", "open_responses")
+        and route.target_provider == "openai_chat"
+    ) or (
+        route.source_provider == "openai_chat"
         and route.target_provider in ("openai_responses", "open_responses")
+    )
+
+
+def _create_stream_trace_logger(
+    stream_trace_state: StreamTraceState | None,
+    *,
+    request_id: str | None,
+    request_log_id: str | None,
+    model: str,
+    route: ResolvedRoute,
+) -> StreamTraceLogger | None:
+    """Create a stream trace logger, forcing traces for Responses/Chat paths."""
+    state = stream_trace_state or StreamTraceState()
+    return state.create_logger(
+        request_id=request_id,
+        request_log_id=request_log_id,
+        model=model,
+        source_provider=route.source_provider,
+        target_provider=route.target_provider,
+        provider_name=route.provider_name,
+        force=_requires_mandatory_stream_trace(route),
     )
 
 
@@ -524,8 +556,7 @@ async def _raw_stream_event_generator(
                     ttfb_ms = round((time.perf_counter() - t_stream_open) * 1000, 2)
                 chunk_count += 1
                 if trace is not None:
-                    trace.log("upstream_raw_chunk", chunk, chunk_index=chunk_count)
-                    trace.log("downstream_raw_sse", chunk, chunk_index=chunk_count)
+                    trace.log("raw_passthrough_chunk", chunk, chunk_index=chunk_count)
                 yield chunk
 
         log_stream_summary(
@@ -673,17 +704,12 @@ async def handle_streaming(
             )
 
         request_id = extra_headers.get("x-request-id") if extra_headers else None
-        trace = (
-            stream_trace_state.create_logger(
-                request_id=request_id,
-                request_log_id=entry_id,
-                model=model,
-                source_provider=route.source_provider,
-                target_provider=route.target_provider,
-                provider_name=route.provider_name,
-            )
-            if stream_trace_state is not None
-            else None
+        trace = _create_stream_trace_logger(
+            stream_trace_state,
+            request_id=request_id,
+            request_log_id=entry_id,
+            model=model,
+            route=route,
         )
         if trace is not None:
             trace.log(
@@ -697,6 +723,7 @@ async def handle_streaming(
                     "passthrough": True,
                 },
             )
+            trace.log("raw_passthrough_request", body)
 
         return (
             StreamingResponse(
@@ -817,17 +844,12 @@ async def handle_streaming(
 
     # Phase 4: No error — create stream processor and return SSE response
     request_id = extra_headers.get("x-request-id") if extra_headers else None
-    trace = (
-        stream_trace_state.create_logger(
-            request_id=request_id,
-            request_log_id=entry_id,
-            model=model,
-            source_provider=route.source_provider,
-            target_provider=route.target_provider,
-            provider_name=route.provider_name,
-        )
-        if stream_trace_state is not None
-        else None
+    trace = _create_stream_trace_logger(
+        stream_trace_state,
+        request_id=request_id,
+        request_log_id=entry_id,
+        model=model,
+        route=route,
     )
 
     def _on_ir_event(ir_event: dict[str, Any]) -> None:
@@ -851,6 +873,8 @@ async def handle_streaming(
                 "entry_id": entry_id,
             },
         )
+        trace.log("source_request", body)
+        trace.log("target_request", target_body)
 
     return (
         StreamingResponse(

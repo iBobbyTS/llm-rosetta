@@ -188,6 +188,9 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
+# CodeGraph local index
+.codegraph/
+
 # PyPI configuration file
 .pypirc
 
