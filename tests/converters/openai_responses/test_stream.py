@@ -4,6 +4,7 @@ OpenAI Responses API stream converter unit tests.
 
 from typing import Any, cast
 
+from llm_rosetta.converters.openai_chat import OpenAIChatConverter
 from llm_rosetta.converters.openai_responses import OpenAIResponsesConverter
 from llm_rosetta.converters.openai_responses.stream_context import (
     OpenAIResponsesStreamContext,
@@ -343,6 +344,53 @@ class TestStreamResponseToProvider:
         result = cast(dict[str, Any], self.converter.stream_response_to_provider(event))
         assert result["type"] == "response.reasoning_summary_text.delta"
         assert result["delta"] == "thinking..."
+
+    def test_reasoning_delta_preserved_in_completed_output(self):
+        """Reasoning deltas become durable reasoning output items."""
+        ctx = OpenAIResponsesStreamContext()
+
+        result = cast(
+            list[dict[str, Any]],
+            self.converter.stream_response_to_provider(
+                cast(ReasoningDeltaEvent, {"type": "reasoning_delta", "reasoning": ""}),
+                context=ctx,
+            ),
+        )
+        assert result[0]["type"] == "response.output_item.added"
+        assert result[0]["output_index"] == 0
+        assert result[0]["item"]["type"] == "reasoning"
+        assert result[0]["item"]["status"] == "in_progress"
+        assert result[1]["type"] == "response.reasoning_summary_text.delta"
+        assert result[1]["delta"] == ""
+
+        self.converter.stream_response_to_provider(
+            cast(
+                ReasoningDeltaEvent,
+                {"type": "reasoning_delta", "reasoning": "thinking..."},
+            ),
+            context=ctx,
+        )
+        results = cast(
+            list[dict[str, Any]],
+            self.converter.stream_response_to_provider(
+                cast(
+                    FinishEvent,
+                    {"type": "finish", "finish_reason": {"reason": "tool_calls"}},
+                ),
+                context=ctx,
+            ),
+        )
+
+        assert len(results) == 1
+        assert results[0]["type"] == "response.output_item.done"
+        assert results[0]["output_index"] == 0
+        assert results[0]["item"]["type"] == "reasoning"
+        assert results[0]["item"]["status"] == "completed"
+        assert ctx.pending_response is not None
+        output = ctx.pending_response["output"]
+        assert output[0]["type"] == "reasoning"
+        assert output[0]["summary"] == [{"type": "summary_text", "text": "thinking..."}]
+        assert output[0]["status"] == "completed"
 
     def test_tool_call_start(self):
         """ToolCallStartEvent → response.output_item.added."""
@@ -1846,6 +1894,117 @@ class TestCustomToolCallStreaming:
         ]
         assert completed
         assert completed[-1]["response"]["output"] == [reasoning_item]
+
+    def test_chat_reasoning_tool_call_survives_next_chat_request(self):
+        """Chat reasoning_content is preserved through Responses history."""
+        chat = OpenAIChatConverter()
+        responses = OpenAIResponsesConverter()
+        responses_ctx = OpenAIResponsesStreamContext()
+
+        chat_chunks = [
+            {
+                "id": "chatcmpl_123",
+                "model": "deepseek-reasoner",
+                "created": 123,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"reasoning_content": ""},
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"reasoning_content": "I need a tool."},
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "index": 0,
+                                    "function": {
+                                        "name": "get_weather",
+                                        "arguments": '{"city":"NYC"}',
+                                    },
+                                }
+                            ]
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+            },
+        ]
+
+        downstream_events: list[dict[str, Any]] = []
+        for chunk in chat_chunks:
+            ir_events = cast(list[Any], chat.stream_response_from_provider(chunk))
+            for ir_event in ir_events:
+                downstream = responses.stream_response_to_provider(
+                    ir_event, context=responses_ctx
+                )
+                if isinstance(downstream, list):
+                    downstream_events.extend(downstream)
+                elif downstream:
+                    downstream_events.append(cast(dict[str, Any], downstream))
+
+        assert responses_ctx.pending_response is not None
+        response_output: list[dict[str, Any]] = []
+        for event in downstream_events:
+            if event.get("type") in (
+                "response.output_item.added",
+                "response.output_item.done",
+            ):
+                item = event.get("item")
+                if isinstance(item, dict):
+                    response_output = [
+                        existing
+                        for existing in response_output
+                        if existing.get("id") != item.get("id")
+                    ]
+                    response_output.append(item)
+        assert response_output[0]["type"] == "reasoning"
+
+        next_responses_request = {
+            "model": "deepseek-reasoner",
+            "input": [
+                {"type": "message", "role": "user", "content": "weather?"},
+                *response_output,
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_1",
+                    "output": "72F",
+                },
+            ],
+        }
+        ir_request = responses.request_from_provider(next_responses_request)
+        chat_request, warnings = chat.request_to_provider(ir_request)
+
+        assert warnings == []
+        assistant_message = next(
+            msg for msg in chat_request["messages"] if msg["role"] == "assistant"
+        )
+        assert assistant_message["reasoning_content"] == "I need a tool."
+        assert assistant_message["tool_calls"][0]["id"] == "call_1"
 
     def test_message_phase_stream_round_trip(self):
         """Responses message item metadata survives streaming round-trip."""

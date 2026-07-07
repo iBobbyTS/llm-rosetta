@@ -331,6 +331,31 @@ class TestOpenAIChatMessageOps:
         assert parts[1]["type"] == "text"
         assert parts[1]["text"] == "The answer is 42"
 
+    def test_empty_reasoning_content_p_to_ir(self):
+        """Test empty reasoning_content is preserved for DeepSeek tool loops."""
+        messages = [
+            {
+                "role": "assistant",
+                "reasoning_content": "",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"city": "NYC"}',
+                        },
+                    }
+                ],
+            }
+        ]
+        result = cast(list[Any], self.message_ops.p_messages_to_ir(messages))
+        parts = result[0]["content"]
+        assert parts[0]["type"] == "reasoning"
+        assert parts[0]["reasoning"] == ""
+        assert parts[1]["type"] == "tool_call"
+
     def test_reasoning_content_p_to_ir_no_reasoning(self):
         """Test standard assistant message without reasoning_content."""
         messages = [{"role": "assistant", "content": "Hello"}]

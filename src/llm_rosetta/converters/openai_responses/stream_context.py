@@ -23,6 +23,15 @@ class OpenAIResponsesStreamContext(StreamContext):
         item_id: Current output item ID for the response message.
         accumulated_text: Accumulated text deltas for the final
             response.completed payload.
+        accumulated_reasoning: Accumulated reasoning deltas for the final
+            response.completed payload.
+        reasoning_seen: Whether a reasoning delta was observed, including an
+            empty delta that must still be preserved for follow-up requests.
+        reasoning_item_id: Synthetic Responses reasoning output item ID.
+        reasoning_item_emitted: Whether the synthetic reasoning output_item.added
+            event has been emitted.
+        reasoning_item_done_emitted: Whether the synthetic reasoning
+            output_item.done event has been emitted.
         content_part_done_emitted: Whether content_part.done has been
             emitted (prevents duplicate emission).
     """
@@ -31,6 +40,11 @@ class OpenAIResponsesStreamContext(StreamContext):
     output_item_emitted: bool = False
     item_id: str = ""
     accumulated_text: str = ""
+    accumulated_reasoning: str = ""
+    reasoning_seen: bool = False
+    reasoning_item_id: str = ""
+    reasoning_item_emitted: bool = False
+    reasoning_item_done_emitted: bool = False
     content_part_done_emitted: bool = False
     message_item_metadata: dict = field(default_factory=dict)
     passthrough_output_items: list[dict] = field(default_factory=list)
@@ -66,6 +80,16 @@ class OpenAIResponsesStreamContext(StreamContext):
         ctx._tool_call_args = base._tool_call_args
         ctx._tool_call_order = base._tool_call_order
         ctx._tool_call_types = base._tool_call_types
+        if hasattr(base, "accumulated_reasoning"):
+            ctx.accumulated_reasoning = base.accumulated_reasoning
+        if hasattr(base, "reasoning_seen"):
+            ctx.reasoning_seen = base.reasoning_seen
+        if hasattr(base, "reasoning_item_id"):
+            ctx.reasoning_item_id = base.reasoning_item_id
+        if hasattr(base, "reasoning_item_emitted"):
+            ctx.reasoning_item_emitted = base.reasoning_item_emitted
+        if hasattr(base, "reasoning_item_done_emitted"):
+            ctx.reasoning_item_done_emitted = base.reasoning_item_done_emitted
         if hasattr(base, "passthrough_output_items"):
             ctx.passthrough_output_items = base.passthrough_output_items
         if hasattr(base, "message_item_metadata"):

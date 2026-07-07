@@ -1361,11 +1361,27 @@ class OpenAIResponsesConverter(BaseConverter):
         self,
         event: ReasoningDeltaEvent,
         context: StreamContext | None,
-    ) -> dict[str, Any]:
-        return {
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        result: dict[str, Any] = {
             "type": ResponsesEventType.REASONING_SUMMARY_TEXT_DELTA,
             "delta": event["reasoning"],
         }
+        if isinstance(context, OpenAIResponsesStreamContext):
+            context.reasoning_seen = True
+            context.accumulated_reasoning += event["reasoning"]
+            if not context.reasoning_item_emitted:
+                context.reasoning_item_emitted = True
+                return [
+                    {
+                        "type": ResponsesEventType.OUTPUT_ITEM_ADDED,
+                        "output_index": 0,
+                        "item": self._build_synthetic_reasoning_item(
+                            context, status="in_progress"
+                        ),
+                    },
+                    result,
+                ]
+        return result
 
     def _handle_provider_passthrough_to_p(
         self,
@@ -1403,7 +1419,9 @@ class OpenAIResponsesConverter(BaseConverter):
                 context.register_tool_call_provider_metadata(call_id, provider_metadata)
 
         tc_index = event.get("tool_call_index")
-        output_index = tc_index if tc_index is not None else 0
+        output_index = self._resolve_tool_call_output_index(
+            context, tc_index, provider_metadata
+        )
 
         if tool_type == "custom":
             item: dict[str, Any] = {
@@ -1459,7 +1477,14 @@ class OpenAIResponsesConverter(BaseConverter):
         if not item_id and call_id:
             item_id = call_id
 
-        output_index = tc_index if tc_index is not None else 0
+        provider_metadata = (
+            context.get_tool_call_provider_metadata(call_id)
+            if isinstance(context, OpenAIResponsesStreamContext) and call_id
+            else {}
+        )
+        output_index = self._resolve_tool_call_output_index(
+            context, tc_index, provider_metadata
+        )
 
         # Determine event type based on tool type (custom vs function)
         tool_type = (
@@ -1495,6 +1520,7 @@ class OpenAIResponsesConverter(BaseConverter):
         results: list[dict[str, Any]] = []
 
         if context is not None:
+            self._emit_reasoning_done_event(context, results)
             self._emit_text_done_events(context, results)
             self._emit_tool_call_done_events(context, results)
 
@@ -1556,6 +1582,12 @@ class OpenAIResponsesConverter(BaseConverter):
         output: list[dict[str, Any]] = []
         if context is None:
             return output
+
+        has_passthrough_reasoning = any(
+            item.get("type") == "reasoning" for item in context.passthrough_output_items
+        )
+        if context.reasoning_seen and not has_passthrough_reasoning:
+            output.append(self._build_synthetic_reasoning_item(context))
 
         accumulated = context.accumulated_text
         if accumulated:
@@ -1628,6 +1660,59 @@ class OpenAIResponsesConverter(BaseConverter):
             item["namespace"] = namespace
 
     @staticmethod
+    def _has_synthetic_reasoning_output(
+        context: StreamContext | None,
+    ) -> bool:
+        if not isinstance(context, OpenAIResponsesStreamContext):
+            return False
+        if not context.reasoning_seen:
+            return False
+        return not any(
+            item.get("type") == "reasoning" for item in context.passthrough_output_items
+        )
+
+    @staticmethod
+    def _build_synthetic_reasoning_item(
+        context: OpenAIResponsesStreamContext,
+        *,
+        status: str = "completed",
+    ) -> dict[str, Any]:
+        if not context.reasoning_item_id:
+            context.reasoning_item_id = f"rs_{context.response_id or 'synthetic'}"
+        return {
+            "id": context.reasoning_item_id,
+            "type": "reasoning",
+            "summary": [
+                {
+                    "type": "summary_text",
+                    "text": context.accumulated_reasoning,
+                }
+            ],
+            "status": status,
+        }
+
+    def _resolve_tool_call_output_index(
+        self,
+        context: StreamContext | None,
+        tool_call_index: int | None,
+        provider_metadata: dict[str, Any] | None = None,
+    ) -> int:
+        provider_metadata = provider_metadata or {}
+        if tool_call_index is not None:
+            if provider_metadata:
+                return tool_call_index
+            offset = 1 if self._has_synthetic_reasoning_output(context) else 0
+            return tool_call_index + offset
+        if not isinstance(context, OpenAIResponsesStreamContext):
+            return 0
+        return (
+            len(context._tool_call_order)
+            - 1
+            + (1 if context.output_item_emitted else 0)
+            + (1 if self._has_synthetic_reasoning_output(context) else 0)
+        )
+
+    @staticmethod
     def _build_finish_usage(pending_usage: dict[str, Any]) -> dict[str, Any]:
         """Build usage dict for the finish response from pending IR usage."""
         usage: dict[str, Any] = {
@@ -1666,6 +1751,25 @@ class OpenAIResponsesConverter(BaseConverter):
         for k, v in echo.items():
             if k not in core_keys:
                 response[k] = v
+
+    def _emit_reasoning_done_event(
+        self,
+        context: OpenAIResponsesStreamContext,
+        results: list[dict[str, Any]],
+    ) -> None:
+        """Emit done event for synthetic reasoning output."""
+        if not self._has_synthetic_reasoning_output(context):
+            return
+        if context.reasoning_item_done_emitted:
+            return
+        context.reasoning_item_done_emitted = True
+        results.append(
+            {
+                "type": ResponsesEventType.OUTPUT_ITEM_DONE,
+                "output_index": 0,
+                "item": self._build_synthetic_reasoning_item(context),
+            }
+        )
 
     def _emit_text_done_events(
         self,
