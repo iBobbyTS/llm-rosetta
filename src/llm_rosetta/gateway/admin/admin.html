@@ -282,6 +282,18 @@ canvas { width: 100%; height: 160px; }
 .checkbox-group { display: flex; gap: 14px; flex-wrap: wrap; }
 .checkbox-group label { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 5px; cursor: pointer; text-transform: none; letter-spacing: 0; }
 .checkbox-group input[type="checkbox"] { accent-color: var(--accent); }
+.config-details { margin: 0 0 14px; }
+.config-details summary {
+  cursor: pointer; font-size: 12px; color: var(--text-dim); user-select: none;
+  padding: 4px 0; list-style: none;
+}
+.config-details summary::-webkit-details-marker { display: none; }
+.config-details summary::before { content:'\25B6'; display:inline-block; margin-right:6px; font-size:9px; transition:transform .15s; }
+.config-details[open] summary::before { transform:rotate(90deg); }
+.config-details .detail-body {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; margin-top: 4px;
+}
 
 /* Test button dropdown */
 .test-group { position: relative; display: inline-flex; }
@@ -827,6 +839,15 @@ body { padding-bottom: 26px; }
         </div>
       </div>
     </div>
+    <details class="config-details" id="modelToolAdaptationGroup">
+      <summary data-i18n="label.toolAdaptionCodex">Tool Adaption for Codex</summary>
+      <div class="detail-body">
+        <div class="checkbox-group">
+          <label><input type="checkbox" id="toolLocalizeCodeEditing"> <span data-i18n="label.localizeCodeEditingTools">Localize code editing tools</span></label>
+          <label><input type="checkbox" id="toolRemoveImageGeneration"> <span data-i18n="label.removeImageGeneration">Remove `image_generation`</span></label>
+        </div>
+      </div>
+    </details>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modelModal')" data-i18n="btn.cancel">Cancel</button>
       <button class="btn btn-primary" onclick="saveModel()" data-i18n="btn.save">Save</button>
@@ -1021,6 +1042,7 @@ const I18N = {
     'label.proxyUrl':'Proxy URL (optional, overrides global)',
     'label.modelName':'Model Name', 'label.provider':'Provider', 'label.upstreamModel':'Upstream Model', 'label.capabilities':'Capabilities',
     'label.reasoningConfig':'Reasoning Config', 'label.thinkingType':'Thinking Type', 'label.budgetRatio':'Budget Tokens Ratio', 'label.disabledStrategy':'Disabled Strategy', 'label.inheritProvider':'(inherit from provider)', 'label.inherited':'inherited',
+    'label.toolAdaptionCodex':'Tool Adaption for Codex', 'label.localizeCodeEditingTools':'Localize code editing tools', 'label.removeImageGeneration':'Remove `image_generation`',
     'modal.addProvider':'Add Provider', 'modal.editProvider':'Edit Provider',
     'modal.addModel':'Add Model', 'modal.editModel':'Edit Model',
     'col.model':'Model', 'col.provider':'Provider', 'col.time':'Time',
@@ -1147,6 +1169,7 @@ const I18N = {
     'label.proxyUrl':'\u4ee3\u7406 URL\uff08\u53ef\u9009\uff0c\u8986\u76d6\u5168\u5c40\u8bbe\u7f6e\uff09',
     'label.modelName':'\u6a21\u578b\u540d\u79f0', 'label.provider':'\u670d\u52a1\u65b9', 'label.upstreamModel':'\u4e0a\u6e38\u6a21\u578b', 'label.capabilities':'\u80fd\u529b',
     'label.reasoningConfig':'\u63a8\u7406\u914d\u7f6e', 'label.thinkingType':'\u601d\u8003\u7c7b\u578b', 'label.budgetRatio':'\u9884\u7b97 Token \u6bd4\u4f8b', 'label.disabledStrategy':'\u7981\u7528\u7b56\u7565', 'label.inheritProvider':'(\u7ee7\u627f\u81ea Provider)', 'label.inherited':'\u7ee7\u627f',
+    'label.toolAdaptionCodex':'Tool Adaption for Codex', 'label.localizeCodeEditingTools':'\u672c\u5730\u5316\u4ee3\u7801\u7f16\u8f91\u5de5\u5177', 'label.removeImageGeneration':'\u79fb\u9664 `image_generation`',
     'modal.addProvider':'\u6dfb\u52a0\u670d\u52a1\u65b9', 'modal.editProvider':'\u7f16\u8f91\u670d\u52a1\u65b9',
     'modal.addModel':'\u6dfb\u52a0\u6a21\u578b', 'modal.editModel':'\u7f16\u8f91\u6a21\u578b',
     'col.model':'\u6a21\u578b', 'col.provider':'\u670d\u52a1\u65b9', 'col.time':'\u65f6\u95f4',
@@ -1621,6 +1644,9 @@ function openModelModal(model, provider, capabilities, upstreamModel, sourceMode
   document.getElementById('reasoningThinkingType').value = configOverride.thinking_type || '';
   document.getElementById('reasoningBudgetRatio').value = configOverride.budget_tokens_default_ratio != null ? configOverride.budget_tokens_default_ratio : '';
   document.getElementById('reasoningDisabled').value = configOverride.disabled || '';
+  const toolAdaptation = (info && info.tool_adaptation) || {};
+  document.getElementById('toolLocalizeCodeEditing').checked = !!toolAdaptation.localize_code_editing_tools;
+  document.getElementById('toolRemoveImageGeneration').checked = !!toolAdaptation.remove_image_generation;
 
   document.getElementById('modelModal').classList.add('open');
 }
@@ -2211,6 +2237,13 @@ async function saveModel() {
   const body = {provider, capabilities};
   const upstreamModel = document.getElementById('modelUpstream').value.trim();
   if (upstreamModel) body.upstream_model = upstreamModel;
+  const toolAdaptation = {
+    localize_code_editing_tools: document.getElementById('toolLocalizeCodeEditing').checked,
+    remove_image_generation: document.getElementById('toolRemoveImageGeneration').checked,
+  };
+  if (toolAdaptation.localize_code_editing_tools || toolAdaptation.remove_image_generation) {
+    body.tool_adaptation = toolAdaptation;
+  }
   // Collect reasoning override if reasoning capability is enabled
   if (capabilities.includes('reasoning')) {
     const thinkingType = document.getElementById('reasoningThinkingType').value || null;

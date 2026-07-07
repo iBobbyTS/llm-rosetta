@@ -75,3 +75,32 @@ class TestStreamTraceConfig:
         assert cfg.stream_trace.filter == "glm,opencode"
         assert cfg.stream_trace.path == "~/trace/log.jsonl"
         assert cfg.stream_trace.max_string_chars == 5000
+
+
+class TestModelToolAdaptation:
+    """Per-model tool adaptation is available on resolved routes."""
+
+    def test_resolve_includes_tool_adaptation(self):
+        raw = _minimal_raw()
+        raw["models"] = {
+            "gpt-test": {
+                "provider": "test",
+                "capabilities": ["text", "tools"],
+                "tool_adaptation": {
+                    "localize_code_editing_tools": False,
+                    "remove_image_generation": True,
+                },
+            }
+        }
+
+        cfg = GatewayConfig(raw)
+        route, _provider = cfg.resolve("openai_responses", "gpt-test")
+
+        assert cfg.model_tool_adaptations["gpt-test"] == {
+            "localize_code_editing_tools": False,
+            "remove_image_generation": True,
+        }
+        assert route.tool_adaptation == {
+            "localize_code_editing_tools": False,
+            "remove_image_generation": True,
+        }

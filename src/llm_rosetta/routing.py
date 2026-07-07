@@ -43,6 +43,8 @@ class ResolvedRoute:
             (e.g. ``["text", "vision"]``).
         reasoning_override: Per-model reasoning config override from
             the admin UI / config, or ``None``.
+        tool_adaptation: Per-model tool adaptation config from
+            the admin UI / config, or ``None``.
     """
 
     source_provider: ProviderType
@@ -52,6 +54,7 @@ class ResolvedRoute:
     upstream_model: str | None = None
     model_capabilities: list[str] = field(default_factory=lambda: ["text"])
     reasoning_override: dict[str, Any] | None = None
+    tool_adaptation: dict[str, Any] | None = None
 
 
 class Router(Protocol):

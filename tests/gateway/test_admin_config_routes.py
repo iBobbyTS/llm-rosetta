@@ -7,7 +7,7 @@ import json
 from types import SimpleNamespace
 from typing import Any
 
-from llm_rosetta.gateway.admin.routes.config import put_server_settings
+from llm_rosetta.gateway.admin.routes.config import put_model, put_server_settings
 from llm_rosetta.gateway.config import GatewayConfig
 from llm_rosetta.gateway.stream_trace import StreamTraceState
 
@@ -65,3 +65,43 @@ def test_put_server_settings_updates_stream_trace_and_runtime_state(tmp_path):
     assert app.stream_trace_state.config.enabled is True
     assert app.stream_trace_state.config.filter == "glm,opencode"
     assert app.stream_trace_state.config.path == "~/trace/log.jsonl"
+
+
+def test_put_model_persists_tool_adaptation_and_reloads_runtime_config(tmp_path):
+    """Model tool adaptation settings persist and hot-reload into routing."""
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(_config_data()), encoding="utf-8")
+
+    initial_config = GatewayConfig(_config_data())
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(
+        app=app,
+        path_params={"name": "gpt-test"},
+    )
+    request.json = lambda: {
+        "provider": "openai",
+        "capabilities": ["text", "tools"],
+        "tool_adaptation": {
+            "localize_code_editing_tools": False,
+            "remove_image_generation": True,
+        },
+    }
+
+    response = _run(put_model(request))
+
+    assert response.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["models"]["gpt-test"]["tool_adaptation"] == {
+        "localize_code_editing_tools": False,
+        "remove_image_generation": True,
+    }
+    route, _provider = app.gateway_config.resolve("openai_responses", "gpt-test")
+    assert route.tool_adaptation == {
+        "localize_code_editing_tools": False,
+        "remove_image_generation": True,
+    }

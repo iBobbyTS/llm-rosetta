@@ -13,12 +13,13 @@ from llm_rosetta.gateway.transport._base import UpstreamResponse, UpstreamStream
 from llm_rosetta.routing import ResolvedRoute
 
 
-def _responses_route() -> ResolvedRoute:
+def _responses_route(*, tool_adaptation: dict[str, Any] | None = None) -> ResolvedRoute:
     return ResolvedRoute(
         source_provider="openai_responses",
         target_provider="openai_responses",
         provider_name="test-provider",
         upstream_model="gpt-test",
+        tool_adaptation=tool_adaptation,
     )
 
 
@@ -87,6 +88,71 @@ def test_openai_responses_non_streaming_direct_passthrough():
     assert "request_conversion_ms" not in profile
 
 
+def test_tool_adaptation_removes_image_generation_before_passthrough():
+    """Configured models can hide the image_generation tool from upstream."""
+    captured_body: dict[str, Any] = {}
+    upstream_body = {
+        "id": "resp_123",
+        "object": "response",
+        "model": "gpt-test",
+        "status": "completed",
+        "output": [],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    body = {
+        "model": "gpt-test",
+        "input": "hello",
+        "tools": [
+            {"type": "web_search_preview"},
+            {"type": "image_generation"},
+            {
+                "type": "function",
+                "function": {"name": "image_generation", "parameters": {}},
+            },
+            {"type": "function", "name": "apply_patch", "parameters": {}},
+        ],
+        "tool_choice": {"mode": "tool", "tool_name": "image_generation"},
+        "tool_config": {"disable_parallel": True},
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _responses_route(
+                tool_adaptation={
+                    "localize_code_editing_tools": False,
+                    "remove_image_generation": True,
+                }
+            ),
+            _provider_info(),
+            body,
+            transport=transport,
+        )
+
+    response, profile = asyncio.run(run())
+
+    assert response.status_code == 200
+    assert profile["passthrough"] is True
+    assert captured_body["tools"] == [
+        {"type": "web_search_preview"},
+        {"type": "function", "name": "apply_patch", "parameters": {}},
+    ]
+    assert "tool_choice" not in captured_body
+    assert captured_body["tool_config"] == {"disable_parallel": True}
+    assert body["tools"][1] == {"type": "image_generation"}
+
+
 class _RawStream(UpstreamStream):
     def __init__(self, chunks: list[bytes], *, status_code: int = 200) -> None:
         self.status_code = status_code
@@ -111,7 +177,7 @@ class _RawStream(UpstreamStream):
 
 
 def test_openai_responses_streaming_direct_raw_passthrough():
-    """Same-protocol Responses streams should forward raw SSE bytes."""
+    """Same-protocol Responses streams should forward filtered raw SSE bytes."""
     raw_chunks = [
         b'event: response.created\ndata: {"type":"response.created"}\n\n',
         b'event: response.output_item.added\ndata: {"type":"response.output_item.added","item":{"type":"message","phase":"commentary"}}\n\n',
@@ -130,12 +196,20 @@ def test_openai_responses_streaming_direct_raw_passthrough():
     body = {
         "model": "gpt-test",
         "input": [{"type": "message", "role": "user", "content": "hello"}],
+        "tools": [
+            {"type": "image_generation"},
+            {"type": "web_search_preview"},
+        ],
         "stream": True,
     }
 
     async def run():
         response, profile = await handle_streaming(
-            _responses_route(),
+            _responses_route(
+                tool_adaptation={
+                    "remove_image_generation": True,
+                }
+            ),
             _provider_info(),
             body,
             transport=transport,
@@ -151,6 +225,12 @@ def test_openai_responses_streaming_direct_raw_passthrough():
     assert response.status_code == 200
     assert response.content_type == "text/event-stream"
     assert chunks == raw_chunks
-    assert captured_body == body
+    assert captured_body == {
+        "model": "gpt-test",
+        "input": [{"type": "message", "role": "user", "content": "hello"}],
+        "tools": [{"type": "web_search_preview"}],
+        "stream": True,
+    }
+    assert body["tools"][0] == {"type": "image_generation"}
     assert profile["passthrough"] is True
     assert "request_conversion_ms" not in profile

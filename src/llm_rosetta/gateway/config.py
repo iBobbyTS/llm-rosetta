@@ -153,9 +153,12 @@ class GatewayConfig:
         # Per-model reasoning overrides from config.jsonc (admin UI edits).
         # Keyed by gateway model name (same as self.models keys).
         self.model_reasoning_overrides: dict[str, dict[str, Any]] = {}
+        self.model_tool_adaptations: dict[str, dict[str, Any]] = {}
         for model_name, value in raw.get("models", {}).items():
             if isinstance(value, dict) and value.get("reasoning_override"):
                 self.model_reasoning_overrides[model_name] = value["reasoning_override"]
+            if isinstance(value, dict) and value.get("tool_adaptation"):
+                self.model_tool_adaptations[model_name] = value["tool_adaptation"]
 
         _server = raw.get("server", {})
         self.host: str = _server.get("host", "0.0.0.0")
@@ -351,6 +354,7 @@ class GatewayConfig:
         upstream_model = self.model_upstream_names.get(model)
         caps = self.model_capabilities.get(model, list(self.DEFAULT_CAPABILITIES))
         reasoning = self.model_reasoning_overrides.get(model)
+        tool_adaptation = self.model_tool_adaptations.get(model)
 
         route = ResolvedRoute(
             source_provider=source_provider,
@@ -360,5 +364,6 @@ class GatewayConfig:
             upstream_model=upstream_model,
             model_capabilities=caps,
             reasoning_override=reasoning,
+            tool_adaptation=tool_adaptation,
         )
         return route, self.providers[provider_name]

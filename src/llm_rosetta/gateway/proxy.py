@@ -132,6 +132,78 @@ def _requires_mandatory_stream_trace(route: ResolvedRoute) -> bool:
     )
 
 
+def _tool_identifier(tool: Any) -> str | None:
+    """Return the provider-facing name/type used to identify a tool definition."""
+    if not isinstance(tool, dict):
+        return None
+
+    tool_type = tool.get("type")
+    if tool_type == "function":
+        function = tool.get("function")
+        if isinstance(function, dict) and function.get("name"):
+            return function["name"]
+        if tool.get("name"):
+            return tool["name"]
+    return tool.get("name") or tool_type
+
+
+def _tool_choice_identifier(tool_choice: Any) -> str | None:
+    """Return the explicitly selected tool name from a tool_choice value."""
+    if isinstance(tool_choice, str):
+        return tool_choice
+    if not isinstance(tool_choice, dict):
+        return None
+
+    if tool_choice.get("tool_name"):
+        return tool_choice["tool_name"]
+    if tool_choice.get("name"):
+        return tool_choice["name"]
+
+    function = tool_choice.get("function")
+    if isinstance(function, dict) and function.get("name"):
+        return function["name"]
+
+    choice_type = tool_choice.get("type")
+    if choice_type not in (None, "auto", "none", "required", "function", "tool"):
+        return choice_type
+    return None
+
+
+def _remove_tool_definition(body: dict[str, Any], tool_name: str) -> dict[str, Any]:
+    """Remove one named tool definition from a provider request body."""
+    tools = body.get("tools")
+    if not isinstance(tools, list):
+        return body
+
+    filtered_tools = [tool for tool in tools if _tool_identifier(tool) != tool_name]
+    if len(filtered_tools) == len(tools):
+        return body
+
+    adapted = dict(body)
+    if filtered_tools:
+        adapted["tools"] = filtered_tools
+    else:
+        adapted.pop("tools", None)
+        adapted.pop("tool_config", None)
+
+    if (
+        _tool_choice_identifier(adapted.get("tool_choice")) == tool_name
+        or not filtered_tools
+    ):
+        adapted.pop("tool_choice", None)
+    return adapted
+
+
+def _apply_tool_adaptation(
+    body: dict[str, Any], route: ResolvedRoute
+) -> dict[str, Any]:
+    """Apply per-model tool adaptation before passthrough or conversion."""
+    tool_adaptation = route.tool_adaptation or {}
+    if tool_adaptation.get("remove_image_generation"):
+        return _remove_tool_definition(body, "image_generation")
+    return body
+
+
 def _create_stream_trace_logger(
     stream_trace_state: StreamTraceState | None,
     *,
@@ -298,6 +370,7 @@ async def handle_non_streaming(
     profile: dict[str, Any] = {}
     # model was already injected into body by app.py
     model = body.get("model", "")
+    body = _apply_tool_adaptation(body, route)
 
     if _is_openai_responses_direct(route):
         log_original_request(body)
@@ -626,6 +699,7 @@ async def handle_streaming(
     profile: dict[str, Any] = {}
     # model was already injected into body by app.py
     model = body.get("model", "")
+    body = _apply_tool_adaptation(body, route)
 
     if _is_openai_responses_direct(route):
         log_original_request(body)

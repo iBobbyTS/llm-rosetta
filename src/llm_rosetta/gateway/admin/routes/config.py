@@ -41,6 +41,18 @@ def _get_version() -> str:
         return "unknown"
 
 
+def _clean_tool_adaptation(value: Any) -> dict[str, bool] | None:
+    """Normalize model-level tool adaptation settings from admin requests."""
+    if not isinstance(value, dict):
+        return None
+
+    cleaned = {
+        "localize_code_editing_tools": bool(value.get("localize_code_editing_tools")),
+        "remove_image_generation": bool(value.get("remove_image_generation")),
+    }
+    return cleaned if any(cleaned.values()) else None
+
+
 def _resolve_model_reasoning(
     model_name: str,
     entry: dict[str, Any],
@@ -128,6 +140,8 @@ async def get_config(request: Any) -> Response:
                 entry["upstream_model"] = value["upstream_model"]
             if value.get("reasoning_override"):
                 entry["reasoning_override"] = value["reasoning_override"]
+            if value.get("tool_adaptation"):
+                entry["tool_adaptation"] = value["tool_adaptation"]
             models_normalized[name] = entry
 
     # Resolve effective reasoning config per model
@@ -428,6 +442,10 @@ async def put_model(request: Any, **kwargs: Any) -> Response:
         cleaned = {k: v for k, v in reasoning_override.items() if v is not None}
         if cleaned:
             model_entry["reasoning_override"] = cleaned
+
+    cleaned_tool_adaptation = _clean_tool_adaptation(body.get("tool_adaptation"))
+    if cleaned_tool_adaptation:
+        model_entry["tool_adaptation"] = cleaned_tool_adaptation
     data.setdefault("models", {})[name] = model_entry
 
     try:
