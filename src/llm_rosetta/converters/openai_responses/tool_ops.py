@@ -162,7 +162,9 @@ class OpenAIResponsesToolOps(BaseToolOps):
         return result
 
     @staticmethod
-    def p_tool_definition_to_ir(provider_tool: Any, **kwargs: Any) -> ToolDefinition:
+    def p_tool_definition_to_ir(
+        provider_tool: Any, **kwargs: Any
+    ) -> ToolDefinition | list[ToolDefinition]:
         """OpenAI Responses tool definition → IR ToolDefinition.
 
         Handles both flat format (Responses API native) and nested format
@@ -179,7 +181,8 @@ class OpenAIResponsesToolOps(BaseToolOps):
             provider_tool: OpenAI Responses tool definition dict.
 
         Returns:
-            IR ToolDefinition.
+            IR ToolDefinition, or a list of child ToolDefinitions for a
+            Responses namespace tool.
         """
         # IR ToolDefinition.type is restricted to Literal["function", "mcp"];
         # see types/ir/tools.py.
@@ -196,6 +199,43 @@ class OpenAIResponsesToolOps(BaseToolOps):
             }
         else:
             tool_type = provider_tool.get("type", "function")
+            if tool_type == "namespace" and isinstance(
+                provider_tool.get("tools"), list
+            ):
+                namespace = provider_tool.get("name", "")
+                namespace_description = provider_tool.get("description", "")
+                ir_tools: list[ToolDefinition] = []
+                for child in provider_tool["tools"]:
+                    if not isinstance(child, dict):
+                        continue
+                    if child.get("type", "function") != "function":
+                        continue
+                    description = child.get("description", "")
+                    if namespace_description:
+                        description = (
+                            f"{namespace_description}\n\n{description}"
+                            if description
+                            else namespace_description
+                        )
+                    params = child.get("parameters", {})
+                    result = {
+                        "type": "function",
+                        "name": child.get("name", ""),
+                        "description": description,
+                        "parameters": params,
+                        "required_parameters": params.get("required", [])
+                        if isinstance(params, dict)
+                        else [],
+                        "metadata": {
+                            "provider_type": "namespace",
+                            "responses_namespace": namespace,
+                            "responses_namespace_description": namespace_description,
+                            "responses_namespace_child": dict(child),
+                        },
+                    }
+                    ir_tools.append(cast(ToolDefinition, result))
+                return ir_tools
+
             # Non-function tools outside the IR type set (e.g. web_search or
             # Codex custom apply_patch) are stored as passthrough to avoid
             # lossy conversion. IR ``type`` is forced to "function" to
@@ -409,7 +449,7 @@ class OpenAIResponsesToolOps(BaseToolOps):
                 else:
                     # Other prefixes (e.g. toolu_ from Anthropic)
                     item_id = "fc_" + tool_call_id
-            return {
+            result = {
                 "type": "function_call",
                 "id": item_id,
                 "call_id": tool_call_id,
@@ -417,6 +457,10 @@ class OpenAIResponsesToolOps(BaseToolOps):
                 "arguments": arguments,
                 "status": "completed",
             }
+            namespace = metadata.get("responses_namespace")
+            if namespace:
+                result["namespace"] = namespace
+            return result
         elif tool_type == "custom":
             # Custom tool calls use plain text 'input' instead of JSON
             # 'arguments'.  If tool_input has a single "input" key, unwrap

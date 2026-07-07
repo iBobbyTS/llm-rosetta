@@ -90,6 +90,25 @@ class ConversionContext:
         """
         return self.metadata.get("_output_items_meta", [])
 
+    def store_responses_namespace_tool_map(self, mapping: dict[str, str]) -> None:
+        """Store Responses namespace child tool mappings.
+
+        Args:
+            mapping: Mapping of child tool name to Responses namespace name.
+        """
+        if not mapping:
+            return
+        existing = self.metadata.setdefault("_responses_namespace_tool_map", {})
+        existing.update(mapping)
+
+    def get_responses_namespace_for_tool(self, tool_name: str) -> str | None:
+        """Return the Responses namespace for a child tool name, if known."""
+        mapping = self.metadata.get("_responses_namespace_tool_map", {})
+        if not isinstance(mapping, dict):
+            return None
+        namespace = mapping.get(tool_name)
+        return namespace if isinstance(namespace, str) and namespace else None
+
 
 @dataclass
 class StreamContext(ConversionContext):

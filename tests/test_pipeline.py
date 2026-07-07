@@ -468,6 +468,197 @@ class TestConversionPipeline:
         assert target["include"] == ["reasoning.encrypted_content"]
         assert target["reasoning"] == {"effort": "low"}
 
+    def test_responses_namespace_tools_are_flattened_for_chat_target(self):
+        """Responses namespace tools become Chat functions for upstream models."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline("openai_responses", "openai_chat")
+        target = pipeline.convert_request(
+            {
+                "model": "deepseek-v4-flash",
+                "input": "use a subagent",
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "multi_agent_v1",
+                        "description": "Spawn and manage sub-agents.",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "spawn_agent",
+                                "description": "Spawn a sub-agent.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {"prompt": {"type": "string"}},
+                                    "required": ["prompt"],
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        tool_names = [tool["function"]["name"] for tool in target["tools"]]
+        assert tool_names == ["spawn_agent"]
+        assert "multi_agent_v1" not in tool_names
+
+    def test_responses_goal_tools_get_chat_guidance(self):
+        """Codex goal tools get clearer descriptions for Chat targets."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline("openai_responses", "openai_chat")
+        target = pipeline.convert_request(
+            {
+                "model": "deepseek-v4-flash",
+                "input": "mark goal complete",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "create_goal",
+                        "description": "Create a goal.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "objective": {"type": "string"},
+                                "token_budget": {"type": "number"},
+                            },
+                            "required": ["objective"],
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "name": "update_goal",
+                        "description": "Update the existing goal.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"status": {"type": "string"}},
+                            "required": ["status"],
+                        },
+                    },
+                ],
+            }
+        )
+
+        descriptions = {
+            tool["function"]["name"]: tool["function"]["description"]
+            for tool in target["tools"]
+        }
+        assert "Do not set token_budget unless" in descriptions["create_goal"]
+        assert "call create_goal first" in descriptions["update_goal"]
+
+    def test_responses_namespace_tools_stay_namespaced_for_responses_target(self):
+        """Responses target keeps namespace tools in native shape."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline("openai_responses", "openai_responses")
+        target = pipeline.convert_request(
+            {
+                "model": "gpt-5.5",
+                "input": "use a subagent",
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "multi_agent_v1",
+                        "description": "Spawn and manage sub-agents.",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "spawn_agent",
+                                "description": "Spawn a sub-agent.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {"prompt": {"type": "string"}},
+                                    "required": ["prompt"],
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        assert target["tools"] == [
+            {
+                "type": "namespace",
+                "name": "multi_agent_v1",
+                "description": "Spawn and manage sub-agents.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "spawn_agent",
+                        "description": "Spawn a sub-agent.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"prompt": {"type": "string"}},
+                            "required": ["prompt"],
+                        },
+                    }
+                ],
+            }
+        ]
+
+    def test_chat_response_tool_call_restores_responses_namespace(self):
+        """Chat tool calls restore Responses namespace for Codex runtime."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline("openai_responses", "openai_chat")
+        pipeline.convert_request(
+            {
+                "model": "deepseek-v4-flash",
+                "input": "use a subagent",
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "multi_agent_v1",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "spawn_agent",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {"prompt": {"type": "string"}},
+                                    "required": ["prompt"],
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        response = pipeline.convert_response(
+            {
+                "id": "chatcmpl-1",
+                "created": 1,
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "call_123",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "spawn_agent",
+                                        "arguments": '{"prompt":"Translate README"}',
+                                    },
+                                }
+                            ],
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+            }
+        )
+
+        tool_call = response["output"][0]
+        assert tool_call["type"] == "function_call"
+        assert tool_call["name"] == "spawn_agent"
+        assert tool_call["namespace"] == "multi_agent_v1"
+
     def test_convert_response_openai_to_openai(self):
         """Response round-trip produces valid source response."""
         from llm_rosetta.pipeline import ConversionPipeline
@@ -635,3 +826,67 @@ class TestConversionPipeline:
         # Callback should have been called at least once if IR events were produced
         if events:
             assert len(captured) > 0
+
+    def test_stream_processor_restores_responses_namespace_for_chat_tool_call(self):
+        """Streaming Chat tool calls restore Responses namespace metadata."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline("openai_responses", "openai_chat")
+        pipeline.convert_request(
+            {
+                "model": "deepseek-v4-flash",
+                "input": "use a subagent",
+                "stream": True,
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "multi_agent_v1",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "spawn_agent",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {"prompt": {"type": "string"}},
+                                    "required": ["prompt"],
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        processor = pipeline.create_stream_processor()
+
+        events = processor.process_chunk(
+            {
+                "id": "chatcmpl-1",
+                "created": 1,
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_123",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "spawn_agent",
+                                        "arguments": "",
+                                    },
+                                }
+                            ]
+                        },
+                    }
+                ],
+            }
+        )
+
+        added = next(
+            event for event in events if event["type"] == "response.output_item.added"
+        )
+        assert added["item"]["type"] == "function_call"
+        assert added["item"]["name"] == "spawn_agent"
+        assert added["item"]["namespace"] == "multi_agent_v1"

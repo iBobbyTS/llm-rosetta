@@ -198,6 +198,7 @@ class OpenAIResponsesConverter(BaseConverter):
             IR request.
         """
         provider_request = self._normalize(provider_request)
+        ctx = context if context is not None else ConversionContext()
 
         ir_request: dict[str, Any] = {
             "model": provider_request.get("model", ""),
@@ -236,6 +237,7 @@ class OpenAIResponsesConverter(BaseConverter):
                 ir_tools = self._get_cached_tools_from_p(active_tools)
                 if ir_tools:
                     ir_request["tools"] = ir_tools
+                    self._store_namespace_tool_map(ir_tools, ctx)
 
         # 4-5. Tool choice + tool config
         self._convert_tool_config_from_p(provider_request, ir_request)
@@ -280,7 +282,6 @@ class OpenAIResponsesConverter(BaseConverter):
             )
 
         # Preserve mode: capture request fields for echo-back in response
-        ctx = context if context is not None else ConversionContext()
         if ctx.metadata_mode == "preserve":
             echo = {
                 k: v
@@ -419,7 +420,7 @@ class OpenAIResponsesConverter(BaseConverter):
                     )
                 elif is_tool_call_part(part):
                     provider_response["output"].append(
-                        self.tool_ops.ir_tool_call_to_p(part)
+                        self._ir_tool_call_to_p_with_context(part, context)
                     )
                 elif is_reasoning_part(part):
                     provider_response["output"].append(
@@ -507,7 +508,7 @@ class OpenAIResponsesConverter(BaseConverter):
         """Apply tools, tool_choice, and tool_config to provider request."""
         tools = ir_request.get("tools")
         if tools:
-            result["tools"] = self._get_cached_tools_to_p(tools)
+            result["tools"] = self._tools_to_p_preserving_namespaces(tools)
         tool_choice = ir_request.get("tool_choice")
         if tool_choice:
             result["tool_choice"] = self.tool_ops.ir_tool_choice_to_p(tool_choice)
@@ -515,6 +516,96 @@ class OpenAIResponsesConverter(BaseConverter):
         if tool_config:
             tc_fields = self.tool_ops.ir_tool_config_to_p(tool_config)
             result.update(tc_fields)
+
+    @staticmethod
+    def _tools_to_p_preserving_namespaces(ir_tools: list[Any]) -> list[dict[str, Any]]:
+        """Convert tools to Responses format, regrouping namespace children."""
+        output: list[dict[str, Any]] = []
+        namespace_entries: dict[str, dict[str, Any]] = {}
+
+        for tool in ir_tools:
+            if not isinstance(tool, dict):
+                output.append(OpenAIResponsesToolOps.ir_tool_definition_to_p(tool))
+                continue
+
+            metadata = tool.get("metadata") or {}
+            namespace = metadata.get("responses_namespace")
+            if metadata.get("provider_type") != "namespace" or not isinstance(
+                namespace, str
+            ):
+                output.append(OpenAIResponsesToolOps.ir_tool_definition_to_p(tool))
+                continue
+
+            entry = namespace_entries.get(namespace)
+            if entry is None:
+                entry = {
+                    "type": "namespace",
+                    "name": namespace,
+                    "description": metadata.get("responses_namespace_description", ""),
+                    "tools": [],
+                }
+                namespace_entries[namespace] = entry
+                output.append(entry)
+
+            child = metadata.get("responses_namespace_child")
+            if isinstance(child, dict):
+                entry["tools"].append(dict(child))
+            else:
+                child_tool = OpenAIResponsesToolOps.ir_tool_definition_to_p(tool)
+                child_tool.pop("strict", None)
+                entry["tools"].append(child_tool)
+
+        return output
+
+    @staticmethod
+    def _store_namespace_tool_map(
+        ir_tools: list[Any],
+        ctx: ConversionContext,
+    ) -> None:
+        """Record Responses namespace child tool mappings for response restore."""
+        mapping: dict[str, str] = {}
+        for tool in ir_tools:
+            if not isinstance(tool, dict):
+                continue
+            metadata = tool.get("metadata") or {}
+            if metadata.get("provider_type") != "namespace":
+                continue
+            namespace = metadata.get("responses_namespace")
+            name = tool.get("name")
+            if (
+                isinstance(namespace, str)
+                and namespace
+                and isinstance(name, str)
+                and name
+            ):
+                mapping[name] = namespace
+        ctx.store_responses_namespace_tool_map(mapping)
+
+    def _ir_tool_call_to_p_with_context(
+        self,
+        part: Any,
+        context: ConversionContext | None,
+    ) -> dict[str, Any]:
+        """Convert a tool call and restore Responses namespace metadata."""
+        if not isinstance(part, dict):
+            return self.tool_ops.ir_tool_call_to_p(part)
+        if context is None:
+            return self.tool_ops.ir_tool_call_to_p(part)
+
+        tool_name = part.get("tool_name", part.get("name", ""))
+        namespace = (
+            context.get_responses_namespace_for_tool(tool_name)
+            if isinstance(tool_name, str)
+            else None
+        )
+        if not namespace:
+            return self.tool_ops.ir_tool_call_to_p(part)
+
+        patched = dict(part)
+        provider_metadata = dict(patched.get("provider_metadata") or {})
+        provider_metadata.setdefault("responses_namespace", namespace)
+        patched["provider_metadata"] = provider_metadata
+        return self.tool_ops.ir_tool_call_to_p(patched)
 
     def _convert_tool_config_from_p(
         self,
@@ -1408,7 +1499,15 @@ class OpenAIResponsesConverter(BaseConverter):
         call_id = event["tool_call_id"]
         tool_name = event["tool_name"]
         tool_type = event.get("tool_type", "function")
-        provider_metadata = event.get("provider_metadata") or {}
+        provider_metadata = dict(event.get("provider_metadata") or {})
+        if (
+            "responses_namespace" not in provider_metadata
+            and context is not None
+            and isinstance(tool_name, str)
+        ):
+            namespace = context.get_responses_namespace_for_tool(tool_name)
+            if namespace:
+                provider_metadata["responses_namespace"] = namespace
         item_id = provider_metadata.get("responses_item_id") or call_id
 
         # Register in context for later done events

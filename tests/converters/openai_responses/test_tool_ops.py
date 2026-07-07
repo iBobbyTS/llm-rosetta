@@ -143,6 +143,54 @@ class TestOpenAIResponsesToolOps:
         assert cast(Any, result)["_passthrough"] == provider_tool
         assert OpenAIResponsesToolOps.ir_tool_definition_to_p(result) == provider_tool
 
+    def test_p_tool_definition_to_ir_namespace_flattens_child_tools(self):
+        """Responses namespace tools expose child functions in IR."""
+        provider_tool = {
+            "type": "namespace",
+            "name": "multi_agent_v1",
+            "description": "Spawn and manage sub-agents.",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "spawn_agent",
+                    "description": "Spawn a sub-agent.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"prompt": {"type": "string"}},
+                        "required": ["prompt"],
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "wait_agent",
+                    "description": "Wait for a sub-agent.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"agent_id": {"type": "string"}},
+                        "required": ["agent_id"],
+                    },
+                },
+            ],
+        }
+
+        result = OpenAIResponsesToolOps.p_tool_definition_to_ir(provider_tool)
+
+        assert isinstance(result, list)
+        assert [tool["name"] for tool in result] == ["spawn_agent", "wait_agent"]
+        assert result[0]["type"] == "function"
+        assert result[0]["required_parameters"] == ["prompt"]
+        assert result[0]["metadata"]["provider_type"] == "namespace"
+        assert result[0]["metadata"]["responses_namespace"] == "multi_agent_v1"
+        assert (
+            result[0]["metadata"]["responses_namespace_description"]
+            == "Spawn and manage sub-agents."
+        )
+        assert (
+            result[0]["metadata"]["responses_namespace_child"]
+            == provider_tool["tools"][0]
+        )
+        assert "Spawn and manage sub-agents." in result[0]["description"]
+
     def test_tool_definition_round_trip(self):
         """Test tool definition round-trip."""
         ir_tool = cast(
@@ -265,6 +313,22 @@ class TestOpenAIResponsesToolOps:
         assert result["call_id"] == "call_123"
         assert result["name"] == "get_weather"
         assert json.loads(result["arguments"]) == {"city": "Beijing"}
+
+    def test_ir_tool_call_to_p_restores_namespace_metadata(self):
+        """Responses function_call preserves provider namespace metadata."""
+        ir_tc = ToolCallPart(
+            type="tool_call",
+            tool_call_id="call_123",
+            tool_name="spawn_agent",
+            tool_input={"prompt": "Translate README"},
+            provider_metadata={"responses_namespace": "multi_agent_v1"},
+        )
+
+        result = OpenAIResponsesToolOps.ir_tool_call_to_p(ir_tc)
+
+        assert result["type"] == "function_call"
+        assert result["name"] == "spawn_agent"
+        assert result["namespace"] == "multi_agent_v1"
 
     def test_ir_tool_call_to_p_mcp(self):
         """Test IR ToolCallPart with mcp tool_type → mcp_call item."""

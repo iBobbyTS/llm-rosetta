@@ -511,6 +511,10 @@ class ConversionPipeline:
         from_ctx.options["metadata_mode"] = "preserve"
         if "_request_echo" in ctx.metadata:
             to_ctx.metadata["_request_echo"] = ctx.metadata["_request_echo"]
+        if "_responses_namespace_tool_map" in ctx.metadata:
+            to_ctx.metadata["_responses_namespace_tool_map"] = ctx.metadata[
+                "_responses_namespace_tool_map"
+            ]
 
         return StreamProcessor(
             target_converter=self._target_converter,

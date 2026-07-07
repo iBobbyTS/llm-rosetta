@@ -29,6 +29,35 @@ from ..base.helpers import log_orphan_warnings, sanitize_schema
 logger = logging.getLogger(__name__)
 
 
+# Extra guidance for Codex goal tools when they are exposed through Chat
+# Completions-style function descriptions. Some Chat models do not reliably infer
+# the get/create/update sequence from the terse native Responses tool names.
+_GOAL_TOOL_DESCRIPTION_SUFFIXES = {
+    "create_goal": (
+        "Chat-model guidance: call this when the user explicitly asks to mark "
+        "a goal complete or blocked but get_goal returns no active goal, or "
+        "update_goal reports that the thread has no goal. Do not set "
+        "token_budget unless the user explicitly provided a numeric token "
+        "budget."
+    ),
+    "update_goal": (
+        "Chat-model guidance: before updating a goal, use get_goal when goal "
+        "state is uncertain. If no active goal exists or this tool reports "
+        "that the thread has no goal, call create_goal first with a concise "
+        "objective and no token_budget unless explicitly requested, then retry "
+        "update_goal with the requested status."
+    ),
+}
+
+
+def _adapt_chat_tool_description(tool_name: str, description: str) -> str:
+    """Add Chat-model guidance for selected Codex tool descriptions."""
+    suffix = _GOAL_TOOL_DESCRIPTION_SUFFIXES.get(tool_name)
+    if not suffix or suffix in description:
+        return description
+    return f"{description}\n\n{suffix}" if description else suffix
+
+
 # ==================== Orphaned Tool Call Fix ====================
 
 
@@ -146,9 +175,12 @@ class OpenAIChatToolOps(BaseToolOps):
             OpenAI Chat tool definition dict.
         """
         if ir_tool.get("type", "function") == "function":
+            name = ir_tool["name"]
             func_def: dict[str, Any] = {
-                "name": ir_tool["name"],
-                "description": ir_tool.get("description", ""),
+                "name": name,
+                "description": _adapt_chat_tool_description(
+                    name, ir_tool.get("description", "")
+                ),
             }
             parameters = ir_tool.get("parameters")
             if parameters and isinstance(parameters, dict):
@@ -168,7 +200,9 @@ class OpenAIChatToolOps(BaseToolOps):
             "type": "function",
             "function": {
                 "name": ir_tool["name"],
-                "description": ir_tool.get("description", ""),
+                "description": _adapt_chat_tool_description(
+                    ir_tool["name"], ir_tool.get("description", "")
+                ),
                 "parameters": params,
             },
         }

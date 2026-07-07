@@ -65,6 +65,32 @@ class TestOpenAIChatToolOps:
         assert result["function"]["name"] == "apply_patch"
         assert result["function"]["description"] == "Apply a patch"
 
+    def test_ir_tool_definition_to_p_adds_goal_chat_guidance(self):
+        """Goal tools get extra guidance when exposed as Chat functions."""
+        ir_tool = cast(
+            ToolDefinition,
+            {
+                "type": "function",
+                "name": "update_goal",
+                "description": "Update the existing goal.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"status": {"type": "string"}},
+                    "required": ["status"],
+                },
+                "required_parameters": ["status"],
+                "metadata": {},
+            },
+        )
+
+        result = OpenAIChatToolOps.ir_tool_definition_to_p(ir_tool)
+
+        description = result["function"]["description"]
+        assert description.startswith("Update the existing goal.")
+        assert "Chat-model guidance" in description
+        assert "call create_goal first" in description
+        assert result["function"]["parameters"]["required"] == ["status"]
+
     def test_p_tool_definition_to_ir(self):
         """Test OpenAI tool definition → IR ToolDefinition."""
         provider_tool = {
