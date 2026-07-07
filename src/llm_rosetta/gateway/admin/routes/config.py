@@ -555,6 +555,7 @@ async def put_server_settings(request: Any) -> Response:
         next_trace = {
             "enabled": bool(stream_trace.get("enabled", False)),
             "filter": str(stream_trace.get("filter", "") or "").strip(),
+            "path": str(stream_trace.get("path", "") or "").strip(),
             "max_string_chars": max_string_chars,
         }
         server["stream_trace"] = next_trace

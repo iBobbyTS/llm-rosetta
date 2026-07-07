@@ -47,6 +47,7 @@ def test_put_server_settings_updates_stream_trace_and_runtime_state(tmp_path):
         "stream_trace": {
             "enabled": True,
             "filter": "glm,opencode",
+            "path": "~/trace/log.jsonl",
             "max_string_chars": 1234,
         }
     }
@@ -58,7 +59,9 @@ def test_put_server_settings_updates_stream_trace_and_runtime_state(tmp_path):
     assert saved["server"]["stream_trace"] == {
         "enabled": True,
         "filter": "glm,opencode",
+        "path": "~/trace/log.jsonl",
         "max_string_chars": 1234,
     }
     assert app.stream_trace_state.config.enabled is True
     assert app.stream_trace_state.config.filter == "glm,opencode"
+    assert app.stream_trace_state.config.path == "~/trace/log.jsonl"

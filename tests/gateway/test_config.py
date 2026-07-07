@@ -56,6 +56,7 @@ class TestStreamTraceConfig:
 
         assert cfg.stream_trace.enabled is False
         assert cfg.stream_trace.filter == ""
+        assert cfg.stream_trace.path == ""
         assert cfg.stream_trace.max_string_chars == 20_000
 
     def test_parses_config_values(self):
@@ -64,6 +65,7 @@ class TestStreamTraceConfig:
                 stream_trace={
                     "enabled": True,
                     "filter": "glm,opencode",
+                    "path": "~/trace/log.jsonl",
                     "max_string_chars": "5000",
                 }
             )
@@ -71,4 +73,5 @@ class TestStreamTraceConfig:
 
         assert cfg.stream_trace.enabled is True
         assert cfg.stream_trace.filter == "glm,opencode"
+        assert cfg.stream_trace.path == "~/trace/log.jsonl"
         assert cfg.stream_trace.max_string_chars == 5000

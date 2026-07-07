@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
 
 from llm_rosetta.gateway.proxy import _stream_event_generator
@@ -99,7 +100,7 @@ def test_stream_trace_state_respects_config_filter():
         provider_name="Opencode Go",
     )
     assert logger is not None
-    assert logger.path.as_posix() == DEFAULT_TRACE_PATH
+    assert logger.path == Path(DEFAULT_TRACE_PATH).expanduser()
     assert (
         state.create_logger(
             request_id=None,
@@ -111,3 +112,26 @@ def test_stream_trace_state_respects_config_filter():
         )
         is None
     )
+
+
+def test_stream_trace_state_uses_configured_path(tmp_path):
+    """Trace logger writes to configured path when one is supplied."""
+    trace_path = tmp_path / "custom-stream-trace.jsonl"
+    state = StreamTraceState(
+        StreamTraceConfig(
+            enabled=True,
+            path=str(trace_path),
+        )
+    )
+
+    logger = state.create_logger(
+        request_id=None,
+        request_log_id=None,
+        model="glm-5.2",
+        source_provider="openai_responses",
+        target_provider="openai_chat",
+        provider_name="Opencode Go",
+    )
+
+    assert logger is not None
+    assert logger.path == trace_path

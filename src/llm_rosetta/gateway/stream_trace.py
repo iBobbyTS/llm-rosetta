@@ -14,7 +14,7 @@ from llm_rosetta.auto_detect import ProviderType
 logger = logging.getLogger("llm-rosetta-gateway")
 
 DEFAULT_MAX_CHARS = 20_000
-DEFAULT_TRACE_PATH = "/Users/ibobby/.config/llm-rosetta-gateway/log.jsonl"
+DEFAULT_TRACE_PATH = "~/.config/llm-rosetta-gateway/log.jsonl"
 
 
 @dataclass
@@ -23,6 +23,7 @@ class StreamTraceConfig:
 
     enabled: bool = False
     filter: str = ""
+    path: str = ""
     max_string_chars: int = DEFAULT_MAX_CHARS
 
     @classmethod
@@ -41,6 +42,7 @@ class StreamTraceConfig:
         return cls(
             enabled=bool(value.get("enabled", False)),
             filter=str(value.get("filter", "") or ""),
+            path=str(value.get("path", "") or "").strip(),
             max_string_chars=max_string_chars,
         )
 
@@ -49,6 +51,7 @@ class StreamTraceConfig:
         return {
             "enabled": self.enabled,
             "filter": self.filter,
+            "path": self.path,
             "max_string_chars": self.max_string_chars,
         }
 
@@ -88,7 +91,7 @@ class StreamTraceState:
             return None
 
         return StreamTraceLogger(
-            path=Path(DEFAULT_TRACE_PATH),
+            path=_resolve_trace_path(config.path),
             request_id=request_id,
             request_log_id=request_log_id,
             model=model,
@@ -173,6 +176,10 @@ def _matches_filter(
     ).lower()
     needles = [part.strip().lower() for part in filter_value.split(",")]
     return any(needle and needle in haystack for needle in needles)
+
+
+def _resolve_trace_path(path: str | None) -> Path:
+    return Path(str(path or "").strip() or DEFAULT_TRACE_PATH).expanduser()
 
 
 def _truncate(value: Any, max_string_chars: int) -> Any:
