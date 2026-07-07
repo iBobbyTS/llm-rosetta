@@ -19,8 +19,10 @@ from llm_rosetta.gateway.tool_adaptation import (
     CodexToolLocalizationStore,
     LOCALIZATION_CAPABILITIES_KEY,
     LOCALIZED_CODE_TOOL_NAMES,
+    READ_OUTPUT_CACHE_KEY,
     LocalizedToolCallStreamTransformer,
     NativeToolCapabilities,
+    ReadOutputCache,
     localized_mapping_from_tool_calls,
     generated_patch_for_edit,
     localize_code_editing_chat_request,
@@ -158,6 +160,133 @@ def test_translate_localized_edit_to_exec_command_when_apply_patch_absent():
     assert "+print('new')" in command
 
 
+def test_translate_localized_edit_expands_substring_from_read_cache():
+    cache = ReadOutputCache()
+    cache.remember(
+        "README.md",
+        "Intro\n"
+        "[AGENTS.md](AGENTS.md) names the repo. Codex 设计总共有2层 `AGENTS.md`。\n"
+        "Tail\n",
+    )
+
+    translated = translate_localized_tool_call_part(
+        {
+            "type": "tool_call",
+            "tool_call_id": "call_edit",
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "README.md",
+                "old_string": "Codex 设计总共有2层 `AGENTS.md`。",
+                "new_string": "Codex 共有2层 `AGENTS.md`。",
+            },
+        },
+        read_cache=cache,
+    )
+
+    assert translated is not None
+    patch = translated.part["tool_input"]["input"]
+    assert (
+        "-[AGENTS.md](AGENTS.md) names the repo. Codex 设计总共有2层 `AGENTS.md`。"
+        in patch
+    )
+    assert (
+        "+[AGENTS.md](AGENTS.md) names the repo. Codex 共有2层 `AGENTS.md`。" in patch
+    )
+
+
+def test_translate_localized_edit_does_not_expand_ambiguous_read_cache_match():
+    cache = ReadOutputCache()
+    cache.remember(
+        "README.md",
+        "First prefix shared text.\nSecond prefix shared text.\n",
+    )
+
+    translated = translate_localized_tool_call_part(
+        {
+            "type": "tool_call",
+            "tool_call_id": "call_edit",
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "README.md",
+                "old_string": "shared text.",
+                "new_string": "updated text.",
+            },
+        },
+        read_cache=cache,
+    )
+
+    assert translated is not None
+    patch = translated.part["tool_input"]["input"]
+    assert "-shared text." in patch
+    assert "First prefix" not in patch
+    assert "Second prefix" not in patch
+
+
+def test_localize_request_rebuilds_read_cache_and_invalidates_after_successful_edit():
+    body = {
+        "messages": [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "read_1",
+                        "type": "function",
+                        "function": {
+                            "name": "Read",
+                            "arguments": json.dumps({"file_path": "README.md"}),
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "read_1",
+                "content": "Output:\nPrefix old text.\n",
+            },
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "edit_1",
+                        "type": "function",
+                        "function": {
+                            "name": "Edit",
+                            "arguments": json.dumps(
+                                {
+                                    "file_path": "README.md",
+                                    "old_string": "old text.",
+                                    "new_string": "new text.",
+                                }
+                            ),
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "edit_1",
+                "content": "Success. Updated the following files:\nM README.md",
+            },
+        ]
+    }
+
+    adapted = localize_code_editing_chat_request(
+        body,
+        store=CodexToolLocalizationStore(),
+    )
+    cache = adapted[READ_OUTPUT_CACHE_KEY]
+
+    assert isinstance(cache, ReadOutputCache)
+    assert (
+        cache.expand_edit(
+            file_path="README.md",
+            old_string="old text.",
+            new_string="new text.",
+        )
+        is None
+    )
+
+
 def test_invalid_localized_call_becomes_meaningful_exec_error():
     translated = translate_localized_tool_call_part(
         {
@@ -268,7 +397,30 @@ def test_gateway_non_streaming_localizes_request_and_returns_native_tool_call():
     transport.send_request = AsyncMock(side_effect=send_request)
     body = {
         "model": "glm-5.2",
-        "input": [{"role": "user", "content": "edit example.txt"}],
+        "input": [
+            {"role": "user", "content": "read example.txt"},
+            {
+                "type": "function_call",
+                "call_id": "call_read",
+                "name": "exec_command",
+                "arguments": json.dumps(
+                    {
+                        "cmd": "python3 -c 'from pathlib import Path\n"
+                        "import sys\n"
+                        "path = Path(sys.argv[1])\n"
+                        "text = path.read_text(encoding='utf-8')\n"
+                        "sys.stdout.write(text)\n"
+                        "' example.txt"
+                    }
+                ),
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_read",
+                "output": "Output:\nprefix old\n",
+            },
+            {"role": "user", "content": "edit example.txt"},
+        ],
         "tools": [
             {
                 "type": "function",
@@ -283,6 +435,35 @@ def test_gateway_non_streaming_localizes_request_and_returns_native_tool_call():
         ],
     }
     tool_store = CodexToolLocalizationStore()
+    read_mapping = localized_mapping_from_tool_calls(
+        {
+            "id": "call_read",
+            "type": "function",
+            "function": {
+                "name": "Read",
+                "arguments": json.dumps({"file_path": "example.txt"}),
+            },
+        },
+        {
+            "id": "call_read",
+            "type": "function",
+            "function": {
+                "name": "exec_command",
+                "arguments": json.dumps(
+                    {
+                        "cmd": "python3 -c 'from pathlib import Path\n"
+                        "import sys\n"
+                        "path = Path(sys.argv[1])\n"
+                        "text = path.read_text(encoding='utf-8')\n"
+                        "sys.stdout.write(text)\n"
+                        "' example.txt"
+                    }
+                ),
+            },
+        },
+    )
+    assert read_mapping is not None
+    tool_store.remember(read_mapping)
 
     async def run():
         return await handle_non_streaming(
@@ -309,6 +490,8 @@ def test_gateway_non_streaming_localizes_request_and_returns_native_tool_call():
     assert output[0]["type"] == "custom_tool_call"
     assert output[0]["name"] == "apply_patch"
     assert "*** Update File: example.txt" in output[0]["input"]
+    assert "-prefix old" in output[0]["input"]
+    assert "+prefix new" in output[0]["input"]
 
     next_chat_request = localize_code_editing_chat_request(
         {

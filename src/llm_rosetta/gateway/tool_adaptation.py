@@ -21,6 +21,7 @@ NATIVE_CODE_TOOL_NAMES = frozenset(
     {"apply_patch", "exec_command", "write_stdin", "shell_command"}
 )
 LOCALIZATION_CAPABILITIES_KEY = "_codex_tool_localization_capabilities"
+READ_OUTPUT_CACHE_KEY = "_codex_read_output_cache"
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,86 @@ class LocalizedToolMapping:
     def codex_tool_call(self) -> dict[str, Any]:
         """Return the Codex-native Chat tool call shape for persistence."""
         return _chat_tool_call(self.call_id, self.native_name, self.native_input)
+
+
+@dataclass(frozen=True)
+class ReadCall:
+    """Model-facing Read call identity and file path."""
+
+    call_id: str
+    file_path: str
+
+
+class ReadOutputCache:
+    """Session-local cache rebuilt from localized Chat history."""
+
+    def __init__(self) -> None:
+        self._items: dict[str, list[str]] = {}
+        self._pending_reads: dict[str, str] = {}
+        self._pending_mutations: dict[str, str] = {}
+
+    def remember_read_call(self, call_id: str, file_path: str) -> None:
+        """Remember the file path associated with a Read call."""
+        if call_id and file_path:
+            self._pending_reads[call_id] = file_path
+
+    def remember_tool_output(self, call_id: str, text: str) -> None:
+        """Remember Read outputs and invalidate cache after successful edits."""
+        file_path = self._pending_reads.get(call_id)
+        if file_path is not None:
+            self.remember(file_path, text)
+            return
+        file_path = self._pending_mutations.get(call_id)
+        if file_path is not None and not _tool_output_indicates_failure(text):
+            self.invalidate(file_path)
+
+    def remember(self, file_path: str, text: str) -> None:
+        """Remember one Read output for a file path."""
+        if not file_path:
+            return
+        self._items.setdefault(file_path, []).append(_unwrap_command_output(text))
+
+    def remember_mutating_call(self, call_id: str, file_path: str) -> None:
+        """Remember a localized call that may change one file."""
+        if call_id and file_path:
+            self._pending_mutations[call_id] = file_path
+
+    def invalidate(self, file_path: str) -> None:
+        """Drop cached Read outputs for a file path."""
+        self._items.pop(file_path, None)
+
+    def expand_edit(
+        self,
+        *,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+    ) -> tuple[str, str] | None:
+        """Expand a substring edit to a full-line replacement when unambiguous."""
+        if not file_path or not old_string:
+            return None
+
+        candidates: list[tuple[str, str]] = []
+        for text in self._items.get(file_path, []):
+            candidates.extend(
+                _line_expansion_candidates(
+                    text,
+                    old_string=old_string,
+                    new_string=new_string,
+                )
+            )
+
+        unique: list[tuple[str, str]] = []
+        for candidate in candidates:
+            if candidate not in unique:
+                unique.append(candidate)
+
+        if len(unique) != 1:
+            return None
+        expanded_old, expanded_new = unique[0]
+        if expanded_old == old_string:
+            return None
+        return expanded_old, expanded_new
 
 
 @dataclass(frozen=True)
@@ -157,6 +238,7 @@ def localize_code_editing_chat_request(
     tools = adapted.get("tools")
     removed_native = False
     native_capabilities = capabilities or NativeToolCapabilities.from_chat_tools(tools)
+    read_cache = ReadOutputCache()
 
     if isinstance(tools, list):
         preserved_tools: list[Any] = []
@@ -183,15 +265,18 @@ def localize_code_editing_chat_request(
 
     messages = adapted.get("messages")
     if isinstance(messages, list) and (store is not None or mappings):
-        adapted["messages"] = [
-            _localize_history_message(
+        localized_messages: list[Any] = []
+        for message in messages:
+            localized = _localize_history_message(
                 message,
                 store,
                 mappings,
                 used_call_ids=used_call_ids,
             )
-            for message in messages
-        ]
+            _update_read_output_cache_from_message(localized, read_cache)
+            localized_messages.append(localized)
+        adapted["messages"] = localized_messages
+        adapted[READ_OUTPUT_CACHE_KEY] = read_cache
 
     return adapted
 
@@ -222,6 +307,7 @@ def translate_localized_ir_response(
     *,
     store: CodexToolLocalizationStore | None = None,
     capabilities: NativeToolCapabilities | None = None,
+    read_cache: ReadOutputCache | None = None,
 ) -> dict[str, Any]:
     """Translate localized IR tool calls in-place inside an IR response."""
     for choice in ir_response.get("choices", []):
@@ -239,6 +325,7 @@ def translate_localized_ir_response(
             translated = translate_localized_tool_call_part(
                 part,
                 capabilities=capabilities,
+                read_cache=read_cache,
             )
             if translated is None:
                 continue
@@ -261,6 +348,7 @@ def translate_localized_tool_call_part(
     part: dict[str, Any],
     *,
     capabilities: NativeToolCapabilities | None = None,
+    read_cache: ReadOutputCache | None = None,
 ) -> TranslatedToolCall | None:
     """Translate one localized IR tool_call part to a Codex-native tool call."""
     localized_name = part.get("tool_name", "")
@@ -282,6 +370,7 @@ def translate_localized_tool_call_part(
             localized_name,
             localized_input,
             capabilities=capabilities or NativeToolCapabilities(),
+            read_cache=read_cache,
         )
     except ValueError as exc:
         return _error_translation(call_id, localized_name, localized_input, str(exc))
@@ -320,10 +409,12 @@ class LocalizedToolCallStreamTransformer:
         store: CodexToolLocalizationStore | None = None,
         on_mapping: Any | None = None,
         capabilities: NativeToolCapabilities | None = None,
+        read_cache: ReadOutputCache | None = None,
     ) -> None:
         self._store = store
         self._on_mapping = on_mapping
         self._capabilities = capabilities or NativeToolCapabilities()
+        self._read_cache = read_cache
         self._pending: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
     def transform(self, event: dict[str, Any]) -> list[dict[str, Any]]:
@@ -374,6 +465,7 @@ class LocalizedToolCallStreamTransformer:
             translated = translate_localized_tool_call_part(
                 part,
                 capabilities=self._capabilities,
+                read_cache=self._read_cache,
             )
             if translated is None:
                 events.append(start)
@@ -572,6 +664,7 @@ def _localized_call_to_native(
     localized_input: dict[str, Any],
     *,
     capabilities: NativeToolCapabilities,
+    read_cache: ReadOutputCache | None = None,
 ) -> tuple[str, Any, str]:
     if localized_name == "Bash":
         command = _required_string(localized_input, "command", tool_name="Bash")
@@ -617,44 +710,10 @@ def _localized_call_to_native(
         )
 
     if localized_name == "Edit":
-        if localized_input.get("replace_all"):
-            return (
-                "exec_command",
-                {
-                    "cmd": generated_command_for_replace_all(localized_input),
-                    "yield_time_ms": 1_000,
-                    "max_output_tokens": 20_000,
-                },
-                "function",
-            )
-        file_path = _required_string(localized_input, "file_path", tool_name="Edit")
-        old_string = _required_string(localized_input, "old_string", tool_name="Edit")
-        new_string = _required_string(localized_input, "new_string", tool_name="Edit")
-        if old_string == "":
-            raise ValueError("Edit old_string must not be empty.")
-        patch = generated_patch_for_edit(file_path, old_string, new_string)
-        if not capabilities.has_custom_apply_patch:
-            if capabilities.has_exec_command:
-                return (
-                    "exec_command",
-                    {
-                        "cmd": generated_apply_patch_heredoc_command(patch),
-                        "yield_time_ms": 1_000,
-                        "max_output_tokens": 20_000,
-                    },
-                    "function",
-                )
-            if capabilities.has_shell_command:
-                return (
-                    "shell_command",
-                    {"command": generated_apply_patch_heredoc_command(patch)},
-                    "function",
-                )
-            raise ValueError("Edit requires apply_patch or exec_command support.")
-        return (
-            "apply_patch",
-            {"input": patch},
-            "custom",
+        return _localized_edit_to_native(
+            localized_input,
+            capabilities=capabilities,
+            read_cache=read_cache,
         )
 
     if localized_name == "Write":
@@ -669,6 +728,61 @@ def _localized_call_to_native(
         )
 
     raise ValueError(f"Unsupported localized tool: {localized_name}")
+
+
+def _localized_edit_to_native(
+    localized_input: dict[str, Any],
+    *,
+    capabilities: NativeToolCapabilities,
+    read_cache: ReadOutputCache | None = None,
+) -> tuple[str, Any, str]:
+    if localized_input.get("replace_all"):
+        return (
+            "exec_command",
+            {
+                "cmd": generated_command_for_replace_all(localized_input),
+                "yield_time_ms": 1_000,
+                "max_output_tokens": 20_000,
+            },
+            "function",
+        )
+    file_path = _required_string(localized_input, "file_path", tool_name="Edit")
+    old_string = _required_string(localized_input, "old_string", tool_name="Edit")
+    new_string = _required_string(localized_input, "new_string", tool_name="Edit")
+    if old_string == "":
+        raise ValueError("Edit old_string must not be empty.")
+    if read_cache is not None:
+        expanded = read_cache.expand_edit(
+            file_path=file_path,
+            old_string=old_string,
+            new_string=new_string,
+        )
+        if expanded is not None:
+            old_string, new_string = expanded
+    patch = generated_patch_for_edit(file_path, old_string, new_string)
+    if not capabilities.has_custom_apply_patch:
+        if capabilities.has_exec_command:
+            return (
+                "exec_command",
+                {
+                    "cmd": generated_apply_patch_heredoc_command(patch),
+                    "yield_time_ms": 1_000,
+                    "max_output_tokens": 20_000,
+                },
+                "function",
+            )
+        if capabilities.has_shell_command:
+            return (
+                "shell_command",
+                {"command": generated_apply_patch_heredoc_command(patch)},
+                "function",
+            )
+        raise ValueError("Edit requires apply_patch or exec_command support.")
+    return (
+        "apply_patch",
+        {"input": patch},
+        "custom",
+    )
 
 
 def _localized_chat_tool_definitions() -> list[dict[str, Any]]:
@@ -817,6 +931,98 @@ def _localize_history_message(
     adapted = dict(message)
     adapted["tool_calls"] = localized_tool_calls
     return adapted
+
+
+def _update_read_output_cache_from_message(
+    message: Any,
+    cache: ReadOutputCache,
+) -> None:
+    if not isinstance(message, dict):
+        return
+    if message.get("role") == "assistant":
+        tool_calls = message.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            return
+        for tool_call in tool_calls:
+            read_call = _read_call_from_tool_call(tool_call)
+            if read_call is not None:
+                cache.remember_read_call(read_call.call_id, read_call.file_path)
+                continue
+            mutating_call = _mutating_call_from_tool_call(tool_call)
+            if mutating_call is not None:
+                cache.remember_mutating_call(
+                    mutating_call.call_id,
+                    mutating_call.file_path,
+                )
+        return
+
+    if message.get("role") == "tool":
+        call_id = str(message.get("tool_call_id") or "")
+        content = _tool_message_text(message.get("content"))
+        if call_id and content is not None:
+            cache.remember_tool_output(call_id, content)
+
+
+def _read_call_from_tool_call(tool_call: Any) -> ReadCall | None:
+    if not isinstance(tool_call, dict):
+        return None
+    function = tool_call.get("function")
+    if not isinstance(function, dict) or function.get("name") != "Read":
+        return None
+    try:
+        args = json.loads(function.get("arguments") or "{}")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(args, dict) or not isinstance(args.get("file_path"), str):
+        return None
+    call_id = str(tool_call.get("id") or "")
+    if not call_id:
+        return None
+    return ReadCall(call_id=call_id, file_path=args["file_path"])
+
+
+def _mutating_call_from_tool_call(tool_call: Any) -> ReadCall | None:
+    if not isinstance(tool_call, dict):
+        return None
+    function = tool_call.get("function")
+    if not isinstance(function, dict) or function.get("name") not in {"Edit", "Write"}:
+        return None
+    try:
+        args = json.loads(function.get("arguments") or "{}")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(args, dict) or not isinstance(args.get("file_path"), str):
+        return None
+    call_id = str(tool_call.get("id") or "")
+    if not call_id:
+        return None
+    return ReadCall(call_id=call_id, file_path=args["file_path"])
+
+
+def _tool_message_text(content: Any) -> str | None:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, dict):
+                text = part.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+            elif isinstance(part, str):
+                parts.append(part)
+        return "\n".join(parts)
+    return None
+
+
+def _tool_output_indicates_failure(text: str) -> bool:
+    lowered = text.lower()
+    return (
+        "exit code: 1" in lowered
+        or "apply_patch verification failed" in lowered
+        or "edit failed:" in lowered
+        or "tool adaptation error:" in lowered
+    )
 
 
 def _localize_history_tool_call(
@@ -1066,6 +1272,43 @@ def _prefixed_patch_lines(text: str, prefix: str) -> list[str]:
     if text == "":
         return [prefix]
     return [prefix + line for line in text.splitlines()]
+
+
+def _unwrap_command_output(text: str) -> str:
+    marker = "Output:\n"
+    if marker in text:
+        return text.split(marker, 1)[1]
+    return text
+
+
+def _line_expansion_candidates(
+    text: str,
+    *,
+    old_string: str,
+    new_string: str,
+) -> list[tuple[str, str]]:
+    candidates: list[tuple[str, str]] = []
+    start = 0
+    while True:
+        index = text.find(old_string, start)
+        if index < 0:
+            return candidates
+
+        before = text[index - 1] if index > 0 else "\n"
+        after_index = index + len(old_string)
+        after = text[after_index] if after_index < len(text) else "\n"
+        if before == "\n" and after == "\n":
+            start = index + 1
+            continue
+
+        line_start = text.rfind("\n", 0, index) + 1
+        line_end = text.find("\n", after_index)
+        if line_end < 0:
+            line_end = len(text)
+        full_old = text[line_start:line_end]
+        if old_string in full_old:
+            candidates.append((full_old, full_old.replace(old_string, new_string, 1)))
+        start = index + 1
 
 
 def _python_command(script: str, *args: Any) -> str:

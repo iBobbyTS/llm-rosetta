@@ -40,9 +40,11 @@ from .stream_trace import StreamTraceLogger, StreamTraceState
 from .tool_adaptation import (
     CodexToolLocalizationStore,
     LOCALIZATION_CAPABILITIES_KEY,
+    READ_OUTPUT_CACHE_KEY,
     LocalizedToolMapping,
     LocalizedToolCallStreamTransformer,
     NativeToolCapabilities,
+    ReadOutputCache,
     localized_mapping_from_tool_calls,
     localize_code_editing_chat_request,
     should_localize_code_tools,
@@ -236,6 +238,12 @@ def _pop_tool_localization_capabilities(
     )
 
 
+def _pop_read_output_cache(body: dict[str, Any]) -> ReadOutputCache | None:
+    """Remove and return internal Read output cache metadata from a request."""
+    value = body.pop(READ_OUTPUT_CACHE_KEY, None)
+    return value if isinstance(value, ReadOutputCache) else None
+
+
 def _load_persistent_tool_mappings(
     persistence: Any | None,
     *,
@@ -347,6 +355,7 @@ def _translate_and_persist_localized_response_tools(
     persistence: Any | None,
     session_id: str | None,
     capabilities: NativeToolCapabilities | None = None,
+    read_cache: ReadOutputCache | None = None,
 ) -> None:
     if not should_localize_code_tools(route):
         return
@@ -354,6 +363,7 @@ def _translate_and_persist_localized_response_tools(
         ir_response,
         store=tool_store,
         capabilities=capabilities,
+        read_cache=read_cache,
     )
     _persist_localized_response_mappings(
         ir_response,
@@ -636,6 +646,7 @@ async def handle_non_streaming(
         capabilities=source_tool_capabilities,
     )
     tool_capabilities = _pop_tool_localization_capabilities(target_body)
+    read_cache = _pop_read_output_cache(target_body)
 
     profile.update(pipeline.profile)
 
@@ -710,6 +721,7 @@ async def handle_non_streaming(
             persistence=persistence,
             session_id=tool_cache_session_id,
             capabilities=tool_capabilities,
+            read_cache=read_cache,
         )
         store.cache_from_response(ir_response)
 
@@ -1056,6 +1068,7 @@ async def handle_streaming(
         capabilities=source_tool_capabilities,
     )
     tool_capabilities = _pop_tool_localization_capabilities(target_body)
+    read_cache = _pop_read_output_cache(target_body)
 
     profile.update(pipeline.profile)
 
@@ -1179,6 +1192,7 @@ async def handle_streaming(
             store=tool_store,
             on_mapping=_persist_stream_mapping,
             capabilities=tool_capabilities,
+            read_cache=read_cache,
         )
     else:
         stream_transformer = None
