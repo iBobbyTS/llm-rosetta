@@ -1,157 +1,55 @@
-# LLM-Rosetta
+# Codex-Rosetta
 
 [![PyPI version](https://img.shields.io/pypi/v/llm-rosetta?color=green)](https://pypi.org/project/llm-rosetta/)
-[![GitHub release](https://img.shields.io/github/v/release/Oaklight/llm-rosetta?color=green)](https://github.com/Oaklight/llm-rosetta/releases/latest)
-[![Docker](https://img.shields.io/docker/v/oaklight/llm-rosetta-gateway?label=Docker&color=blue)](https://hub.docker.com/r/oaklight/llm-rosetta-gateway)
-[![CI](https://github.com/Oaklight/llm-rosetta/actions/workflows/ci.yml/badge.svg)](https://github.com/Oaklight/llm-rosetta/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.09360-b31b1b.svg)](https://arxiv.org/abs/2604.09360)
 
 [English Version](README_en.md) | [中文版](README_zh.md)
 
-**LLM-Rosetta** — 一个通过中心化中间表示（IR）的轴辐式架构，在不同 LLM 提供商 API 格式之间进行转换的 Python 库。
+**Codex-Rosetta** — 一个基于LLM-Rosetta的大模型网关，致力于将第三方大模型API服务接入Codex并优化工具调用、Plugin。
 
 ## Fork 定位
 
-本项目 fork 自 [Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta)。这个 fork 聚焦于将 Chat Completions 兼容接口转换到 Responses API，并适配工具调用语义，让开源模型更好地适配 Codex，同时也聚焦于多 Provider 的网关聚合。它不会太关注上游 Anthropic/Gemini 协议的大模型，也不会重点投入下游接入 Chat Completions、Anthropic 或 Gemini 产品。
-
-## 完整文档
-
-完整文档请访问：
-
-- **English**: [https://llm-rosetta.readthedocs.io/en/latest/](https://llm-rosetta.readthedocs.io/en/latest/)
-- **中文**: [https://llm-rosetta.readthedocs.io/zh-cn/latest/](https://llm-rosetta.readthedocs.io/zh-cn/latest/)
-
-## 解决的问题
-
-当构建需要对接多个 LLM 提供商的应用时，你会面临 N² 转换问题——每对提供商之间都需要专门的转换逻辑。LLM-Rosetta 通过轴辐式（hub-and-spoke）方案解决这一问题：每个提供商只需要一个与共享 IR 格式之间的转换器。
-
-```
-Provider A ──→ IR ──→ Provider B
-Provider C ──→ IR ──→ Provider D
-         ... 以此类推
-```
-
-## 支持的提供商
-
-| 提供商 | API 标准 | 请求 | 响应 | 流式 |
-|--------|---------|:----:|:----:|:----:|
-| OpenAI | Chat Completions | ✅ | ✅ | ✅ |
-| OpenAI | Responses API | ✅ | ✅ | ✅ |
-| Anthropic | Messages API | ✅ | ✅ | ✅ |
-| Google | GenAI API | ✅ | ✅ | ✅ |
-
-### Ollama 及其他 OpenAI 兼容服务
-
-LLM-Rosetta 可直接与任何提供 OpenAI 兼容接口的服务配合使用。[Ollama](https://ollama.com/)（v0.13+）是一个典型示例——它支持 LLM-Rosetta 所转换的四种 API 格式中的三种：
-
-| Ollama 端点 | LLM-Rosetta 转换器 | 起始版本 |
-|---|---|---|
-| `/v1/chat/completions` | `openai_chat` | 早期版本 |
-| `/v1/responses` | `openai_responses` | v0.13.3 |
-| `/v1/messages` | `anthropic` | v0.14.0 |
-
-其他兼容服务包括 [HuggingFace TGI](https://github.com/huggingface/text-generation-inference)、[vLLM](https://github.com/vllm-project/vllm) 和 [LM Studio](https://lmstudio.ai/)。
-
-## 功能特性
-
-- 统一的 IR 格式，支持消息、工具调用和内容块
-- 双向转换：请求转为提供商格式，响应从提供商格式转出
-- 流式传输支持，带类型化的流事件
-- 自动检测请求/响应对象的提供商类型
-- 支持文本、图片、工具调用和工具结果
-- 零必需依赖（仅需 `typing_extensions`）；提供商 SDK 为可选依赖
+本项目 fork 自 [Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta)。这个 fork 聚焦于将 Chat Completions 兼容接口转换到 Responses API，并适配工具调用语义，让开源模型更好地适配 Codex，同时也聚焦于多 Provider 的网关聚合。不会太关注上游 Anthropic/Google 协议的大模型，也不会重点投入下游接入 Chat Completions、Anthropic 或 Google 产品。
 
 ## 安装
 
-### 基本安装
+> 之后再补
 
-安装核心包（需要 **Python >= 3.8**）：
+## 完整文档
 
-```bash
-pip install llm-rosetta
-```
+暂无
 
-### 安装提供商 SDK
+## 解决的问题
 
-```bash
-# 单个提供商
-pip install llm-rosetta[openai]
-pip install llm-rosetta[anthropic]
-pip install llm-rosetta[google]
+在Codex中使用第三方大模型时通常会遇到以下问题：
+- 服务商只提供Chat Completions API
+- 模型不会用apply_patch改文件，导致只能用sed, python等工具执行修改
+- 内置功能如Goal, subagent等工作异常
+- 不主动调用Plugin
+- 少数模型没有多模态图像理解
+- Computer use, Browser use异常
+本项目会逐步解决，让Deepseek V4 Pro, GLM-5.x, Qwen3.7等优秀模型在Codex中能像GPT-5.5那样丝滑，享受低价的同时使用Codex的高级Agent能力。
 
-# 所有提供商
-pip install llm-rosetta[openai,anthropic,google]
-```
+目前已解决（尚未大规模投入生产）：
+- Responses API转换：[Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta)提供项目基底、基础协议转换以及简易WebUI。
+- 代码编辑工具翻译：由于这些模型基本都会推荐Claude Code作为首选Coding Agent，本项目参考了Claude Code的工具定义，让模型生成它们熟悉的CC工具调用，Rosetta再转换为apply_patch为Codex提供原生工具调用体验。
+- 输入缓存能力保留：由于中途拦截了工具，服务商那里的缓存和Codex本地session记录的不一致，Rosetta会自动在请求里进行工具替换，确保输入缓存命中。
+- Goal, TODO, Plan, Subagent已测试正常。
 
-### 可选依赖
 
-| 附加项 | 包 | 说明 |
-|--------|---|------|
-| `openai` | `openai` | OpenAI Chat Completions 和 Responses API |
-| `anthropic` | `anthropic` | Anthropic Messages API |
-| `google` | `google-genai` | Google GenAI API |
+## 支持的提供商
 
-## 快速开始
-
-```python
-from llm_rosetta import OpenAIChatConverter, AnthropicConverter
-
-# 创建转换器
-openai_conv = OpenAIChatConverter()
-anthropic_conv = AnthropicConverter()
-
-# 将 OpenAI 响应转换为 IR，再转换为 Anthropic 格式
-ir_messages = openai_conv.response_from_provider(openai_response)
-anthropic_request = anthropic_conv.request_to_provider(ir_messages)
-```
-
-### 自动检测
-
-```python
-from llm_rosetta import convert, detect_provider
-
-# 自动检测提供商并转换
-provider = detect_provider(some_response)
-ir_messages = convert(some_response, direction="from_provider")
-```
-
-### 跨提供商对话
-
-```python
-from llm_rosetta import OpenAIChatConverter, GoogleGenAIConverter
-from llm_rosetta.types.ir import Message, ContentPart
-
-# 共享的 IR 消息历史
-ir_messages = []
-
-# 第 1 轮：向 OpenAI 提问
-ir_messages.append(Message(role="user", content=[ContentPart(type="text", text="你好！")]))
-openai_request = openai_conv.request_to_provider({"messages": ir_messages})
-openai_response = openai_client.chat.completions.create(**openai_request)
-ir_messages.extend(openai_conv.response_from_provider(openai_response))
-
-# 第 2 轮：继续使用 Google —— 完整上下文保持
-google_request = google_conv.request_to_provider({"messages": ir_messages})
-```
+- DeepSeek、Opencode Go等提供OpenAI Chat Completions接口的服务。Rosetta会做翻译和工具层翻译。
+- OpenAI、API 中转站等提供OpenAI Responses接口的服务。Rosetta会直接透传请求，不做任何解码和重封装。
+由于本项目聚焦于把第三方服务接入Codex，而大部分提供商都支持chat端点，因此本项目仅保留LLM-Rosetta的anthropic/gemini接入能力，暂时不做后续优化。
 
 ## 引用
-
-如果您在研究中使用了 LLM-Rosetta，请引用我们的论文：
-
-```bibtex
-@article{ding2026llm,
-  title={LLM-Rosetta: A Hub-and-Spoke Intermediate Representation for Cross-Provider LLM API Translation},
-  author={Ding, Peng},
-  journal={arXiv preprint arXiv:2604.09360},
-  year={2026}
-}
-```
+[![LLM-Rosetta: A Hub-and-Spoke Intermediate Representation for Cross-Provider LLM API Translation (arXiv)](https://img.shields.io/badge/arXiv-2604.09360-b31b1b.svg)](https://arxiv.org/abs/2604.09360)
 
 ## 贡献
 
-欢迎贡献！请访问 [GitHub 仓库](https://github.com/Oaklight/llm-rosetta) 开始参与。
+欢迎贡献！请访问 [GitHub 仓库](https://github.com/iBobbyTS/codex-rosetta) 开始参与。
 
 ## 许可证
 
-本项目采用 MIT 许可证——详见 [LICENSE](LICENSE) 文件。
+本项目沿用 MIT 许可证——详见 [LICENSE](LICENSE) 文件。

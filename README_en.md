@@ -1,157 +1,59 @@
-# LLM-Rosetta
+# Codex-Rosetta
 
 [![PyPI version](https://img.shields.io/pypi/v/llm-rosetta?color=green)](https://pypi.org/project/llm-rosetta/)
-[![GitHub release](https://img.shields.io/github/v/release/Oaklight/llm-rosetta?color=green)](https://github.com/Oaklight/llm-rosetta/releases/latest)
-[![Docker](https://img.shields.io/docker/v/oaklight/llm-rosetta-gateway?label=Docker&color=blue)](https://hub.docker.com/r/oaklight/llm-rosetta-gateway)
-[![CI](https://github.com/Oaklight/llm-rosetta/actions/workflows/ci.yml/badge.svg)](https://github.com/Oaklight/llm-rosetta/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.09360-b31b1b.svg)](https://arxiv.org/abs/2604.09360)
 
 [English Version](README_en.md) | [中文版](README_zh.md)
 
-**LLM-Rosetta** — A Python library for converting between different LLM provider API formats using a hub-and-spoke architecture with a central IR (Intermediate Representation).
+**Codex-Rosetta** is an LLM gateway based on LLM-Rosetta. It focuses on connecting third-party LLM APIs to Codex while improving tool calling and plugin behavior.
 
 ## Fork Focus
 
-This project is forked from [Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta). This fork focuses on converting Chat Completions-compatible APIs to the Responses API, including tool-calling adaptation, so open-source models can better fit Codex, and on aggregating multiple providers behind one gateway. It will put less emphasis on upstream Anthropic/Gemini protocol models and downstream integrations for Chat Completions, Anthropic, or Gemini products.
-
-## Full Documentation
-
-Full documentation is available at:
-
-- **English**: [https://llm-rosetta.readthedocs.io/en/latest/](https://llm-rosetta.readthedocs.io/en/latest/)
-- **中文**: [https://llm-rosetta.readthedocs.io/zh-cn/latest/](https://llm-rosetta.readthedocs.io/zh-cn/latest/)
-
-## The Problem
-
-When building applications that work with multiple LLM providers, you face an N² conversion problem — every provider pair requires its own conversion logic. LLM-Rosetta solves this with a hub-and-spoke approach: each provider only needs a single converter to/from the shared IR format.
-
-```
-Provider A ──→ IR ──→ Provider B
-Provider C ──→ IR ──→ Provider D
-         ... and so on
-```
-
-## Supported Providers
-
-| Provider | API Standard | Request | Response | Streaming |
-|----------|-------------|:-------:|:--------:|:---------:|
-| OpenAI | Chat Completions | ✅ | ✅ | ✅ |
-| OpenAI | Responses API | ✅ | ✅ | ✅ |
-| Anthropic | Messages API | ✅ | ✅ | ✅ |
-| Google | GenAI API | ✅ | ✅ | ✅ |
-
-### Ollama & Other OpenAI-Compatible Servers
-
-LLM-Rosetta works out of the box with any server that exposes OpenAI-compatible endpoints. [Ollama](https://ollama.com/) (v0.13+) is a great example — it supports three of the four API formats that LLM-Rosetta converts between:
-
-| Ollama Endpoint | LLM-Rosetta Converter | Since |
-|---|---|---|
-| `/v1/chat/completions` | `openai_chat` | Early versions |
-| `/v1/responses` | `openai_responses` | v0.13.3 |
-| `/v1/messages` | `anthropic` | v0.14.0 |
-
-Other compatible servers include [HuggingFace TGI](https://github.com/huggingface/text-generation-inference), [vLLM](https://github.com/vllm-project/vllm), and [LM Studio](https://lmstudio.ai/).
-
-## Features
-
-- Unified IR format for messages, tool calls, and content parts
-- Bidirectional conversion: requests to provider format, responses from provider format
-- Streaming support with typed stream events
-- Auto-detection of provider from request/response objects
-- Support for text, images, tool calls, and tool results
-- Zero required dependencies (only `typing_extensions`); provider SDKs are optional
+This project is forked from [Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta). This fork focuses on converting Chat Completions-compatible APIs to the Responses API, adapting tool-call semantics so open models work better in Codex, and aggregating multiple providers behind one gateway. It will not put much emphasis on upstream Anthropic or Google protocol models, nor on downstream products that consume Chat Completions, Anthropic, or Google APIs.
 
 ## Installation
 
-### Basic Installation
+> To be documented.
 
-Install the core package (requires **Python >= 3.8**):
+## Full Documentation
 
-```bash
-pip install llm-rosetta
-```
+Not available yet.
 
-### Installing with Provider SDKs
+## Problems This Project Addresses
 
-```bash
-# Individual providers
-pip install llm-rosetta[openai]
-pip install llm-rosetta[anthropic]
-pip install llm-rosetta[google]
+Using third-party models in Codex usually runs into several issues:
 
-# All providers
-pip install llm-rosetta[openai,anthropic,google]
-```
+- Providers may only expose a Chat Completions API.
+- Models may not know how to edit files with `apply_patch`, so they fall back to `sed`, Python scripts, or other shell commands.
+- Built-in Codex flows such as Goal and subagents may behave incorrectly.
+- Models may not proactively call plugins.
+- Some models do not support multimodal image understanding.
+- Computer use and browser use may be unreliable.
 
-### Optional Dependencies
+This project aims to improve those behaviors so strong models such as DeepSeek V4 Pro, GLM-5.x, and Qwen3.7 can run smoothly in Codex, with lower cost while still using Codex's advanced agent capabilities.
 
-| Extra | Packages | Description |
-|-------|----------|-------------|
-| `openai` | `openai` | OpenAI Chat Completions & Responses API |
-| `anthropic` | `anthropic` | Anthropic Messages API |
-| `google` | `google-genai` | Google GenAI API |
+Currently solved, but not yet heavily production-tested:
 
-## Quick Start
+- Responses API conversion: [Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta) provides the project base, core protocol conversion, and a simple web UI.
+- Code editing tool translation: because these models often recommend Claude Code as their preferred coding agent, this project references Claude Code-style tool definitions. Models can emit familiar tool calls, and Rosetta converts them back to `apply_patch` or other Codex-native calls.
+- Input-cache preservation: because the gateway intercepts and rewrites tool calls, the provider-side cache and Codex's local session history can otherwise diverge. Rosetta rewrites historical tool calls in outgoing requests so provider input caches can still match.
+- Goal, TODO, Plan, and Subagent flows have been tested successfully.
 
-```python
-from llm_rosetta import OpenAIChatConverter, AnthropicConverter
+## Supported Providers
 
-# Create converters
-openai_conv = OpenAIChatConverter()
-anthropic_conv = AnthropicConverter()
+- DeepSeek, Opencode Go, and other services that expose an OpenAI Chat Completions-compatible API. Rosetta performs protocol conversion and tool-layer translation.
+- OpenAI, API relay services, and other services that expose an OpenAI Responses-compatible API. Rosetta directly passes through these requests without decoding and re-encoding them.
 
-# Convert an OpenAI response to IR, then to Anthropic format
-ir_messages = openai_conv.response_from_provider(openai_response)
-anthropic_request = anthropic_conv.request_to_provider(ir_messages)
-```
-
-### Auto-Detection
-
-```python
-from llm_rosetta import convert, detect_provider
-
-# Automatically detect provider and convert
-provider = detect_provider(some_response)
-ir_messages = convert(some_response, direction="from_provider")
-```
-
-### Cross-Provider Conversation
-
-```python
-from llm_rosetta import OpenAIChatConverter, GoogleGenAIConverter
-from llm_rosetta.types.ir import Message, ContentPart
-
-# Shared IR message history
-ir_messages = []
-
-# Turn 1: Ask OpenAI
-ir_messages.append(Message(role="user", content=[ContentPart(type="text", text="Hello!")]))
-openai_request = openai_conv.request_to_provider({"messages": ir_messages})
-openai_response = openai_client.chat.completions.create(**openai_request)
-ir_messages.extend(openai_conv.response_from_provider(openai_response))
-
-# Turn 2: Continue with Google — full context preserved
-google_request = google_conv.request_to_provider({"messages": ir_messages})
-```
+Because this project focuses on connecting third-party services to Codex, and most providers support a Chat endpoint, it only keeps LLM-Rosetta's Anthropic and Gemini integration capabilities for now and does not plan to optimize them further in the short term.
 
 ## Citation
 
-If you use LLM-Rosetta in your research, please cite our paper:
-
-```bibtex
-@article{ding2026llm,
-  title={LLM-Rosetta: A Hub-and-Spoke Intermediate Representation for Cross-Provider LLM API Translation},
-  author={Ding, Peng},
-  journal={arXiv preprint arXiv:2604.09360},
-  year={2026}
-}
-```
+[![LLM-Rosetta: A Hub-and-Spoke Intermediate Representation for Cross-Provider LLM API Translation (arXiv)](https://img.shields.io/badge/arXiv-2604.09360-b31b1b.svg)](https://arxiv.org/abs/2604.09360)
 
 ## Contributing
 
-Contributions are welcome! Please visit the [GitHub repository](https://github.com/Oaklight/llm-rosetta) to get started.
+Contributions are welcome. Visit the [GitHub repository](https://github.com/iBobbyTS/codex-rosetta) to get started.
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project keeps the MIT license. See [LICENSE](LICENSE) for details.
