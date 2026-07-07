@@ -36,6 +36,13 @@ from .logging import (
     log_upstream_error,
 )
 from .stream_trace import StreamTraceLogger, StreamTraceState
+from .tool_adaptation import (
+    CodexToolLocalizationStore,
+    LocalizedToolCallStreamTransformer,
+    localize_code_editing_chat_request,
+    should_localize_code_tools,
+    translate_localized_ir_response,
+)
 from .transport import (
     ProviderInfo,
     UpstreamConnectionError,
@@ -204,6 +211,18 @@ def _apply_tool_adaptation(
     return body
 
 
+def _apply_converted_request_tool_adaptation(
+    body: dict[str, Any],
+    route: ResolvedRoute,
+    *,
+    codex_tool_store: CodexToolLocalizationStore | None = None,
+) -> dict[str, Any]:
+    """Apply tool adaptation after source request has been converted."""
+    if should_localize_code_tools(route):
+        return localize_code_editing_chat_request(body, store=codex_tool_store)
+    return body
+
+
 def _create_stream_trace_logger(
     stream_trace_state: StreamTraceState | None,
     *,
@@ -234,12 +253,17 @@ async def close_resources(
     *,
     transport: UpstreamTransport | None = None,
     metadata_store: ProviderMetadataStore | None = None,
+    codex_tool_store: CodexToolLocalizationStore | None = None,
 ) -> None:
     """Close transport and clear metadata store (called on app shutdown)."""
     if transport is not None:
         await transport.close()
     store = metadata_store or _default_metadata_store
     store.clear()
+    tools = (
+        codex_tool_store if codex_tool_store is not None else _default_codex_tool_store
+    )
+    tools.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +366,7 @@ class ProviderMetadataStore:
 
 
 _default_metadata_store = ProviderMetadataStore()
+_default_codex_tool_store = CodexToolLocalizationStore()
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +381,7 @@ async def handle_non_streaming(
     *,
     transport: UpstreamTransport,
     metadata_store: ProviderMetadataStore | None = None,
+    codex_tool_store: CodexToolLocalizationStore | None = None,
     extra_headers: dict[str, str] | None = None,
     persistence: Any | None = None,
 ) -> tuple[Response, dict[str, Any]]:
@@ -367,6 +393,9 @@ async def handle_non_streaming(
         gateway-level measurements (upstream latency).
     """
     store = metadata_store or _default_metadata_store
+    tool_store = (
+        codex_tool_store if codex_tool_store is not None else _default_codex_tool_store
+    )
     profile: dict[str, Any] = {}
     # model was already injected into body by app.py
     model = body.get("model", "")
@@ -449,6 +478,11 @@ async def handle_non_streaming(
         )
     except ConversionError as exc:
         return error_response_for_source(route.source_provider, 400, str(exc)), profile
+    target_body = _apply_converted_request_tool_adaptation(
+        target_body,
+        route,
+        codex_tool_store=tool_store,
+    )
 
     profile.update(pipeline.profile)
 
@@ -508,9 +542,15 @@ async def handle_non_streaming(
     # Phase 4: Target response → Source response
     assert resp.body is not None
     log_response(resp.body, label="UPSTREAM RESPONSE")
+
+    def _on_response_ir_ready(ir_response: dict[str, Any]) -> None:
+        if should_localize_code_tools(route):
+            translate_localized_ir_response(ir_response, store=tool_store)
+        store.cache_from_response(ir_response)
+
     try:
         source_response = pipeline.convert_response(
-            resp.body, on_ir_ready=store.cache_from_response
+            resp.body, on_ir_ready=_on_response_ir_ready
         )
     except ConversionError as exc:
         profile.update(pipeline.profile)
@@ -676,6 +716,7 @@ async def handle_streaming(
     *,
     transport: UpstreamTransport,
     metadata_store: ProviderMetadataStore | None = None,
+    codex_tool_store: CodexToolLocalizationStore | None = None,
     extra_headers: dict[str, str] | None = None,
     entry_id: str | None = None,
     request_log: Any | None = None,
@@ -696,6 +737,9 @@ async def handle_streaming(
         after the stream completes.
     """
     store = metadata_store or _default_metadata_store
+    tool_store = (
+        codex_tool_store if codex_tool_store is not None else _default_codex_tool_store
+    )
     profile: dict[str, Any] = {}
     # model was already injected into body by app.py
     model = body.get("model", "")
@@ -829,6 +873,11 @@ async def handle_streaming(
         )
     except ConversionError as exc:
         return error_response_for_source(route.source_provider, 400, str(exc)), profile
+    target_body = _apply_converted_request_tool_adaptation(
+        target_body,
+        route,
+        codex_tool_store=tool_store,
+    )
 
     profile.update(pipeline.profile)
 
@@ -931,8 +980,16 @@ async def handle_streaming(
         if trace is not None:
             trace.log("ir_event", ir_event)
 
+    stream_transformer = (
+        LocalizedToolCallStreamTransformer(store=tool_store)
+        if should_localize_code_tools(route)
+        else None
+    )
     processor = pipeline.create_stream_processor(
         on_ir_event=_on_ir_event,
+        transform_ir_event=stream_transformer.transform
+        if stream_transformer is not None
+        else None,
     )
     format_sse = SSE_FORMATTERS[route.source_provider]
 

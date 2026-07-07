@@ -477,6 +477,8 @@ class ConversionPipeline:
         self,
         *,
         on_ir_event: Callable[[dict[str, Any]], None] | None = None,
+        transform_ir_event: Callable[[dict[str, Any]], list[dict[str, Any]]]
+        | None = None,
     ) -> StreamProcessor:
         """Create a stateful processor for streaming response chunks.
 
@@ -489,6 +491,8 @@ class ConversionPipeline:
             on_ir_event: Optional callback invoked for each IR event
                 produced from an upstream chunk.  Use this to cache
                 streaming metadata (e.g. ``store.cache_from_stream_event``).
+            transform_ir_event: Optional hook that can replace one IR event
+                with zero or more IR events before source-format serialization.
 
         Returns:
             A new StreamProcessor bound to this pipeline's converters
@@ -515,6 +519,7 @@ class ConversionPipeline:
             to_ctx=to_ctx,
             from_transforms=self._from_transforms,
             on_ir_event=on_ir_event,
+            transform_ir_event=transform_ir_event,
         )
 
 
@@ -553,6 +558,8 @@ class StreamProcessor:
         to_ctx: Any,
         from_transforms: tuple[Transform, ...] = (),
         on_ir_event: Callable[[dict[str, Any]], None] | None = None,
+        transform_ir_event: Callable[[dict[str, Any]], list[dict[str, Any]]]
+        | None = None,
     ) -> None:
         self._target_converter = target_converter
         self._source_converter = source_converter
@@ -560,6 +567,7 @@ class StreamProcessor:
         self._to_ctx = to_ctx
         self._from_transforms = from_transforms
         self._on_ir_event = on_ir_event
+        self._transform_ir_event = transform_ir_event
 
     def process_chunk(self, chunk: dict[str, Any]) -> list[dict[str, Any]]:
         """Convert one upstream chunk to source-format events.
@@ -589,15 +597,21 @@ class StreamProcessor:
         # IR → Source events
         result: list[dict[str, Any]] = []
         for ir_event in ir_events:
-            if self._on_ir_event is not None:
-                self._on_ir_event(ir_event)
-
-            source_chunks = self._source_converter.stream_response_to_provider(
-                ir_event, context=self._to_ctx
+            transformed_events = (
+                self._transform_ir_event(ir_event)
+                if self._transform_ir_event is not None
+                else [ir_event]
             )
-            if isinstance(source_chunks, list):
-                result.extend(sc for sc in source_chunks if sc)
-            elif source_chunks:
-                result.append(source_chunks)
+            for transformed_event in transformed_events:
+                if self._on_ir_event is not None:
+                    self._on_ir_event(transformed_event)
+
+                source_chunks = self._source_converter.stream_response_to_provider(
+                    transformed_event, context=self._to_ctx
+                )
+                if isinstance(source_chunks, list):
+                    result.extend(sc for sc in source_chunks if sc)
+                elif source_chunks:
+                    result.append(source_chunks)
 
         return result
