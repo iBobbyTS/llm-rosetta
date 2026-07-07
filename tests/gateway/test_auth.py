@@ -36,7 +36,7 @@ def _make_request(
 
 
 def _run(coro: Any) -> Any:
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -53,8 +53,9 @@ class TestNoApiKey:
 
         for path in [
             "/health",
-            "/v1/chat/completions",
-            "/v1/messages",
+            "/v1/responses",
+            "/v1/models",
+            "/v1/embeddings",
             "/admin/api/config",
         ]:
             resp = _run(hook(_make_request(path)))
@@ -81,29 +82,6 @@ class TestWithApiKey:
         resp = _run(hook(_make_request("/health", method="GET")))
         assert resp is None
 
-    # --- OpenAI Chat ---
-    def test_openai_chat_valid(self, hook: Any):
-        req = _make_request(
-            "/v1/chat/completions",
-            headers={"authorization": f"Bearer {self.KEY}"},
-        )
-        assert _run(hook(req)) is None
-
-    def test_openai_chat_missing(self, hook: Any):
-        req = _make_request("/v1/chat/completions")
-        resp = _run(hook(req))
-        assert resp is not None
-        assert resp.status_code == 401
-
-    def test_openai_chat_wrong(self, hook: Any):
-        req = _make_request(
-            "/v1/chat/completions",
-            headers={"authorization": "Bearer wrong-key"},
-        )
-        resp = _run(hook(req))
-        assert resp is not None
-        assert resp.status_code == 401
-
     # --- OpenAI Responses ---
     def test_openai_responses_valid(self, hook: Any):
         req = _make_request(
@@ -112,46 +90,33 @@ class TestWithApiKey:
         )
         assert _run(hook(req)) is None
 
-    # --- Anthropic ---
-    def test_anthropic_valid(self, hook: Any):
-        req = _make_request(
-            "/v1/messages",
-            headers={"x-api-key": self.KEY},
-        )
-        assert _run(hook(req)) is None
-
-    def test_anthropic_missing(self, hook: Any):
-        req = _make_request("/v1/messages")
+    def test_openai_responses_missing(self, hook: Any):
+        req = _make_request("/v1/responses")
         resp = _run(hook(req))
         assert resp is not None
         assert resp.status_code == 401
 
-    def test_anthropic_wrong(self, hook: Any):
+    def test_openai_responses_wrong(self, hook: Any):
         req = _make_request(
-            "/v1/messages",
-            headers={"x-api-key": "wrong"},
+            "/v1/responses",
+            headers={"authorization": "Bearer wrong-key"},
         )
         resp = _run(hook(req))
         assert resp is not None
         assert resp.status_code == 401
 
-    # --- Google GenAI (header) ---
-    def test_google_header_valid(self, hook: Any):
+    def test_openai_responses_ignores_anthropic_key_shape(self, hook: Any):
+        req = _make_request("/v1/responses", headers={"x-api-key": self.KEY})
+        resp = _run(hook(req))
+        assert resp is not None
+        assert resp.status_code == 401
+
+    def test_openai_responses_ignores_google_key_shape(self, hook: Any):
         req = _make_request(
-            "/v1beta/models/gemini:generateContent",
+            "/v1/responses",
             headers={"x-goog-api-key": self.KEY},
-        )
-        assert _run(hook(req)) is None
-
-    def test_google_query_valid(self, hook: Any):
-        req = _make_request(
-            "/v1beta/models/gemini:generateContent",
             query_params={"key": [self.KEY]},
         )
-        assert _run(hook(req)) is None
-
-    def test_google_missing(self, hook: Any):
-        req = _make_request("/v1beta/models/gemini:generateContent")
         resp = _run(hook(req))
         assert resp is not None
         assert resp.status_code == 401
@@ -165,12 +130,35 @@ class TestWithApiKey:
         )
         assert _run(hook(req)) is None
 
-    def test_google_models_list_valid(self, hook: Any):
+    def test_embeddings_valid(self, hook: Any):
         req = _make_request(
-            "/v1beta/models",
-            method="GET",
-            headers={"x-goog-api-key": self.KEY},
+            "/v1/embeddings",
+            headers={"authorization": f"Bearer {self.KEY}"},
         )
+        assert _run(hook(req)) is None
+
+    # --- Removed downstream endpoints fall through to routing ---
+    @pytest.mark.parametrize(
+        "path,headers,query_params",
+        [
+            ("/v1/chat/completions", {}, None),
+            ("/v1/messages", {"x-api-key": KEY}, None),
+            (
+                "/v1beta/models/gemini:generateContent",
+                {"x-goog-api-key": KEY},
+                {"key": [KEY]},
+            ),
+            ("/v1beta/models", {"x-goog-api-key": KEY}, None),
+        ],
+    )
+    def test_removed_downstream_paths_not_api_key_protected(
+        self,
+        hook: Any,
+        path: str,
+        headers: dict[str, str],
+        query_params: dict[str, list[str]] | None,
+    ):
+        req = _make_request(path, headers=headers, query_params=query_params)
         assert _run(hook(req)) is None
 
     # --- Admin (no gateway-level auth) ---
@@ -200,28 +188,28 @@ class TestMultiKey:
 
     def test_first_key_valid(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": "Bearer key-alpha"},
         )
         assert _run(hook(req)) is None
 
     def test_second_key_valid(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": "Bearer key-beta"},
         )
         assert _run(hook(req)) is None
 
     def test_third_key_valid(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": "Bearer key-gamma"},
         )
         assert _run(hook(req)) is None
 
     def test_invalid_key_rejected(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": "Bearer wrong-key"},
         )
         resp = _run(hook(req))
@@ -229,24 +217,10 @@ class TestMultiKey:
         assert resp.status_code == 401
 
     def test_missing_key_rejected(self, hook: Any):
-        req = _make_request("/v1/chat/completions")
+        req = _make_request("/v1/responses")
         resp = _run(hook(req))
         assert resp is not None
         assert resp.status_code == 401
-
-    def test_anthropic_multi_key(self, hook: Any):
-        req = _make_request(
-            "/v1/messages",
-            headers={"x-api-key": "key-beta"},
-        )
-        assert _run(hook(req)) is None
-
-    def test_google_multi_key(self, hook: Any):
-        req = _make_request(
-            "/v1beta/models/gemini:generateContent",
-            headers={"x-goog-api-key": "key-gamma"},
-        )
-        assert _run(hook(req)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -267,21 +241,21 @@ class TestInternalToken:
 
     def test_internal_token_accepted(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": f"Bearer {self.INTERNAL}"},
         )
         assert _run(hook(req)) is None
 
     def test_real_key_still_works(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": f"Bearer {self.KEY}"},
         )
         assert _run(hook(req)) is None
 
     def test_wrong_key_still_rejected(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": "Bearer wrong"},
         )
         resp = _run(hook(req))
@@ -314,7 +288,7 @@ class TestKeyLabelTracking:
 
     def test_label_attached_for_prod_key(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": "Bearer key-prod"},
         )
         _, label = _run(_run_and_get_label(hook, req))
@@ -322,7 +296,7 @@ class TestKeyLabelTracking:
 
     def test_label_attached_for_dev_key(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": "Bearer key-dev"},
         )
         _, label = _run(_run_and_get_label(hook, req))
@@ -330,16 +304,8 @@ class TestKeyLabelTracking:
 
     def test_internal_token_label(self, hook: Any):
         req = _make_request(
-            "/v1/chat/completions",
+            "/v1/responses",
             headers={"authorization": f"Bearer {self.INTERNAL}"},
         )
         _, label = _run(_run_and_get_label(hook, req))
         assert label == "internal"
-
-    def test_anthropic_label(self, hook: Any):
-        req = _make_request(
-            "/v1/messages",
-            headers={"x-api-key": "key-prod"},
-        )
-        _, label = _run(_run_and_get_label(hook, req))
-        assert label == "Production"

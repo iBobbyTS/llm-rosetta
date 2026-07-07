@@ -3103,32 +3103,64 @@ const TEST_IMAGE_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDA
 function getTestLabel(type) { return t('test.' + type); }
 
 function buildTestPayload(model, type) {
-  const base = {model, max_tokens: 256};
+  const base = {model, max_output_tokens: 256};
   switch(type) {
     case 'text':
-      return {...base, messages:[{role:'user', content:'Say "Hello! The gateway test is working." and nothing else.'}]};
+      return {...base, input:[{type:'message', role:'user', content:[{type:'input_text', text:'Say "Hello! The gateway test is working." and nothing else.'}]}]};
     case 'stream':
-      return {...base, stream:true, messages:[{role:'user', content:'Count from 1 to 5, one number per line.'}]};
+      return {...base, stream:true, input:[{type:'message', role:'user', content:[{type:'input_text', text:'Count from 1 to 5, one number per line.'}]}]};
     case 'tools':
       return {...base,
-        messages:[{role:'user', content:"What's the weather in San Francisco?"}],
-        tools:[{type:'function', function:{
+        input:[{type:'message', role:'user', content:[{type:'input_text', text:"What's the weather in San Francisco?"}]}],
+        tools:[{
+          type:'function',
           name:'get_weather',
           description:'Get current weather for a location',
           parameters:{type:'object', properties:{location:{type:'string',description:'City name'}}, required:['location']}
-        }}]
+        }]
       };
     case 'vision':
       return {...base,
-        messages:[{role:'user', content:[
-          {type:'text', text:'Describe what you see in this image in one sentence.'},
-          {type:'image_url', image_url:{url: TEST_IMAGE_URL}}
+        input:[{type:'message', role:'user', content:[
+          {type:'input_text', text:'Describe what you see in this image in one sentence.'},
+          {type:'input_image', image_url: TEST_IMAGE_URL}
         ]}]
       };
     case 'reasoning':
-      return {...base, reasoning_effort: 'low', messages:[{role:'user', content:'What is 15 * 37? Show your reasoning briefly.'}]};
+      return {...base, reasoning:{effort:'low'}, input:[{type:'message', role:'user', content:[{type:'input_text', text:'What is 15 * 37? Show your reasoning briefly.'}]}]};
     case 'embedding':
       return {model, input: 'Hello, world!'};
+  }
+}
+
+function extractResponsesText(body) {
+  if (body?.output_text) return body.output_text;
+  const parts = [];
+  for (const item of body?.output || []) {
+    if (item?.type !== 'message') continue;
+    for (const part of item.content || []) {
+      if (part?.type === 'output_text' || part?.type === 'text') parts.push(part.text || '');
+    }
+  }
+  return parts.join('');
+}
+
+function extractResponsesToolCall(body) {
+  return (body?.output || []).find(item => item?.type === 'function_call');
+}
+
+function appendResponsesStreamEvent(chunk, state) {
+  const type = chunk?.type || '';
+  if (type === 'response.output_text.delta' || type === 'response.text.delta') {
+    state.text += chunk.delta || '';
+    return;
+  }
+  if (type === 'response.output_item.done' && chunk.item?.type === 'message') {
+    for (const part of chunk.item.content || []) {
+      if ((part?.type === 'output_text' || part?.type === 'text') && part.text) {
+        state.doneText += part.text;
+      }
+    }
   }
 }
 
@@ -3224,7 +3256,7 @@ async function runTest(model, type) {
     // --- Async task path (embedding + all non-streaming tests) ---
     // Browser never holds a long connection; the gateway's httpx pool
     // handles the upstream call.
-    const endpoint = type === 'embedding' ? '/v1/embeddings' : '/v1/chat/completions';
+    const endpoint = type === 'embedding' ? '/v1/embeddings' : '/v1/responses';
     output.innerHTML = `<span class="test-spinner"></span>${t('test.sending')}`;
     // Show Cancel button and live elapsed timer
     const cancelBtn = document.getElementById('testCancelBtn');
@@ -3301,17 +3333,19 @@ async function runTest(model, type) {
               const dim = body?.data?.[0]?.embedding?.length;
               output.textContent = dim ? `Embedding OK — ${dim} dimensions` : t('test.emptyResponse');
             } else {
-              // Chat completion result
+              // Responses result
               if (body?.usage) {
-                meta.innerHTML += `<div class="meta-item"><strong>Tokens:</strong> ${body.usage.prompt_tokens || '?'} in / ${body.usage.completion_tokens || '?'} out</div>`;
+                const inputTokens = body.usage.input_tokens ?? body.usage.prompt_tokens ?? '?';
+                const outputTokens = body.usage.output_tokens ?? body.usage.completion_tokens ?? '?';
+                meta.innerHTML += `<div class="meta-item"><strong>Tokens:</strong> ${inputTokens} in / ${outputTokens} out</div>`;
               }
-              const choice = body?.choices?.[0];
-              if (type === 'tools' && choice?.message?.tool_calls) {
-                const tc = choice.message.tool_calls[0];
-                output.textContent = `Tool call: ${tc.function?.name || tc.name || '?'}(${tc.function?.arguments || JSON.stringify(tc.arguments) || '{}'})`;
-                if (choice.message.content) output.textContent += '\n\nContent: ' + choice.message.content;
+              const toolCall = extractResponsesToolCall(body);
+              if (type === 'tools' && toolCall) {
+                output.textContent = `Tool call: ${toolCall.name || '?'}(${toolCall.arguments || '{}'})`;
+                const content = extractResponsesText(body);
+                if (content) output.textContent += '\n\nContent: ' + content;
               } else {
-                const content = choice?.message?.content;
+                const content = extractResponsesText(body);
                 output.textContent = (content != null && content !== '') ? content : t('test.emptyResponse');
               }
             }
@@ -3345,7 +3379,7 @@ async function runTest(model, type) {
   output.classList.add('streaming');
   output.innerHTML = `<span class="test-spinner"></span>${t('test.connecting')}`;
   try {
-    const res = await fetch('/v1/chat/completions', {
+    const res = await fetch('/v1/responses', {
       method:'POST', headers:streamHeaders, body:JSON.stringify(payload), signal
     });
     if (!res.ok) {
@@ -3360,7 +3394,7 @@ async function runTest(model, type) {
     output.textContent = '';
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let fullText = '';
+    const streamState = {text: '', doneText: ''};
     let buffer = '';
     let rawChunks = [];
     while(true) {
@@ -3376,15 +3410,15 @@ async function runTest(model, type) {
         rawChunks.push(data);
         try {
           const chunk = JSON.parse(data);
-          const delta = chunk.choices?.[0]?.delta?.content || '';
-          fullText += delta;
-          output.textContent = fullText;
+          appendResponsesStreamEvent(chunk, streamState);
+          output.textContent = streamState.text || streamState.doneText;
           output.scrollTop = output.scrollHeight;
         } catch(e) {}
       }
     }
     output.className = 'test-output';
-    if (!fullText) output.textContent = t('test.emptyResponse');
+    if (!streamState.text && streamState.doneText) output.textContent = streamState.doneText;
+    if (!output.textContent) output.textContent = t('test.emptyResponse');
     const elapsed = ((performance.now() - t0)/1000).toFixed(2);
     meta.innerHTML += `<div class="meta-item"><strong>Time:</strong> ${elapsed}s</div><div class="meta-item"><strong>Status:</strong> <span style="color:var(--green)">OK (stream)</span></div>`;
     resDetails.style.display = '';

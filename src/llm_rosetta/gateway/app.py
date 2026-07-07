@@ -586,13 +586,9 @@ def create_app(config: GatewayConfig, config_path: str | None = None) -> App:
     app = App(max_body_size=50_000_000, read_timeout=300.0)
 
     # --- Routes ---
-    app.route("/v1/chat/completions", methods=["POST"])(handle_openai_chat)
     app.route("/v1/embeddings", methods=["POST"])(handle_embeddings)
-    app.route("/v1/messages", methods=["POST"])(handle_anthropic)
     app.route("/v1/responses", methods=["POST"])(handle_openai_responses)
     app.route("/v1/models", methods=["GET"])(handle_list_models)
-    app.route("/v1beta/models", methods=["GET"])(handle_list_models_google)
-    app.route("/v1beta/models/<path:model_path>", methods=["POST"])(handle_google_genai)
     app.route("/health", methods=["GET"])(handle_health)
     app.route("/health/live", methods=["GET"])(handle_health_live)
     app.route("/health/ready", methods=["GET"])(handle_health_ready)

@@ -9,7 +9,7 @@
 
 ## Fork 定位
 
-本项目 fork 自 [Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta)。这个 fork 聚焦于将 Chat Completions 兼容接口转换到 Responses API，并适配工具调用语义，让开源模型更好地适配 Codex，同时也聚焦于多 Provider 的网关聚合。不会太关注上游 Anthropic/Google 协议的大模型，也不会重点投入下游接入 Chat Completions、Anthropic 或 Google 产品。
+本项目 fork 自 [Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta)。这个 fork 聚焦于将 Chat Completions 兼容接口转换到 Responses API，并适配工具调用语义，让开源模型更好地适配 Codex，同时也聚焦于多 Provider 的网关聚合。面向 agent 的生成接口只暴露 OpenAI Responses；Chat Completions、Anthropic Messages 和 Google GenAI 格式只作为上游目标格式保留，不再作为下游客户端接口。
 
 ## 安装
 
@@ -39,9 +39,10 @@
 
 ## 支持的提供商
 
-- DeepSeek、Opencode Go等提供OpenAI Chat Completions接口的服务。Rosetta会做翻译和工具层翻译。
-- OpenAI、API 中转站等提供OpenAI Responses接口的服务。Rosetta会直接透传请求，不做任何解码和重封装。
-由于本项目聚焦于把第三方服务接入Codex，而大部分提供商都支持chat端点，因此本项目仅保留LLM-Rosetta的anthropic/gemini接入能力，暂时不做后续优化。
+- 下游客户端生成请求应调用 `/v1/responses`。`/v1/chat/completions`、`/v1/messages` 和 Google GenAI 生成端点不再作为客户端生成路由暴露。
+- DeepSeek、Opencode Go等提供OpenAI Chat Completions上游接口的服务。Rosetta会做翻译和工具层翻译。
+- OpenAI、API 中转站等提供OpenAI Responses上游接口的服务。Rosetta会直接透传请求，不做任何解码和重封装。
+- Anthropic Messages 和 Google GenAI 上游 Provider 仍然通过转换管线保留。
 
 ## 引用
 [![LLM-Rosetta: A Hub-and-Spoke Intermediate Representation for Cross-Provider LLM API Translation (arXiv)](https://img.shields.io/badge/arXiv-2604.09360-b31b1b.svg)](https://arxiv.org/abs/2604.09360)

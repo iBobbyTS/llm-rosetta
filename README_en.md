@@ -9,7 +9,7 @@
 
 ## Fork Focus
 
-This project is forked from [Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta). This fork focuses on converting Chat Completions-compatible APIs to the Responses API, adapting tool-call semantics so open models work better in Codex, and aggregating multiple providers behind one gateway. It will not put much emphasis on upstream Anthropic or Google protocol models, nor on downstream products that consume Chat Completions, Anthropic, or Google APIs.
+This project is forked from [Oaklight/llm-rosetta](https://github.com/Oaklight/llm-rosetta). This fork focuses on converting Chat Completions-compatible APIs to the Responses API, adapting tool-call semantics so open models work better in Codex, and aggregating multiple providers behind one gateway. The agent-facing generation API only exposes OpenAI Responses; Chat Completions, Anthropic Messages, and Google GenAI formats are retained as upstream target formats, not downstream client surfaces.
 
 ## Installation
 
@@ -41,10 +41,10 @@ Currently solved, but not yet heavily production-tested:
 
 ## Supported Providers
 
-- DeepSeek, Opencode Go, and other services that expose an OpenAI Chat Completions-compatible API. Rosetta performs protocol conversion and tool-layer translation.
-- OpenAI, API relay services, and other services that expose an OpenAI Responses-compatible API. Rosetta directly passes through these requests without decoding and re-encoding them.
-
-Because this project focuses on connecting third-party services to Codex, and most providers support a Chat endpoint, it only keeps LLM-Rosetta's Anthropic and Gemini integration capabilities for now and does not plan to optimize them further in the short term.
+- Downstream clients should call `/v1/responses` for generation. `/v1/chat/completions`, `/v1/messages`, and Google GenAI generation endpoints are not exposed as client-facing generation routes.
+- DeepSeek, Opencode Go, and other services that expose an OpenAI Chat Completions-compatible upstream API. Rosetta performs protocol conversion and tool-layer translation.
+- OpenAI, API relay services, and other services that expose an OpenAI Responses-compatible upstream API. Rosetta directly passes through these requests without decoding and re-encoding them.
+- Anthropic Messages and Google GenAI upstream providers remain available through the conversion pipeline.
 
 ## Citation
 

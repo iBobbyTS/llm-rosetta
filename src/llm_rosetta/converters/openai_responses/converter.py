@@ -9,6 +9,7 @@ Note: Responses API uses a flat list of items (input/output) instead of
 nested messages. The converter handles this structural difference.
 """
 
+import copy
 import time
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
@@ -517,23 +518,34 @@ class OpenAIResponsesConverter(BaseConverter):
             tc_fields = self.tool_ops.ir_tool_config_to_p(tool_config)
             result.update(tc_fields)
 
-    @staticmethod
-    def _tools_to_p_preserving_namespaces(ir_tools: list[Any]) -> list[dict[str, Any]]:
+    def _tools_to_p_preserving_namespaces(
+        self, ir_tools: list[Any]
+    ) -> list[dict[str, Any]]:
         """Convert tools to Responses format, regrouping namespace children."""
+        from ..base.helpers.cache import _SENTINEL, get_cached_tool, put_cached_tool
+
         output: list[dict[str, Any]] = []
         namespace_entries: dict[str, dict[str, Any]] = {}
+        tag = self._CONVERTER_TAG + ":to_p"
 
         for tool in ir_tools:
             if not isinstance(tool, dict):
-                output.append(OpenAIResponsesToolOps.ir_tool_definition_to_p(tool))
+                output.append(self.tool_ops.ir_tool_definition_to_p(tool))
                 continue
+
+            cached = get_cached_tool(tag, tool)
+            if cached is _SENTINEL:
+                converted = self.tool_ops.ir_tool_definition_to_p(tool)
+                put_cached_tool(tag, tool, converted)
+            else:
+                converted = cached
 
             metadata = tool.get("metadata") or {}
             namespace = metadata.get("responses_namespace")
             if metadata.get("provider_type") != "namespace" or not isinstance(
                 namespace, str
             ):
-                output.append(OpenAIResponsesToolOps.ir_tool_definition_to_p(tool))
+                output.append(copy.deepcopy(converted))
                 continue
 
             entry = namespace_entries.get(namespace)
@@ -551,7 +563,7 @@ class OpenAIResponsesConverter(BaseConverter):
             if isinstance(child, dict):
                 entry["tools"].append(dict(child))
             else:
-                child_tool = OpenAIResponsesToolOps.ir_tool_definition_to_p(tool)
+                child_tool = copy.deepcopy(converted)
                 child_tool.pop("strict", None)
                 entry["tools"].append(child_tool)
 
