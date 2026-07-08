@@ -16,6 +16,10 @@ and revert the repository after inspection.
 
 - Default model: `deepseek-v4-flash`, unless the user explicitly specifies a
   different model.
+- Default real-provider smoke matrix: `deepseek-v4-flash` and
+  `gpt-5.3-codex`. In the current test config, `gpt-5.3-codex` is expected to
+  route to upstream `glm-5.2`; verify this in the Rosetta trace rather than
+  assuming it.
 - Temporary Rosetta gateway configs live under
   `/Users/ibobby/Projects/codex-rosetta/rosetta-test-config`.
 - The isolated Codex home lives at
@@ -132,6 +136,99 @@ and revert the repository after inspection.
    If files other than `README.md` changed, stop and report them before
    reverting unless the user explicitly asked for broader cleanup.
 
+## Real Provider Smoke And EOF Regression
+
+Use this workflow when validating whether real Chat upstream providers still
+work through Rosetta's Responses downstream path, especially after stream
+terminal-event, phase-buffer, or tool-adaptation changes. The goal is to verify
+real Codex behavior and Rosetta stream shape; do not judge answer quality unless
+the user asks.
+
+1. Prefer an isolated gateway on a free port when testing uncommitted gateway
+   code. Use a copied config under
+   `/Users/ibobby/Projects/codex-rosetta/rosetta-test-config`, enable verbose
+   stream trace logging to an explicit `/Volumes/RAM Disk/*.jsonl` path, and set
+   the trace model filter to the tested upstream models, for example
+   `deepseek-v4-flash,glm-5.2`.
+
+2. Point the isolated Codex home at the test gateway. Back up
+   `/Users/ibobby/Projects/codex-rosetta/codex-test-home/config.toml` before
+   editing it, and restore it after the run.
+
+3. For each model in the matrix, run at least these tests:
+
+   Short final-answer test:
+
+   ```text
+   只回复一行：OK
+   ```
+
+   Read/tool test:
+
+   ```text
+   读取 README.md 的第一行，然后只回复这一行原文。
+   ```
+
+   Multi-turn modification test:
+
+   ```text
+   这是一个真实 provider 多轮次修改测试。请严格按顺序执行，且不要把多个步骤合并到同一个 shell 命令：1. 用一次独立的命令读取 README.md 的第一行。2. 收到结果后，用另一次独立的命令在 README.md 末尾追加一行：Rosetta multi-turn smoke: <model>。3. 收到结果后，用第三次独立命令检查 git diff -- README.md。4. 最终只回复一行：done:<model>
+   ```
+
+   Capture each run separately:
+
+   ```bash
+   MODEL=deepseek-v4-flash
+   TS=$(date +%Y%m%d-%H%M%S)
+   CODEX_HOME=/Users/ibobby/Projects/codex-rosetta/codex-test-home \
+     codex exec --json --skip-git-repo-check \
+     -C /Users/ibobby/Projects/AGENTS.md-test \
+     -m "$MODEL" '<prompt>' \
+     > "/Volumes/RAM Disk/codex-provider-smoke-${MODEL}-${TS}.jsonl" \
+     2> "/Volumes/RAM Disk/codex-provider-smoke-${MODEL}-${TS}.stderr"
+   ```
+
+4. For modification tests, capture the README diff and then restore only the
+   test file:
+
+   ```bash
+   git -C /Users/ibobby/Projects/AGENTS.md-test diff -- README.md
+   git -C /Users/ibobby/Projects/AGENTS.md-test restore README.md
+   git -C /Users/ibobby/Projects/AGENTS.md-test status --short
+   ```
+
+5. Inspect the Codex JSONL output without dumping full logs. Confirm:
+
+   - exit status is `0`
+   - short test final message is `OK`
+   - read/tool test used command execution and returned the README first line
+   - multi-turn test has separate command executions for read, write, and diff
+   - final message is exactly `done:<model>`
+   - any `error` item is distinguished from fatal failure; Codex may emit a
+     non-fatal unknown-model metadata warning for custom model names
+
+6. Inspect the Rosetta trace by request, not by raw line count. For each stream,
+   confirm:
+
+   - `stream_complete=true` and `stream_error=null`
+   - downstream SSE includes exactly one `response.completed`
+   - the corresponding source event includes exactly one `response.completed`
+   - `ir_event` includes one `finish` and one `stream_end`
+   - no duplicate completion is introduced by EOF fallback
+   - DeepSeek-style streams usually end with `choices_len=1`,
+     `finish_reason` and `usage`
+   - GLM-style streams usually end with a prior `finish_reason` followed by an
+     empty `choices: []` chunk carrying `usage`
+
+7. Treat the EOF fallback as exercised only if the trace shows a structured
+   `finish` without the provider's normal terminal chunk before upstream EOF.
+   If DeepSeek or GLM complete through their normal terminal shapes, record that
+   the fallback was not needed and that the real-provider test verified existing
+   success paths were not broken.
+
+8. Stop only the isolated gateway instance started for the test, restore the
+   backed-up Codex home config, and leave the user's main gateway alone.
+
 ## Safety Rules
 
 - Keep this workflow scoped to `/Users/ibobby/Projects/AGENTS.md-test`.
@@ -151,4 +248,7 @@ Report:
 - working-tree status before cleanup and after cleanup
 - Codex thread/session id and exact rollout JSONL path
 - Rosetta log path and whether the expected request or requests appeared
+- for real-provider smoke tests: per-model short/read/multi-turn result,
+  command-execution count or summary, upstream model observed in the trace, and
+  terminal stream shape
 - any warning or error that affects interpreting the test
