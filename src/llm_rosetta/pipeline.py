@@ -27,7 +27,7 @@ from collections.abc import Callable
 from typing import Any
 
 from llm_rosetta.capabilities import enforce_reasoning, enforce_vision
-from llm_rosetta.converters.base.context import ConversionContext
+from llm_rosetta.converters.base.context import ConversionContext, StreamContext
 from llm_rosetta.shims.provider_shim import ProviderShim, resolve_shim
 from llm_rosetta.shims.transforms import (
     Transform,
@@ -479,6 +479,7 @@ class ConversionPipeline:
         on_ir_event: Callable[[dict[str, Any]], None] | None = None,
         transform_ir_event: Callable[[dict[str, Any]], list[dict[str, Any]]]
         | None = None,
+        finalize_on_finish_eof: bool = False,
     ) -> StreamProcessor:
         """Create a stateful processor for streaming response chunks.
 
@@ -493,6 +494,10 @@ class ConversionPipeline:
                 streaming metadata (e.g. ``store.cache_from_stream_event``).
             transform_ir_event: Optional hook that can replace one IR event
                 with zero or more IR events before source-format serialization.
+            finalize_on_finish_eof: If ``True``, synthesize a final
+                ``StreamEndEvent`` at normal upstream EOF when a finish event
+                was seen but the upstream format did not provide its own
+                terminal stream chunk.
 
         Returns:
             A new StreamProcessor bound to this pipeline's converters
@@ -524,6 +529,7 @@ class ConversionPipeline:
             from_transforms=self._from_transforms,
             on_ir_event=on_ir_event,
             transform_ir_event=transform_ir_event,
+            finalize_on_finish_eof=finalize_on_finish_eof,
         )
 
 
@@ -564,6 +570,7 @@ class StreamProcessor:
         on_ir_event: Callable[[dict[str, Any]], None] | None = None,
         transform_ir_event: Callable[[dict[str, Any]], list[dict[str, Any]]]
         | None = None,
+        finalize_on_finish_eof: bool = False,
     ) -> None:
         self._target_converter = target_converter
         self._source_converter = source_converter
@@ -572,6 +579,8 @@ class StreamProcessor:
         self._from_transforms = from_transforms
         self._on_ir_event = on_ir_event
         self._transform_ir_event = transform_ir_event
+        self._finalize_on_finish_eof = finalize_on_finish_eof
+        self._saw_finish = False
 
     def process_chunk(self, chunk: dict[str, Any]) -> list[dict[str, Any]]:
         """Convert one upstream chunk to source-format events.
@@ -598,9 +607,34 @@ class StreamProcessor:
                 "_response_extras"
             ]
 
-        # IR → Source events
+        return self._process_ir_events(ir_events)
+
+    def finalize_stream(self) -> list[dict[str, Any]]:
+        """Emit source-format terminal events after a normal upstream EOF.
+
+        This is intentionally narrower than "EOF means success": it only
+        finalizes when the upstream has already emitted a structured finish
+        event and has not already emitted its normal stream-end marker.
+        """
+        if (
+            not self._finalize_on_finish_eof
+            or not self._saw_finish
+            or not isinstance(self._from_ctx, StreamContext)
+            or self._from_ctx.is_ended
+        ):
+            return []
+
+        self._from_ctx.mark_ended()
+        return self._process_ir_events([{"type": "stream_end"}])
+
+    def _process_ir_events(
+        self, ir_events: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Transform IR stream events and serialize them to source events."""
         result: list[dict[str, Any]] = []
         for ir_event in ir_events:
+            if ir_event.get("type") == "finish":
+                self._saw_finish = True
             transformed_events = (
                 self._transform_ir_event(ir_event)
                 if self._transform_ir_event is not None

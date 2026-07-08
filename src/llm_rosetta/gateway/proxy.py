@@ -783,6 +783,18 @@ async def _stream_event_generator(
                     ):
                         yield sse_event
 
+        finalize_stream = getattr(processor, "finalize_stream", None)
+        if finalize_stream is not None:
+            for source_event in finalize_stream():
+                for sse_event in _format_source_event_sse(
+                    source_event,
+                    event_buffer=event_buffer,
+                    format_sse=format_sse,
+                    trace=trace,
+                    chunk_count=chunk_count,
+                ):
+                    yield sse_event
+
         if event_buffer is not None:
             for sse_event in _format_buffered_events_sse(
                 event_buffer.flush(),
@@ -1274,6 +1286,9 @@ async def handle_streaming(
         transform_ir_event=stream_transformer.transform
         if stream_transformer is not None
         else None,
+        finalize_on_finish_eof=route.source_provider
+        in ("openai_responses", "open_responses")
+        and route.target_provider == "openai_chat",
     )
     format_sse = SSE_FORMATTERS[route.source_provider]
     event_buffer = (
