@@ -273,6 +273,22 @@ class OpenAIResponsesToolOps(BaseToolOps):
             # satisfy validation; ``ir_tool_definition_to_p`` restores the
             # original payload on the outbound leg.
             if tool_type != "function" and tool_type not in _IR_ALLOWED_TYPES:
+                if tool_type == "tool_search":
+                    params = provider_tool.get("parameters")
+                    synth_params = params if isinstance(params, dict) else {}
+                    result = {
+                        "type": "function",
+                        "name": "tool_search",
+                        "description": provider_tool.get("description", ""),
+                        "parameters": synth_params,
+                        "_passthrough": dict(provider_tool),
+                        "metadata": {"provider_type": tool_type},
+                        "required_parameters": synth_params.get("required", [])
+                        if synth_params
+                        else [],
+                    }
+                    return cast(ToolDefinition, result)
+
                 # Synthesize a minimal JSON Schema for cross-provider
                 # degradation so other providers see "a function that
                 # accepts one text input" instead of an empty schema.
@@ -470,6 +486,12 @@ class OpenAIResponsesToolOps(BaseToolOps):
             # Recover Responses API item ID from provider_metadata if available;
             # the API requires 'id' to start with 'fc_' prefix.
             metadata = ir_tool_call.get("provider_metadata") or {}
+            if metadata.get("responses_tool_type") == "tool_search":
+                return OpenAIResponsesToolOps._ir_tool_search_call_to_p(
+                    tool_call_id,
+                    tool_input,
+                    metadata,
+                )
             item_id = metadata.get("responses_item_id")
             if not item_id:
                 # Cross-format: ensure fc_ prefix required by Responses API
@@ -545,6 +567,30 @@ class OpenAIResponsesToolOps(BaseToolOps):
                 "name": f"{tool_type}_{tool_name}",
                 "arguments": arguments,
             }
+
+    @staticmethod
+    def _ir_tool_search_call_to_p(
+        tool_call_id: str,
+        tool_input: Any,
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build a native Responses tool_search_call item."""
+        item_id = metadata.get("responses_item_id")
+        if not item_id:
+            if tool_call_id and tool_call_id.startswith("tsc_"):
+                item_id = tool_call_id
+            elif tool_call_id and tool_call_id.startswith("call_"):
+                item_id = "tsc_" + tool_call_id[5:]
+            else:
+                item_id = "tsc_" + tool_call_id
+        return {
+            "type": "tool_search_call",
+            "id": item_id,
+            "call_id": tool_call_id,
+            "status": "completed",
+            "execution": "client",
+            "arguments": tool_input if isinstance(tool_input, dict) else {},
+        }
 
     @staticmethod
     def p_tool_call_to_ir(provider_tool_call: Any, **kwargs: Any) -> ToolCallPart:

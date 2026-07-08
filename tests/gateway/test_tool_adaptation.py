@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from llm_rosetta.gateway.proxy import (
     ProviderMetadataStore,
+    WindowToolSearchStore,
     handle_non_streaming,
     handle_streaming,
 )
@@ -60,6 +61,15 @@ def _tool_names(tools: list[dict[str, Any]]) -> set[str]:
         elif tool.get("type"):
             names.add(tool["type"])
     return names
+
+
+def _plain_route() -> ResolvedRoute:
+    return ResolvedRoute(
+        source_provider="openai_responses",
+        target_provider="openai_chat",
+        provider_name="test-provider",
+        upstream_model="glm-5.2",
+    )
 
 
 def test_localize_code_editing_chat_request_replaces_native_tools():
@@ -650,6 +660,737 @@ def test_gateway_non_streaming_translates_edit_to_exec_when_apply_patch_absent()
     arguments = json.loads(output[0]["arguments"])
     assert "apply_patch <<'PATCH'" in arguments["cmd"]
     assert "*** Update File: example.txt" in arguments["cmd"]
+
+
+def test_gateway_window_tool_search_output_expands_tools_for_same_window():
+    captured_body: dict[str, Any] = {}
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_fetch",
+                            "type": "function",
+                            "function": {
+                                "name": "mcp__codex_apps__github___fetch",
+                                "arguments": '{"id":"issue-1"}',
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    window_store = WindowToolSearchStore()
+    body = {
+        "model": "glm-5.2",
+        "input": [
+            {
+                "type": "tool_search_output",
+                "call_id": "call_search",
+                "status": "completed",
+                "execution": "client",
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "mcp__codex_apps__github",
+                        "description": "GitHub connector.",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "_fetch",
+                                "description": "Fetch a GitHub resource.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {"id": {"type": "string"}},
+                                    "required": ["id"],
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+            {"role": "user", "content": "fetch issue"},
+        ],
+        "tools": [
+            {
+                "type": "tool_search",
+                "description": "Search for loadable tools.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+            }
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _plain_route(),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_window_id="thread-abc:0",
+            window_tool_search_store=window_store,
+        )
+
+    response, _ = asyncio.run(run())
+
+    assert response.status_code == 200
+    assert "mcp__codex_apps__github___fetch" in _tool_names(captured_body["tools"])
+    source_body = json.loads(response.body)
+    output = source_body["output"][0]
+    assert output["type"] == "function_call"
+    assert output["name"] == "_fetch"
+    assert output["namespace"] == "mcp__codex_apps__github"
+
+
+def test_gateway_window_tool_search_output_requires_codex_window_id():
+    captured_body: dict[str, Any] = {}
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    window_store = WindowToolSearchStore()
+    body = {
+        "model": "glm-5.2",
+        "input": [
+            {
+                "type": "tool_search_output",
+                "call_id": "call_search",
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "mcp__codex_apps__github",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "_fetch",
+                                "parameters": {"type": "object", "properties": {}},
+                            }
+                        ],
+                    }
+                ],
+            },
+            {"role": "user", "content": "fetch issue"},
+        ],
+        "tools": [
+            {
+                "type": "tool_search",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _plain_route(),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            window_tool_search_store=window_store,
+        )
+
+    response, _ = asyncio.run(run())
+
+    assert response.status_code == 200
+    assert "mcp__codex_apps__github___fetch" not in _tool_names(captured_body["tools"])
+    assert len(window_store) == 0
+
+
+def test_gateway_enriches_empty_tool_search_output_from_deferred_namespaces():
+    captured_bodies: list[dict[str, Any]] = []
+    window_store = WindowToolSearchStore()
+    upstream_text_body = {
+        "id": "chatcmpl-test-1",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+    upstream_tool_body = {
+        "id": "chatcmpl-test-2",
+        "object": "chat.completion",
+        "created": 124,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_fetch_pr",
+                            "type": "function",
+                            "function": {
+                                "name": "mcp__codex_apps__github___fetch_pr",
+                                "arguments": '{"number":42}',
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_bodies.append(body)
+        upstream_body = (
+            upstream_text_body if len(captured_bodies) == 1 else upstream_tool_body
+        )
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    initial_body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "check tools"}],
+        "tools": [
+            {
+                "type": "namespace",
+                "name": "mcp__codex_apps__github",
+                "description": "GitHub connector for repositories, pull requests, issues, comments.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "_fetch_pr",
+                        "description": "Fetch GitHub pull request details.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"number": {"type": "integer"}},
+                            "required": ["number"],
+                        },
+                    }
+                ],
+            },
+            {
+                "type": "namespace",
+                "name": "mcp__codex_apps__gmail",
+                "description": "Gmail connector for mail search.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "_search",
+                        "description": "Search email.",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            },
+        ],
+    }
+    search_result_body = {
+        "model": "glm-5.2",
+        "input": [
+            {
+                "type": "tool_search_call",
+                "id": "tsc_search",
+                "call_id": "call_search",
+                "status": "completed",
+                "execution": "client",
+                "arguments": {"query": "github pull request", "limit": 8},
+            },
+            {
+                "type": "tool_search_output",
+                "call_id": "call_search",
+                "status": "completed",
+                "execution": "client",
+                "tools": [],
+            },
+            {"role": "user", "content": "fetch the PR"},
+        ],
+        "tools": [
+            {
+                "type": "tool_search",
+                "description": "Search for loadable tools.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+            }
+        ],
+    }
+
+    async def run():
+        first_response, _ = await handle_non_streaming(
+            _plain_route(),
+            _provider_info(),
+            initial_body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_window_id="thread-abc:0",
+            window_tool_search_store=window_store,
+        )
+        second_response, _ = await handle_non_streaming(
+            _plain_route(),
+            _provider_info(),
+            search_result_body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_window_id="thread-abc:0",
+            window_tool_search_store=window_store,
+        )
+        return first_response, second_response
+
+    first_response, second_response = asyncio.run(run())
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_names = _tool_names(captured_bodies[0]["tools"])
+    assert "tool_search" in first_names
+    assert "mcp__codex_apps__github___fetch_pr" not in first_names
+    assert "mcp__codex_apps__gmail___search" not in first_names
+    second_names = _tool_names(captured_bodies[1]["tools"])
+    assert "mcp__codex_apps__github___fetch_pr" in second_names
+    assert "mcp__codex_apps__gmail___search" not in second_names
+    source_body = json.loads(second_response.body)
+    output = source_body["output"][0]
+    assert output["type"] == "function_call"
+    assert output["name"] == "_fetch_pr"
+    assert output["namespace"] == "mcp__codex_apps__github"
+
+
+def test_gateway_does_not_overwrite_non_empty_tool_search_output():
+    captured_body: dict[str, Any] = {}
+    window_store = WindowToolSearchStore()
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    window_store.remember_deferred_tools(
+        "thread-abc:0",
+        [
+            {
+                "type": "namespace",
+                "name": "mcp__codex_apps__github",
+                "description": "GitHub connector.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "_fetch_pr",
+                        "description": "Fetch a PR.",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            }
+        ],
+    )
+    body = {
+        "model": "glm-5.2",
+        "input": [
+            {
+                "type": "tool_search_call",
+                "call_id": "call_search",
+                "arguments": {"query": "github pull request"},
+            },
+            {
+                "type": "tool_search_output",
+                "call_id": "call_search",
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "mcp__codex_apps__gmail",
+                        "description": "Gmail connector.",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "_search",
+                                "parameters": {"type": "object", "properties": {}},
+                            }
+                        ],
+                    }
+                ],
+            },
+            {"role": "user", "content": "search mail"},
+        ],
+        "tools": [
+            {
+                "type": "tool_search",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _plain_route(),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_window_id="thread-abc:0",
+            window_tool_search_store=window_store,
+        )
+
+    response, _ = asyncio.run(run())
+
+    assert response.status_code == 200
+    names = _tool_names(captured_body["tools"])
+    assert "mcp__codex_apps__gmail___search" in names
+    assert "mcp__codex_apps__github___fetch_pr" not in names
+
+
+def test_gateway_query_miss_does_not_load_deferred_tools():
+    captured_body: dict[str, Any] = {}
+    window_store = WindowToolSearchStore()
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    window_store.remember_deferred_tools(
+        "thread-abc:0",
+        [
+            {
+                "type": "namespace",
+                "name": "mcp__codex_apps__github",
+                "description": "GitHub connector.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "_fetch_pr",
+                        "description": "Fetch a PR.",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            }
+        ],
+    )
+    body = {
+        "model": "glm-5.2",
+        "input": [
+            {
+                "type": "tool_search_call",
+                "call_id": "call_search",
+                "arguments": {"query": "calendar events"},
+            },
+            {
+                "type": "tool_search_output",
+                "call_id": "call_search",
+                "tools": [],
+            },
+            {"role": "user", "content": "load calendar tools"},
+        ],
+        "tools": [
+            {
+                "type": "tool_search",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _plain_route(),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_window_id="thread-abc:0",
+            window_tool_search_store=window_store,
+        )
+
+    response, _ = asyncio.run(run())
+
+    assert response.status_code == 200
+    assert "mcp__codex_apps__github___fetch_pr" not in _tool_names(
+        captured_body["tools"]
+    )
+
+
+def test_gateway_defers_preloaded_plugin_namespaces_but_keeps_base_tools():
+    captured_body: dict[str, Any] = {}
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "check tools"}],
+        "tools": [
+            {
+                "type": "function",
+                "name": "exec_command",
+                "description": "Run a command.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+            {
+                "type": "custom",
+                "name": "apply_patch",
+                "description": "Apply a patch.",
+            },
+            {
+                "type": "namespace",
+                "name": "multi_agent_v1",
+                "description": "Subagent tools.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "spawn_agent",
+                        "description": "Spawn an agent.",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            },
+            {
+                "type": "namespace",
+                "name": "codex_app",
+                "description": "Codex app tools.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "load_workspace_dependencies",
+                        "description": "Load dependencies.",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            },
+            {
+                "type": "namespace",
+                "name": "mcp__codex_apps__github",
+                "description": "GitHub connector.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "_fetch_pr",
+                        "description": "Fetch a PR.",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            },
+            {
+                "type": "namespace",
+                "name": "mcp__codex_apps__gmail",
+                "description": "Gmail connector.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "_search",
+                        "description": "Search mail.",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            },
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _plain_route(),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_window_id="thread-abc:0",
+            window_tool_search_store=WindowToolSearchStore(),
+        )
+
+    response, _ = asyncio.run(run())
+
+    assert response.status_code == 200
+    names = _tool_names(captured_body["tools"])
+    assert "exec_command" in names
+    assert "apply_patch" in names
+    assert "multi_agent_v1__spawn_agent" in names
+    assert "codex_app__load_workspace_dependencies" in names
+    assert "tool_search" in names
+    assert "mcp__codex_apps__github___fetch_pr" not in names
+    assert "mcp__codex_apps__gmail___search" not in names
+    tool_search = next(
+        tool
+        for tool in captured_body["tools"]
+        if tool.get("function", {}).get("name") == "tool_search"
+    )
+    assert "mcp__codex_apps__github" in tool_search["function"]["description"]
+    assert "mcp__codex_apps__gmail" in tool_search["function"]["description"]
+
+
+def test_gateway_does_not_defer_preloaded_namespaces_without_codex_window_id():
+    captured_body: dict[str, Any] = {}
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "check tools"}],
+        "tools": [
+            {
+                "type": "namespace",
+                "name": "mcp__codex_apps__github",
+                "description": "GitHub connector.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "_fetch_pr",
+                        "description": "Fetch a PR.",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            }
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _plain_route(),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            window_tool_search_store=WindowToolSearchStore(),
+        )
+
+    response, _ = asyncio.run(run())
+
+    assert response.status_code == 200
+    assert "mcp__codex_apps__github___fetch_pr" in _tool_names(captured_body["tools"])
 
 
 def test_persisted_mapping_restores_history_without_memory_store():

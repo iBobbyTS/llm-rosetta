@@ -104,6 +104,21 @@ class ConversionContext:
         existing = self.metadata.setdefault("_responses_namespace_tool_map", {})
         existing.update(mapping)
 
+    def store_responses_native_tool_type_map(self, mapping: dict[str, str]) -> None:
+        """Store Chat-visible tool names that represent native Responses tools."""
+        if not mapping:
+            return
+        existing = self.metadata.setdefault("_responses_native_tool_type_map", {})
+        existing.update(mapping)
+
+    def get_responses_native_tool_type(self, tool_name: str) -> str | None:
+        """Return the native Responses tool type for a Chat-visible tool name."""
+        mapping = self.metadata.get("_responses_native_tool_type_map", {})
+        if not isinstance(mapping, dict):
+            return None
+        tool_type = mapping.get(tool_name)
+        return tool_type if isinstance(tool_type, str) and tool_type else None
+
     def get_responses_namespace_for_tool(self, tool_name: str) -> str | None:
         """Return the Responses namespace for a child tool name, if known."""
         mapping = self.metadata.get("_responses_namespace_tool_map", {})

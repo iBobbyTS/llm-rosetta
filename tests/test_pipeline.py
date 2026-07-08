@@ -737,6 +737,63 @@ class TestConversionPipeline:
         assert tool_call["name"] == "spawn_agent"
         assert tool_call["namespace"] == "multi_agent_v1"
 
+    def test_chat_response_tool_search_call_restores_responses_item(self):
+        """Chat tool_search calls restore Responses tool_search_call items."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline("openai_responses", "openai_chat")
+        pipeline.convert_request(
+            {
+                "model": "deepseek-v4-flash",
+                "input": "find github tools",
+                "tools": [
+                    {
+                        "type": "tool_search",
+                        "description": "Search for loadable tools.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"query": {"type": "string"}},
+                            "required": ["query"],
+                        },
+                    }
+                ],
+            }
+        )
+
+        response = pipeline.convert_response(
+            {
+                "id": "chatcmpl-1",
+                "created": 1,
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "call_123",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "tool_search",
+                                        "arguments": '{"query":"github plugin"}',
+                                    },
+                                }
+                            ],
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+            }
+        )
+
+        tool_call = response["output"][0]
+        assert tool_call["type"] == "tool_search_call"
+        assert tool_call["id"] == "tsc_123"
+        assert tool_call["call_id"] == "call_123"
+        assert tool_call["execution"] == "client"
+        assert tool_call["arguments"] == {"query": "github plugin"}
+
     def test_chat_response_duplicate_namespace_child_tool_call_restores_source_name(
         self,
     ):

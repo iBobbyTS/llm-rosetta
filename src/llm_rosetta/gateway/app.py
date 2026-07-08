@@ -305,6 +305,7 @@ async def _proxy_handler(
                 extra_headers=extra_headers,
                 persistence=persistence,
                 tool_cache_session_id=tool_cache_session_id,
+                codex_window_id=codex_window_id,
             )
         status_code = response.status_code
         if status_code >= 400 and hasattr(response, "body"):

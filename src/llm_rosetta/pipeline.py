@@ -520,6 +520,10 @@ class ConversionPipeline:
             to_ctx.metadata["_responses_namespace_tool_map"] = ctx.metadata[
                 "_responses_namespace_tool_map"
             ]
+        if "_responses_native_tool_type_map" in ctx.metadata:
+            to_ctx.metadata["_responses_native_tool_type_map"] = ctx.metadata[
+                "_responses_native_tool_type_map"
+            ]
 
         return StreamProcessor(
             target_converter=self._target_converter,

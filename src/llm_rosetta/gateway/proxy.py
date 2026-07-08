@@ -14,6 +14,9 @@ Downstream SSE formatting lives in :mod:`transport.sse_format`.
 
 from __future__ import annotations
 
+import copy
+import json
+import re
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -135,6 +138,119 @@ def _is_openai_responses_direct(route: ResolvedRoute) -> bool:
         "openai_responses",
         "open_responses",
     ) and route.target_provider in ("openai_responses", "open_responses")
+
+
+def _uses_responses_chat_bridge(route: ResolvedRoute) -> bool:
+    """Return true for Responses client requests bridged to Chat upstream."""
+    return (
+        route.source_provider
+        in (
+            "openai_responses",
+            "open_responses",
+        )
+        and route.target_provider == "openai_chat"
+    )
+
+
+_DIRECT_RESPONSES_NAMESPACE_TOOLS = {
+    "codex_app",
+    "multi_agent_v1",
+}
+
+_TOOL_SEARCH_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _is_responses_tool_search_definition(tool: Any) -> bool:
+    """Return true when a Responses tool definition exposes native tool search."""
+    return isinstance(tool, dict) and tool.get("type") == "tool_search"
+
+
+def _should_defer_responses_namespace_tool(tool: Any) -> bool:
+    """Return true for namespace tools that should be discovered via tool_search."""
+    if not isinstance(tool, dict) or tool.get("type") != "namespace":
+        return False
+    name = tool.get("name")
+    return isinstance(name, str) and name not in _DIRECT_RESPONSES_NAMESPACE_TOOLS
+
+
+def _synthetic_responses_tool_search_definition(
+    deferred_tools: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build a minimal native Responses tool_search definition for Chat bridges."""
+    source_lines: list[str] = []
+    for tool in deferred_tools:
+        name = tool.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        description = tool.get("description")
+        if isinstance(description, str) and description:
+            normalized = " ".join(description.split())
+            if len(normalized) > 240:
+                normalized = normalized[:237].rstrip() + "..."
+            source_lines.append(f"- {name}: {normalized}")
+        else:
+            source_lines.append(f"- {name}")
+
+    source_hint = (
+        "\n\nAvailable deferred tool sources:\n" + "\n".join(source_lines)
+        if source_lines
+        else ""
+    )
+    return {
+        "type": "tool_search",
+        "execution": "client",
+        "description": (
+            "Search deferred Codex tools by capability or provider name and expose "
+            "the matching tools for a later model request."
+            f"{source_hint}"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural-language search query for tools to load.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of matching tools to return.",
+                },
+            },
+            "required": ["query"],
+        },
+    }
+
+
+def _defer_responses_namespace_tools_for_chat(
+    body: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Hide deferred Responses namespaces from Chat until tool_search loads them."""
+    tools = body.get("tools")
+    if not isinstance(tools, list):
+        return []
+
+    filtered_tools: list[Any] = []
+    deferred_tools: list[dict[str, Any]] = []
+    has_tool_search = False
+    for tool in tools:
+        if _is_responses_tool_search_definition(tool):
+            has_tool_search = True
+            filtered_tools.append(tool)
+        elif _should_defer_responses_namespace_tool(tool):
+            deferred_tools.append(tool)
+        else:
+            filtered_tools.append(tool)
+
+    if not deferred_tools:
+        return []
+
+    if not has_tool_search:
+        filtered_tools.append(
+            _synthetic_responses_tool_search_definition(deferred_tools)
+        )
+
+    body["tools"] = filtered_tools
+    return deferred_tools
 
 
 def _tool_identifier(tool: Any) -> str | None:
@@ -516,8 +632,344 @@ class ProviderMetadataStore:
         return len(self._store)
 
 
+class WindowToolSearchStore:
+    """Stores loadable Responses tools discovered within one Codex window."""
+
+    def __init__(self, *, ttl: float = 1800.0, max_size: int = 1_000) -> None:
+        self._store: dict[str, _CacheEntry] = {}
+        self._deferred_store: dict[str, _CacheEntry] = {}
+        self._ttl = ttl
+        self._max_size = max_size
+
+    def _evict_expired(self) -> None:
+        now = time.monotonic()
+        expired = [k for k, e in self._store.items() if now - e.created > self._ttl]
+        for k in expired:
+            del self._store[k]
+        deferred_expired = [
+            k for k, e in self._deferred_store.items() if now - e.created > self._ttl
+        ]
+        for k in deferred_expired:
+            del self._deferred_store[k]
+
+    def _evict_oldest(self) -> None:
+        if len(self._store) >= self._max_size:
+            oldest_key = min(self._store, key=lambda k: self._store[k].created)
+            del self._store[oldest_key]
+        if len(self._deferred_store) >= self._max_size:
+            oldest_key = min(
+                self._deferred_store, key=lambda k: self._deferred_store[k].created
+            )
+            del self._deferred_store[oldest_key]
+
+    @staticmethod
+    def _tool_key(tool: Any) -> str | None:
+        if not isinstance(tool, dict):
+            return None
+        tool_type = tool.get("type")
+        tool_name = tool.get("name")
+        if tool_type == "namespace" and tool_name:
+            return f"namespace:{tool_name}"
+        if tool_type == "function" and tool_name:
+            return f"function:{tool_name}"
+        if tool_name:
+            return f"{tool_type or 'tool'}:{tool_name}"
+        if tool_type:
+            return f"type:{tool_type}"
+        return None
+
+    @staticmethod
+    def _extract_tool_search_tools(body: dict[str, Any]) -> list[dict[str, Any]]:
+        input_items = body.get("input")
+        if not isinstance(input_items, list):
+            return []
+        tools: list[dict[str, Any]] = []
+        for item in input_items:
+            if not isinstance(item, dict) or item.get("type") != "tool_search_output":
+                continue
+            item_tools = item.get("tools")
+            if not isinstance(item_tools, list):
+                continue
+            tools.extend(tool for tool in item_tools if isinstance(tool, dict))
+        return tools
+
+    @staticmethod
+    def _tool_search_calls_by_id(body: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        input_items = body.get("input")
+        if not isinstance(input_items, list):
+            return {}
+        calls: dict[str, dict[str, Any]] = {}
+        for item in input_items:
+            if not isinstance(item, dict) or item.get("type") != "tool_search_call":
+                continue
+            call_id = item.get("call_id")
+            if isinstance(call_id, str) and call_id:
+                calls[call_id] = item
+        return calls
+
+    @staticmethod
+    def _tool_search_query(call: dict[str, Any] | None) -> str:
+        if not isinstance(call, dict):
+            return ""
+        arguments = call.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments) if arguments else {}
+            except json.JSONDecodeError:
+                return arguments
+        if not isinstance(arguments, dict):
+            return ""
+        query = arguments.get("query")
+        return query if isinstance(query, str) else ""
+
+    @staticmethod
+    def _tool_search_limit(call: dict[str, Any] | None) -> int:
+        if not isinstance(call, dict):
+            return 8
+        arguments = call.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments) if arguments else {}
+            except json.JSONDecodeError:
+                return 8
+        if not isinstance(arguments, dict):
+            return 8
+        limit = arguments.get("limit")
+        if isinstance(limit, int):
+            return max(1, min(limit, 50))
+        return 8
+
+    @staticmethod
+    def _search_tokens(value: str) -> list[str]:
+        return [
+            token for token in _TOOL_SEARCH_TOKEN_RE.findall(value.lower()) if token
+        ]
+
+    @classmethod
+    def _tool_search_text(cls, tool: dict[str, Any]) -> str:
+        values: list[str] = []
+        for key in ("name", "description"):
+            value = tool.get(key)
+            if isinstance(value, str):
+                values.append(value)
+        children = tool.get("tools")
+        if isinstance(children, list):
+            for child in children:
+                if not isinstance(child, dict):
+                    continue
+                for key in ("name", "description"):
+                    value = child.get(key)
+                    if isinstance(value, str):
+                        values.append(value)
+                parameters = child.get("parameters")
+                if isinstance(parameters, dict):
+                    values.extend(cls._schema_search_text(parameters))
+        return " ".join(values)
+
+    @classmethod
+    def _schema_search_text(cls, schema: dict[str, Any]) -> list[str]:
+        values: list[str] = []
+        title = schema.get("title")
+        description = schema.get("description")
+        if isinstance(title, str):
+            values.append(title)
+        if isinstance(description, str):
+            values.append(description)
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            for prop_name, prop_schema in properties.items():
+                if isinstance(prop_name, str):
+                    values.append(prop_name)
+                if isinstance(prop_schema, dict):
+                    values.extend(cls._schema_search_text(prop_schema))
+        return values
+
+    @classmethod
+    def _score_tool_for_query(cls, tool: dict[str, Any], query: str) -> int:
+        query_tokens = set(cls._search_tokens(query))
+        if not query_tokens:
+            return 0
+        tool_text = cls._tool_search_text(tool)
+        tool_tokens = set(cls._search_tokens(tool_text))
+        if not tool_tokens:
+            return 0
+        score = 0
+        namespace = tool.get("name")
+        namespace_tokens = (
+            set(cls._search_tokens(namespace)) if isinstance(namespace, str) else set()
+        )
+        for token in query_tokens:
+            if token in namespace_tokens:
+                score += 8
+            elif token in tool_tokens:
+                score += 3
+            elif any(tool_token.startswith(token) for tool_token in tool_tokens):
+                score += 1
+        return score
+
+    def _remember_tools(
+        self,
+        store: dict[str, _CacheEntry],
+        window_id: str,
+        tools: list[dict[str, Any]],
+    ) -> None:
+        if not tools:
+            return
+        self._evict_expired()
+        window_tools = dict(store.get(window_id, _CacheEntry(data={})).data)
+        for tool in tools:
+            key = self._tool_key(tool)
+            if not key:
+                continue
+            window_tools[key] = copy.deepcopy(tool)
+        self._evict_oldest()
+        store[window_id] = _CacheEntry(data=window_tools)
+
+    def remember_deferred_tools(
+        self, window_id: str | None, tools: list[dict[str, Any]]
+    ) -> None:
+        """Remember Responses namespace tools hidden from Chat for this window."""
+        if not window_id:
+            return
+        self._remember_tools(self._deferred_store, window_id, tools)
+
+    def remember_from_request(
+        self, window_id: str | None, body: dict[str, Any]
+    ) -> None:
+        """Remember loadable tools from tool_search_output items in this request."""
+        if not window_id:
+            return
+        discovered_tools = self._extract_tool_search_tools(body)
+        if not discovered_tools:
+            return
+        self._remember_tools(self._store, window_id, discovered_tools)
+
+    def enrich_tool_search_outputs(
+        self, window_id: str | None, body: dict[str, Any]
+    ) -> None:
+        """Fill empty tool_search_output tools from Rosetta-hidden namespaces."""
+        if not window_id:
+            return
+        input_items = body.get("input")
+        if not isinstance(input_items, list):
+            return
+        self._evict_expired()
+        entry = self._deferred_store.get(window_id)
+        if entry is None or not isinstance(entry.data, dict) or not entry.data:
+            return
+
+        calls_by_id = self._tool_search_calls_by_id(body)
+        deferred_tools = [
+            tool for tool in entry.data.values() if isinstance(tool, dict)
+        ]
+        if not deferred_tools:
+            return
+
+        for item in input_items:
+            if not isinstance(item, dict) or item.get("type") != "tool_search_output":
+                continue
+            tools = item.get("tools")
+            if not isinstance(tools, list) or tools:
+                continue
+            call = calls_by_id.get(item.get("call_id"))
+            query = self._tool_search_query(call)
+            matches = self._match_deferred_tools(deferred_tools, query)
+            if not matches:
+                continue
+            limit = self._tool_search_limit(call)
+            item["tools"] = [copy.deepcopy(tool) for tool in matches[:limit]]
+
+    @classmethod
+    def _match_deferred_tools(
+        cls, deferred_tools: list[dict[str, Any]], query: str
+    ) -> list[dict[str, Any]]:
+        scored: list[tuple[int, int, dict[str, Any]]] = []
+        for index, tool in enumerate(deferred_tools):
+            score = cls._score_tool_for_query(tool, query)
+            if score <= 0:
+                continue
+            scored.append((score, index, tool))
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        return [tool for _, _, tool in scored]
+
+    def inject_into_request(
+        self,
+        window_id: str | None,
+        ir_request: dict[str, Any],
+        pipeline: ConversionPipeline,
+    ) -> None:
+        """Append remembered loadable tools to an IR request for the same window."""
+        if not window_id:
+            return
+        self._evict_expired()
+        entry = self._store.get(window_id)
+        if entry is None:
+            return
+        tools_by_key = entry.data
+        if not isinstance(tools_by_key, dict) or not tools_by_key:
+            return
+
+        response_converter = pipeline._source_converter
+        converted: list[Any] = []
+        for tool in tools_by_key.values():
+            converted_tool = response_converter.tool_ops.p_tool_definition_to_ir(tool)
+            if isinstance(converted_tool, list):
+                converted.extend(converted_tool)
+            else:
+                converted.append(converted_tool)
+        if not converted:
+            return
+
+        existing_tools = ir_request.setdefault("tools", [])
+        existing_names = {
+            tool.get("name")
+            for tool in existing_tools
+            if isinstance(tool, dict) and isinstance(tool.get("name"), str)
+        }
+        added: list[Any] = []
+        for tool in converted:
+            if not isinstance(tool, dict):
+                continue
+            name = tool.get("name")
+            if not isinstance(name, str) or name in existing_names:
+                continue
+            existing_tools.append(tool)
+            existing_names.add(name)
+            added.append(tool)
+
+        if added and hasattr(response_converter, "_store_namespace_tool_map"):
+            response_converter._store_namespace_tool_map(added, pipeline.context)
+        if added and hasattr(response_converter, "_store_native_tool_type_map"):
+            response_converter._store_native_tool_type_map(added, pipeline.context)
+
+    def clear(self) -> None:
+        self._store.clear()
+        self._deferred_store.clear()
+
+    def __len__(self) -> int:
+        return len(self._store)
+
+
 _default_metadata_store = ProviderMetadataStore()
 _default_codex_tool_store = CodexToolLocalizationStore()
+_default_window_tool_search_store = WindowToolSearchStore()
+
+
+def _prepare_window_tool_search_request(
+    *,
+    route: ResolvedRoute,
+    codex_window_id: str | None,
+    body: dict[str, Any],
+    window_tools: WindowToolSearchStore,
+) -> bool:
+    """Update per-window loadable-tool state and return whether injection applies."""
+    if not (_uses_responses_chat_bridge(route) and codex_window_id):
+        return False
+    deferred_tools = _defer_responses_namespace_tools_for_chat(body)
+    window_tools.remember_deferred_tools(codex_window_id, deferred_tools)
+    window_tools.enrich_tool_search_outputs(codex_window_id, body)
+    window_tools.remember_from_request(codex_window_id, body)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -536,6 +988,8 @@ async def handle_non_streaming(
     extra_headers: dict[str, str] | None = None,
     persistence: Any | None = None,
     tool_cache_session_id: str | None = None,
+    codex_window_id: str | None = None,
+    window_tool_search_store: WindowToolSearchStore | None = None,
 ) -> tuple[Response, dict[str, Any]]:
     """Non-streaming proxy: convert -> forward -> convert back -> respond.
 
@@ -548,6 +1002,11 @@ async def handle_non_streaming(
     tool_store = (
         codex_tool_store if codex_tool_store is not None else _default_codex_tool_store
     )
+    window_tools = (
+        window_tool_search_store
+        if window_tool_search_store is not None
+        else _default_window_tool_search_store
+    )
     persistent_mappings: list[LocalizedToolMapping] = []
     used_mapping_call_ids: set[str] = set()
     profile: dict[str, Any] = {}
@@ -555,6 +1014,12 @@ async def handle_non_streaming(
     model = body.get("model", "")
     body = _apply_tool_adaptation(body, route)
     source_tool_capabilities = NativeToolCapabilities.from_chat_tools(body.get("tools"))
+    use_window_tool_search = _prepare_window_tool_search_request(
+        route=route,
+        codex_window_id=codex_window_id,
+        body=body,
+        window_tools=window_tools,
+    )
 
     if _is_openai_responses_direct(route):
         log_original_request(body)
@@ -627,10 +1092,13 @@ async def handle_non_streaming(
     )
 
     # Phase 1+2: Source → IR → Target
+    def _on_request_ir_ready(ir_request: dict[str, Any]) -> None:
+        store.inject_into_request(ir_request)
+        if use_window_tool_search:
+            window_tools.inject_into_request(codex_window_id, ir_request, pipeline)
+
     try:
-        target_body = pipeline.convert_request(
-            body, on_ir_ready=store.inject_into_request
-        )
+        target_body = pipeline.convert_request(body, on_ir_ready=_on_request_ir_ready)
     except ConversionError as exc:
         return error_response_for_source(route.source_provider, 400, str(exc)), profile
     if should_localize_code_tools(route):
@@ -970,6 +1438,131 @@ async def _raw_stream_event_generator(
             )
 
 
+async def _handle_direct_responses_streaming(
+    route: ResolvedRoute,
+    provider_info: ProviderInfo,
+    body: dict[str, Any],
+    *,
+    transport: UpstreamTransport,
+    model: str,
+    extra_headers: dict[str, str] | None,
+    entry_id: str | None,
+    request_log: Any | None,
+    persistence: Any | None,
+    stream_trace_state: StreamTraceState | None,
+) -> tuple[Response | StreamingResponse, dict[str, Any]]:
+    """Handle same-protocol Responses streaming passthrough."""
+    profile: dict[str, Any] = {}
+    log_original_request(body)
+    t_connect = time.perf_counter()
+    try:
+        stream = await transport.send_streaming(
+            provider_info,
+            route.target_provider,
+            body,
+            model,
+            extra_headers=extra_headers,
+        )
+    except UpstreamConnectionError as exc:
+        profile["stream_connect_ms"] = round(
+            (time.perf_counter() - t_connect) * 1000, 2
+        )
+        error_msg = str(exc)
+        dump_error(
+            persistence,
+            request_body=body,
+            response_text=error_msg,
+            converted_body=body,
+            model=model,
+            source_provider=route.source_provider,
+            target_provider=route.target_provider,
+            provider_name=route.provider_name,
+            status_code=502,
+            error_phase="stream_header",
+            upstream_url=str(provider_info.base_url),
+            request_log_id=entry_id,
+        )
+        return (
+            error_response_for_source(
+                route.source_provider, 502, f"Upstream request failed: {exc}"
+            ),
+            profile,
+        )
+
+    profile["stream_connect_ms"] = round((time.perf_counter() - t_connect) * 1000, 2)
+    profile["passthrough"] = True
+
+    if stream.is_error:
+        error_text = await stream.read_error()
+        await stream.close()
+        log_upstream_error(
+            stream.status_code,
+            error_text,
+            endpoint=str(route.target_provider),
+            is_streaming=True,
+        )
+        dump_error(
+            persistence,
+            request_body=body,
+            response_text=error_text,
+            converted_body=body,
+            model=model,
+            source_provider=route.source_provider,
+            target_provider=route.target_provider,
+            provider_name=route.provider_name,
+            status_code=stream.status_code,
+            error_phase="stream_header",
+            upstream_url=str(provider_info.base_url),
+            request_log_id=entry_id,
+        )
+        return (
+            Response(
+                body=error_text.encode("utf-8")
+                if isinstance(error_text, str)
+                else error_text,
+                status_code=stream.status_code,
+                content_type="application/json",
+            ),
+            profile,
+        )
+
+    request_id = extra_headers.get("x-request-id") if extra_headers else None
+    trace = _create_stream_trace_logger(
+        stream_trace_state,
+        request_id=request_id,
+        request_log_id=entry_id,
+        model=model,
+        route=route,
+    )
+    if trace is not None:
+        trace.log(
+            "stream_start",
+            {
+                "model": model,
+                "source_provider": route.source_provider,
+                "target_provider": route.target_provider,
+                "provider_name": route.provider_name,
+                "entry_id": entry_id,
+                "passthrough": True,
+            },
+        )
+        trace.log("raw_passthrough_request", body)
+
+    return (
+        StreamingResponse(
+            _raw_stream_event_generator(
+                stream=stream,
+                model=model,
+                entry_id=entry_id,
+                request_log=request_log,
+                trace=trace,
+            ),
+            content_type="text/event-stream",
+        ),
+        profile,
+    )
+
+
 async def handle_streaming(
     route: ResolvedRoute,
     provider_info: ProviderInfo,
@@ -984,6 +1577,7 @@ async def handle_streaming(
     persistence: Any | None = None,
     tool_cache_session_id: str | None = None,
     codex_window_id: str | None = None,
+    window_tool_search_store: WindowToolSearchStore | None = None,
     stream_trace_state: StreamTraceState | None = None,
 ) -> tuple[Response | StreamingResponse, dict[str, Any]]:
     """Streaming proxy: convert -> forward -> stream-convert back -> SSE.
@@ -1003,6 +1597,11 @@ async def handle_streaming(
     tool_store = (
         codex_tool_store if codex_tool_store is not None else _default_codex_tool_store
     )
+    window_tools = (
+        window_tool_search_store
+        if window_tool_search_store is not None
+        else _default_window_tool_search_store
+    )
     persistent_mappings: list[LocalizedToolMapping] = []
     used_mapping_call_ids: set[str] = set()
     profile: dict[str, Any] = {}
@@ -1010,117 +1609,25 @@ async def handle_streaming(
     model = body.get("model", "")
     body = _apply_tool_adaptation(body, route)
     source_tool_capabilities = NativeToolCapabilities.from_chat_tools(body.get("tools"))
+    use_window_tool_search = _prepare_window_tool_search_request(
+        route=route,
+        codex_window_id=codex_window_id,
+        body=body,
+        window_tools=window_tools,
+    )
 
     if _is_openai_responses_direct(route):
-        log_original_request(body)
-        t_connect = time.perf_counter()
-        try:
-            stream = await transport.send_streaming(
-                provider_info,
-                route.target_provider,
-                body,
-                model,
-                extra_headers=extra_headers,
-            )
-        except UpstreamConnectionError as exc:
-            profile["stream_connect_ms"] = round(
-                (time.perf_counter() - t_connect) * 1000, 2
-            )
-            error_msg = str(exc)
-            dump_error(
-                persistence,
-                request_body=body,
-                response_text=error_msg,
-                converted_body=body,
-                model=model,
-                source_provider=route.source_provider,
-                target_provider=route.target_provider,
-                provider_name=route.provider_name,
-                status_code=502,
-                error_phase="stream_header",
-                upstream_url=str(provider_info.base_url),
-                request_log_id=entry_id,
-            )
-            return (
-                error_response_for_source(
-                    route.source_provider, 502, f"Upstream request failed: {exc}"
-                ),
-                profile,
-            )
-
-        profile["stream_connect_ms"] = round(
-            (time.perf_counter() - t_connect) * 1000, 2
-        )
-        profile["passthrough"] = True
-
-        if stream.is_error:
-            error_text = await stream.read_error()
-            await stream.close()
-            log_upstream_error(
-                stream.status_code,
-                error_text,
-                endpoint=str(route.target_provider),
-                is_streaming=True,
-            )
-            dump_error(
-                persistence,
-                request_body=body,
-                response_text=error_text,
-                converted_body=body,
-                model=model,
-                source_provider=route.source_provider,
-                target_provider=route.target_provider,
-                provider_name=route.provider_name,
-                status_code=stream.status_code,
-                error_phase="stream_header",
-                upstream_url=str(provider_info.base_url),
-                request_log_id=entry_id,
-            )
-            return (
-                Response(
-                    body=error_text.encode("utf-8")
-                    if isinstance(error_text, str)
-                    else error_text,
-                    status_code=stream.status_code,
-                    content_type="application/json",
-                ),
-                profile,
-            )
-
-        request_id = extra_headers.get("x-request-id") if extra_headers else None
-        trace = _create_stream_trace_logger(
-            stream_trace_state,
-            request_id=request_id,
-            request_log_id=entry_id,
+        return await _handle_direct_responses_streaming(
+            route,
+            provider_info,
+            body,
+            transport=transport,
             model=model,
-            route=route,
-        )
-        if trace is not None:
-            trace.log(
-                "stream_start",
-                {
-                    "model": model,
-                    "source_provider": route.source_provider,
-                    "target_provider": route.target_provider,
-                    "provider_name": route.provider_name,
-                    "entry_id": entry_id,
-                    "passthrough": True,
-                },
-            )
-            trace.log("raw_passthrough_request", body)
-
-        return (
-            StreamingResponse(
-                _raw_stream_event_generator(
-                    stream=stream,
-                    model=model,
-                    entry_id=entry_id,
-                    request_log=request_log,
-                    trace=trace,
-                ),
-                content_type="text/event-stream",
-            ),
-            profile,
+            extra_headers=extra_headers,
+            entry_id=entry_id,
+            request_log=request_log,
+            persistence=persistence,
+            stream_trace_state=stream_trace_state,
         )
 
     pipeline = ConversionPipeline(
@@ -1133,10 +1640,13 @@ async def handle_streaming(
     )
 
     # Phase 1+2: Source → IR → Target
+    def _on_request_ir_ready(ir_request: dict[str, Any]) -> None:
+        store.inject_into_request(ir_request)
+        if use_window_tool_search:
+            window_tools.inject_into_request(codex_window_id, ir_request, pipeline)
+
     try:
-        target_body = pipeline.convert_request(
-            body, on_ir_ready=store.inject_into_request
-        )
+        target_body = pipeline.convert_request(body, on_ir_ready=_on_request_ir_ready)
     except ConversionError as exc:
         return error_response_for_source(route.source_provider, 400, str(exc)), profile
     if should_localize_code_tools(route):

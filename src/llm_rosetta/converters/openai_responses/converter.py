@@ -10,6 +10,7 @@ nested messages. The converter handles this structural difference.
 """
 
 import copy
+import json
 import time
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
@@ -243,6 +244,7 @@ class OpenAIResponsesConverter(BaseConverter):
                 if ir_tools:
                     ir_request["tools"] = ir_tools
                     self._store_namespace_tool_map(ir_tools, ctx)
+                    self._store_native_tool_type_map(ir_tools, ctx)
 
         # 4-5. Tool choice + tool config
         self._convert_tool_config_from_p(provider_request, ir_request)
@@ -607,6 +609,23 @@ class OpenAIResponsesConverter(BaseConverter):
                 mapping[chat_tool_name] = entry
         ctx.store_responses_namespace_tool_map(mapping)
 
+    @staticmethod
+    def _store_native_tool_type_map(
+        ir_tools: list[Any],
+        ctx: ConversionContext,
+    ) -> None:
+        """Record Chat-visible names for native Responses tool definitions."""
+        mapping: dict[str, str] = {}
+        for tool in ir_tools:
+            if not isinstance(tool, dict):
+                continue
+            metadata = tool.get("metadata") or {}
+            provider_type = metadata.get("provider_type")
+            tool_name = tool.get("name")
+            if provider_type == "tool_search" and isinstance(tool_name, str):
+                mapping[tool_name] = provider_type
+        ctx.store_responses_native_tool_type_map(mapping)
+
     def _ir_tool_call_to_p_with_context(
         self,
         part: Any,
@@ -619,6 +638,15 @@ class OpenAIResponsesConverter(BaseConverter):
             return self.tool_ops.ir_tool_call_to_p(part)
 
         tool_name = part.get("tool_name", part.get("name", ""))
+        if isinstance(tool_name, str):
+            native_tool_type = context.get_responses_native_tool_type(tool_name)
+            if native_tool_type:
+                patched = dict(part)
+                provider_metadata = dict(patched.get("provider_metadata") or {})
+                provider_metadata.setdefault("responses_tool_type", native_tool_type)
+                patched["provider_metadata"] = provider_metadata
+                return self.tool_ops.ir_tool_call_to_p(patched)
+
         namespace = (
             context.get_responses_namespace_for_tool(tool_name)
             if isinstance(tool_name, str)
@@ -1541,11 +1569,26 @@ class OpenAIResponsesConverter(BaseConverter):
             namespace = context.get_responses_namespace_for_tool(tool_name)
             if namespace:
                 provider_metadata["responses_namespace"] = namespace
+        if (
+            "responses_tool_type" not in provider_metadata
+            and context is not None
+            and isinstance(tool_name, str)
+        ):
+            native_tool_type = context.get_responses_native_tool_type(tool_name)
+            if native_tool_type:
+                provider_metadata["responses_tool_type"] = native_tool_type
         if context is not None and isinstance(tool_name, str):
             child_name = context.get_responses_child_name_for_tool(tool_name)
             if child_name:
                 tool_name = child_name
-        item_id = provider_metadata.get("responses_item_id") or call_id
+        if provider_metadata.get("responses_tool_type") == "tool_search":
+            item_id = provider_metadata.get("responses_item_id") or (
+                "tsc_" + call_id[5:]
+                if call_id.startswith("call_")
+                else f"tsc_{call_id}"
+            )
+        else:
+            item_id = provider_metadata.get("responses_item_id") or call_id
 
         # Register in context for later done events
         if context is not None and call_id:
@@ -1559,7 +1602,14 @@ class OpenAIResponsesConverter(BaseConverter):
             context, tc_index, provider_metadata
         )
 
-        if tool_type == "custom":
+        if provider_metadata.get("responses_tool_type") == "tool_search":
+            item = self._build_tool_search_call_item(
+                call_id=call_id,
+                item_id=item_id,
+                arguments="",
+                status="in_progress",
+            )
+        elif tool_type == "custom":
             item: dict[str, Any] = {
                 "id": item_id,
                 "type": "custom_tool_call",
@@ -1628,6 +1678,8 @@ class OpenAIResponsesConverter(BaseConverter):
             if context is not None and call_id
             else "function"
         )
+        if provider_metadata.get("responses_tool_type") == "tool_search":
+            return {}
         event_type = (
             ResponsesEventType.CUSTOM_TOOL_CALL_INPUT_DELTA
             if tool_type == "custom"
@@ -1747,8 +1799,16 @@ class OpenAIResponsesConverter(BaseConverter):
             arguments = context._tool_call_args.get(call_id, "")
             tc_item_id = context.get_tool_call_item_id(call_id) or call_id
             tool_type = context.get_tool_type(call_id)
+            provider_metadata = context.get_tool_call_provider_metadata(call_id)
 
-            if tool_type == "custom":
+            if provider_metadata.get("responses_tool_type") == "tool_search":
+                item = self._build_tool_search_call_item(
+                    call_id=call_id,
+                    item_id=tc_item_id,
+                    arguments=arguments,
+                    status="completed",
+                )
+            elif tool_type == "custom":
                 item = {
                     "id": tc_item_id,
                     "type": "custom_tool_call",
@@ -1766,9 +1826,7 @@ class OpenAIResponsesConverter(BaseConverter):
                     "arguments": arguments,
                     "status": "completed",
                 }
-            self._apply_tool_call_provider_metadata(
-                item, context.get_tool_call_provider_metadata(call_id)
-            )
+            self._apply_tool_call_provider_metadata(item, provider_metadata)
             output.append(item)
         output.extend(context.passthrough_output_items)
         return output
@@ -1992,7 +2050,21 @@ class OpenAIResponsesConverter(BaseConverter):
             tool_type = context.get_tool_type(call_id)
             provider_metadata = context.get_tool_call_provider_metadata(call_id)
 
-            if tool_type == "custom":
+            if provider_metadata.get("responses_tool_type") == "tool_search":
+                item = self._build_tool_search_call_item(
+                    call_id=call_id,
+                    item_id=item_id,
+                    arguments=arguments,
+                    status="completed",
+                )
+                results.append(
+                    {
+                        "type": ResponsesEventType.OUTPUT_ITEM_DONE,
+                        "output_index": output_index,
+                        "item": item,
+                    }
+                )
+            elif tool_type == "custom":
                 # response.custom_tool_call_input.done
                 results.append(
                     {
@@ -2048,6 +2120,29 @@ class OpenAIResponsesConverter(BaseConverter):
                         "item": item,
                     }
                 )
+
+    @staticmethod
+    def _build_tool_search_call_item(
+        *,
+        call_id: str,
+        item_id: str,
+        arguments: str,
+        status: str,
+    ) -> dict[str, Any]:
+        try:
+            parsed_arguments = json.loads(arguments) if arguments else {}
+        except (json.JSONDecodeError, TypeError):
+            parsed_arguments = {"raw_arguments": arguments}
+        if not isinstance(parsed_arguments, dict):
+            parsed_arguments = {"input": parsed_arguments}
+        return {
+            "type": "tool_search_call",
+            "id": item_id,
+            "call_id": call_id,
+            "status": status,
+            "execution": "client",
+            "arguments": parsed_arguments,
+        }
 
     def _handle_usage_to_p(
         self,

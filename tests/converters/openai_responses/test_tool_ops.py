@@ -87,6 +87,29 @@ class TestOpenAIResponsesToolOps:
         assert result["parameters"]["type"] == "object"
         assert result["required_parameters"] == ["city"]
 
+    def test_p_tool_definition_to_ir_tool_search_preserves_parameters(self):
+        """Responses tool_search degrades to a Chat-callable function with schema."""
+        provider_tool = {
+            "type": "tool_search",
+            "description": "Search for loadable tools.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
+                "required": ["query"],
+            },
+        }
+
+        result = OpenAIResponsesToolOps.p_tool_definition_to_ir(provider_tool)
+
+        assert result["type"] == "function"
+        assert result["name"] == "tool_search"
+        assert result["parameters"] == provider_tool["parameters"]
+        assert result["required_parameters"] == ["query"]
+        assert result["metadata"] == {"provider_type": "tool_search"}
+
     def test_p_tool_definition_to_ir_nested(self):
         """Test OpenAI nested format (with function key) → IR ToolDefinition."""
         provider_tool = {
@@ -337,6 +360,24 @@ class TestOpenAIResponsesToolOps:
         assert result["type"] == "function_call"
         assert result["name"] == "spawn_agent"
         assert result["namespace"] == "multi_agent_v1"
+
+    def test_ir_tool_call_to_p_restores_tool_search_call(self):
+        """Responses tool_search calls restore the native output item type."""
+        ir_tc = ToolCallPart(
+            type="tool_call",
+            tool_call_id="call_123",
+            tool_name="tool_search",
+            tool_input={"query": "github plugin", "limit": 8},
+            provider_metadata={"responses_tool_type": "tool_search"},
+        )
+
+        result = OpenAIResponsesToolOps.ir_tool_call_to_p(ir_tc)
+
+        assert result["type"] == "tool_search_call"
+        assert result["id"] == "tsc_123"
+        assert result["call_id"] == "call_123"
+        assert result["execution"] == "client"
+        assert result["arguments"] == {"query": "github plugin", "limit": 8}
 
     def test_ir_tool_call_to_p_mcp(self):
         """Test IR ToolCallPart with mcp tool_type → mcp_call item."""

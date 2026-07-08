@@ -1821,6 +1821,109 @@ class TestCustomToolCallStreaming:
         assert completed
         assert completed[-1]["response"]["output"] == [tool_search_item]
 
+    def test_chat_tool_search_stream_restores_native_responses_item(self):
+        """Chat tool_search stream events serialize as Responses tool_search_call."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline("openai_responses", "openai_chat")
+        pipeline.convert_request(
+            {
+                "model": "deepseek-v4-flash",
+                "input": "find github tools",
+                "stream": True,
+                "tools": [
+                    {
+                        "type": "tool_search",
+                        "description": "Search for loadable tools.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"query": {"type": "string"}},
+                            "required": ["query"],
+                        },
+                    }
+                ],
+            }
+        )
+        processor = pipeline.create_stream_processor(finalize_on_finish_eof=True)
+
+        source_events: list[dict[str, Any]] = []
+        for chunk in [
+            {
+                "id": "chatcmpl-tool-search",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_search",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "tool_search",
+                                        "arguments": '{"query":',
+                                    },
+                                }
+                            ]
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "id": "chatcmpl-tool-search",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "function": {"arguments": '"github"}'},
+                                }
+                            ]
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "id": "chatcmpl-tool-search",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "deepseek-v4-flash",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+            },
+        ]:
+            source_events.extend(processor.process_chunk(chunk))
+        source_events.extend(processor.finalize_stream())
+
+        added = [
+            event
+            for event in source_events
+            if event.get("type") == "response.output_item.added"
+        ]
+        assert added[-1]["item"]["type"] == "tool_search_call"
+        assert added[-1]["item"]["id"] == "tsc_search"
+        assert not any(
+            event.get("type") == "response.function_call_arguments.delta"
+            for event in source_events
+        )
+        completed = [
+            event
+            for event in source_events
+            if event.get("type") == "response.completed"
+        ]
+        output = completed[-1]["response"]["output"]
+        assert output[-1]["type"] == "tool_search_call"
+        assert output[-1]["arguments"] == {"query": "github"}
+
     def test_reasoning_stream_round_trip_completed_output(self):
         """reasoning output items survive streaming provider → IR → provider conversion."""
         ctx_from = OpenAIResponsesStreamContext()
