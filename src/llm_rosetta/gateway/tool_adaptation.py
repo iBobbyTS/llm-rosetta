@@ -16,6 +16,9 @@ from typing import Any
 
 
 DEFAULT_TOOL_CALL_CACHE_TTL_HOURS = 24.0
+DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS = True
+DEFAULT_ENABLE_TOOL_DESCRIPTION_OPTIMIZATION = True
+DEFAULT_ENABLE_PHASE_DETECTION = True
 LOCALIZED_CODE_TOOL_NAMES = frozenset({"Read", "Edit", "Write", "Glob", "Grep", "Bash"})
 NATIVE_CODE_TOOL_NAMES = frozenset(
     {"apply_patch", "exec_command", "write_stdin", "shell_command"}
@@ -225,6 +228,44 @@ def should_localize_code_tools(route: Any) -> bool:
     )
 
 
+def use_apply_patch_for_code_edits(tool_adaptation: dict[str, Any] | None) -> bool:
+    """Return whether localized code edits should use Codex apply_patch."""
+    if not isinstance(tool_adaptation, dict):
+        return DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS
+    return bool(
+        tool_adaptation.get(
+            "use_apply_patch_for_code_edits",
+            DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
+        )
+    )
+
+
+def enable_tool_description_optimization(
+    tool_adaptation: dict[str, Any] | None,
+) -> bool:
+    """Return whether Chat-facing tool descriptions may be enhanced."""
+    if not isinstance(tool_adaptation, dict):
+        return DEFAULT_ENABLE_TOOL_DESCRIPTION_OPTIMIZATION
+    return bool(
+        tool_adaptation.get(
+            "enable_tool_description_optimization",
+            DEFAULT_ENABLE_TOOL_DESCRIPTION_OPTIMIZATION,
+        )
+    )
+
+
+def enable_phase_detection(tool_adaptation: dict[str, Any] | None) -> bool:
+    """Return whether Chat→Responses streams should receive phase detection."""
+    if not isinstance(tool_adaptation, dict):
+        return DEFAULT_ENABLE_PHASE_DETECTION
+    return bool(
+        tool_adaptation.get(
+            "enable_phase_detection",
+            DEFAULT_ENABLE_PHASE_DETECTION,
+        )
+    )
+
+
 def localize_code_editing_chat_request(
     body: dict[str, Any],
     *,
@@ -308,6 +349,7 @@ def translate_localized_ir_response(
     store: CodexToolLocalizationStore | None = None,
     capabilities: NativeToolCapabilities | None = None,
     read_cache: ReadOutputCache | None = None,
+    use_apply_patch: bool = DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
 ) -> dict[str, Any]:
     """Translate localized IR tool calls in-place inside an IR response."""
     for choice in ir_response.get("choices", []):
@@ -326,6 +368,7 @@ def translate_localized_ir_response(
                 part,
                 capabilities=capabilities,
                 read_cache=read_cache,
+                use_apply_patch=use_apply_patch,
             )
             if translated is None:
                 continue
@@ -349,6 +392,7 @@ def translate_localized_tool_call_part(
     *,
     capabilities: NativeToolCapabilities | None = None,
     read_cache: ReadOutputCache | None = None,
+    use_apply_patch: bool = DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
 ) -> TranslatedToolCall | None:
     """Translate one localized IR tool_call part to a Codex-native tool call."""
     localized_name = part.get("tool_name", "")
@@ -371,6 +415,7 @@ def translate_localized_tool_call_part(
             localized_input,
             capabilities=capabilities or NativeToolCapabilities(),
             read_cache=read_cache,
+            use_apply_patch=use_apply_patch,
         )
     except ValueError as exc:
         return _error_translation(call_id, localized_name, localized_input, str(exc))
@@ -410,10 +455,12 @@ class LocalizedToolCallStreamTransformer:
         on_mapping: Any | None = None,
         capabilities: NativeToolCapabilities | None = None,
         read_cache: ReadOutputCache | None = None,
+        use_apply_patch: bool = DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
     ) -> None:
         self._store = store
         self._on_mapping = on_mapping
         self._capabilities = capabilities or NativeToolCapabilities()
+        self._use_apply_patch = use_apply_patch
         self._read_cache = read_cache
         self._pending: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
@@ -466,6 +513,7 @@ class LocalizedToolCallStreamTransformer:
                 part,
                 capabilities=self._capabilities,
                 read_cache=self._read_cache,
+                use_apply_patch=self._use_apply_patch,
             )
             if translated is None:
                 events.append(start)
@@ -674,12 +722,41 @@ def generated_command_for_replace_all(args: dict[str, Any]) -> str:
     return _python_command(script, file_path, old_encoded, new_encoded)
 
 
+def generated_command_for_edit_exact(args: dict[str, Any]) -> str:
+    """Generate a Codex exec_command shell command for one exact Edit."""
+    file_path = _required_string(args, "file_path", tool_name="Edit")
+    old_string = _required_string(args, "old_string", tool_name="Edit")
+    new_string = _required_string(args, "new_string", tool_name="Edit")
+    old_encoded = base64.b64encode(old_string.encode("utf-8")).decode("ascii")
+    new_encoded = base64.b64encode(new_string.encode("utf-8")).decode("ascii")
+    script = (
+        "from pathlib import Path\n"
+        "import base64\n"
+        "import sys\n"
+        "path = Path(sys.argv[1])\n"
+        "old = base64.b64decode(sys.argv[2]).decode('utf-8')\n"
+        "new = base64.b64decode(sys.argv[3]).decode('utf-8')\n"
+        "text = path.read_text(encoding='utf-8')\n"
+        "count = text.count(old)\n"
+        "if count == 0:\n"
+        "    print(f'Edit failed: old_string was not found in {path}', file=sys.stderr)\n"
+        "    raise SystemExit(1)\n"
+        "if count > 1:\n"
+        "    print(f'Edit failed: old_string matched {count} times in {path}', file=sys.stderr)\n"
+        "    raise SystemExit(1)\n"
+        "path.write_text(text.replace(old, new, 1), encoding='utf-8')\n"
+        "print(f'Replaced 1 occurrence in {path}')\n"
+    )
+    return _python_command(script, file_path, old_encoded, new_encoded)
+
+
 def _localized_call_to_native(
     localized_name: str,
     localized_input: dict[str, Any],
     *,
     capabilities: NativeToolCapabilities,
     read_cache: ReadOutputCache | None = None,
+    use_apply_patch: bool = DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
 ) -> tuple[str, Any, str]:
     if localized_name == "Bash":
         command = _required_string(localized_input, "command", tool_name="Bash")
@@ -729,14 +806,25 @@ def _localized_call_to_native(
             localized_input,
             capabilities=capabilities,
             read_cache=read_cache,
+            use_apply_patch=use_apply_patch,
         )
 
     if localized_name == "Write":
-        if capabilities.has_custom_apply_patch:
+        if use_apply_patch and capabilities.has_custom_apply_patch:
             return (
                 "apply_patch",
                 {"input": generated_patch_for_write(localized_input)},
                 "custom",
+            )
+        if not use_apply_patch and capabilities.has_exec_command:
+            return (
+                "exec_command",
+                {
+                    "cmd": generated_command_for_write(localized_input),
+                    "yield_time_ms": 1_000,
+                    "max_output_tokens": 20_000,
+                },
+                "function",
             )
         if capabilities.has_exec_command:
             return (
@@ -760,6 +848,7 @@ def _localized_edit_to_native(
     *,
     capabilities: NativeToolCapabilities,
     read_cache: ReadOutputCache | None = None,
+    use_apply_patch: bool = DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
 ) -> tuple[str, Any, str]:
     if localized_input.get("replace_all"):
         return (
@@ -784,6 +873,23 @@ def _localized_edit_to_native(
         )
         if expanded is not None:
             old_string, new_string = expanded
+            localized_input = {
+                **localized_input,
+                "old_string": old_string,
+                "new_string": new_string,
+            }
+    if not use_apply_patch:
+        if capabilities.has_exec_command:
+            return (
+                "exec_command",
+                {
+                    "cmd": generated_command_for_edit_exact(localized_input),
+                    "yield_time_ms": 1_000,
+                    "max_output_tokens": 20_000,
+                },
+                "function",
+            )
+        raise ValueError("Edit requires exec_command support.")
     patch = generated_patch_for_edit(file_path, old_string, new_string)
     if not capabilities.has_custom_apply_patch:
         if capabilities.has_exec_command:

@@ -58,8 +58,15 @@ _CHAT_TOOL_DESCRIPTION_SUFFIXES = {
 }
 
 
-def _adapt_chat_tool_description(tool_name: str, description: str) -> str:
+def _adapt_chat_tool_description(
+    tool_name: str,
+    description: str,
+    *,
+    enabled: bool = True,
+) -> str:
     """Add Chat-model guidance for selected Codex tool descriptions."""
+    if not enabled:
+        return description
     suffix = _CHAT_TOOL_DESCRIPTION_SUFFIXES.get(tool_name)
     if not suffix or suffix in description:
         return description
@@ -182,12 +189,17 @@ class OpenAIChatToolOps(BaseToolOps):
         Returns:
             OpenAI Chat tool definition dict.
         """
+        optimize_description = bool(
+            kwargs.get("enable_tool_description_optimization", True)
+        )
         if ir_tool.get("type", "function") == "function":
             name = ir_tool["name"]
             func_def: dict[str, Any] = {
                 "name": name,
                 "description": _adapt_chat_tool_description(
-                    name, ir_tool.get("description", "")
+                    name,
+                    ir_tool.get("description", ""),
+                    enabled=optimize_description,
                 ),
             }
             parameters = ir_tool.get("parameters")
@@ -209,7 +221,9 @@ class OpenAIChatToolOps(BaseToolOps):
             "function": {
                 "name": ir_tool["name"],
                 "description": _adapt_chat_tool_description(
-                    ir_tool["name"], ir_tool.get("description", "")
+                    ir_tool["name"],
+                    ir_tool.get("description", ""),
+                    enabled=optimize_description,
                 ),
                 "parameters": params,
             },

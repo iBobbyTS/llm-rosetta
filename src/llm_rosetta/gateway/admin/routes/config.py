@@ -11,7 +11,12 @@ from llm_rosetta.shims import get_shim, list_shims
 from ...config import GatewayConfig, load_config_raw, write_config
 from ...providers import known_provider_types
 from ...stream_trace import DEFAULT_MAX_CHARS
-from ...tool_adaptation import DEFAULT_TOOL_CALL_CACHE_TTL_HOURS
+from ...tool_adaptation import (
+    DEFAULT_ENABLE_PHASE_DETECTION,
+    DEFAULT_ENABLE_TOOL_DESCRIPTION_OPTIMIZATION,
+    DEFAULT_TOOL_CALL_CACHE_TTL_HOURS,
+    DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
+)
 from ._shared import (
     _build_provider_entry,
     _get_config_path,
@@ -58,12 +63,32 @@ def _clean_tool_adaptation(value: Any) -> dict[str, Any] | None:
 
     cleaned = {
         "localize_code_editing_tools": bool(value.get("localize_code_editing_tools")),
+        "use_apply_patch_for_code_edits": bool(
+            value.get(
+                "use_apply_patch_for_code_edits",
+                DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
+            )
+        ),
         "remove_image_generation": bool(value.get("remove_image_generation")),
+        "enable_tool_description_optimization": bool(
+            value.get(
+                "enable_tool_description_optimization",
+                DEFAULT_ENABLE_TOOL_DESCRIPTION_OPTIMIZATION,
+            )
+        ),
+        "enable_phase_detection": bool(
+            value.get("enable_phase_detection", DEFAULT_ENABLE_PHASE_DETECTION)
+        ),
         "tool_call_cache_ttl_hours": ttl_hours,
     }
     return (
         cleaned
-        if cleaned["localize_code_editing_tools"] or cleaned["remove_image_generation"]
+        if cleaned["localize_code_editing_tools"]
+        or cleaned["remove_image_generation"]
+        or not cleaned["use_apply_patch_for_code_edits"]
+        or not cleaned["enable_tool_description_optimization"]
+        or not cleaned["enable_phase_detection"]
+        or ttl_hours != DEFAULT_TOOL_CALL_CACHE_TTL_HOURS
         else None
     )
 

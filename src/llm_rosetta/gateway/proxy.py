@@ -49,11 +49,14 @@ from .tool_adaptation import (
     LocalizedToolCallStreamTransformer,
     NativeToolCapabilities,
     ReadOutputCache,
+    enable_phase_detection,
+    enable_tool_description_optimization,
     localized_mapping_from_tool_calls,
     localize_code_editing_chat_request,
     should_localize_code_tools,
     tool_call_cache_ttl_hours,
     translate_localized_ir_response,
+    use_apply_patch_for_code_edits,
 )
 from .transport import (
     ProviderInfo,
@@ -284,8 +287,27 @@ def _synthetic_responses_tool_search_definition(
     }
 
 
+def _minimal_responses_tool_search_definition() -> dict[str, Any]:
+    """Build a minimal native Responses tool_search definition for Chat bridges."""
+    return {
+        "type": "tool_search",
+        "execution": "client",
+        "description": "Search deferred Codex tools.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["query"],
+        },
+    }
+
+
 def _defer_responses_namespace_tools_for_chat(
     body: dict[str, Any],
+    *,
+    optimize_tool_descriptions: bool = True,
 ) -> list[dict[str, Any]]:
     """Hide deferred Responses namespaces from Chat until tool_search loads them."""
     tools = body.get("tools")
@@ -308,9 +330,12 @@ def _defer_responses_namespace_tools_for_chat(
         return []
 
     if not has_tool_search:
-        filtered_tools.append(
-            _synthetic_responses_tool_search_definition(deferred_tools)
-        )
+        if optimize_tool_descriptions:
+            filtered_tools.append(
+                _synthetic_responses_tool_search_definition(deferred_tools)
+            )
+        else:
+            filtered_tools.append(_minimal_responses_tool_search_definition())
 
     body["tools"] = filtered_tools
     return deferred_tools
@@ -544,6 +569,7 @@ def _translate_and_persist_localized_response_tools(
         store=tool_store,
         capabilities=capabilities,
         read_cache=read_cache,
+        use_apply_patch=use_apply_patch_for_code_edits(route.tool_adaptation),
     )
     _persist_localized_response_mappings(
         ir_response,
@@ -1113,6 +1139,8 @@ class WindowToolSearchStore:
         window_id: str | None,
         ir_request: dict[str, Any],
         pipeline: ConversionPipeline,
+        *,
+        optimize_tool_descriptions: bool = True,
     ) -> None:
         """Append remembered loadable tools to an IR request for the same window."""
         if not window_id:
@@ -1149,7 +1177,8 @@ class WindowToolSearchStore:
             name = tool.get("name")
             if not isinstance(name, str) or name in existing_names:
                 continue
-            tool = _patch_github_namespace_tool_schema_for_chat(tool)
+            if optimize_tool_descriptions:
+                tool = _patch_github_namespace_tool_schema_for_chat(tool)
             existing_tools.append(tool)
             existing_names.add(name)
             added.append(tool)
@@ -1182,7 +1211,12 @@ def _prepare_window_tool_search_request(
     """Update per-window loadable-tool state and return whether injection applies."""
     if not (_uses_responses_chat_bridge(route) and codex_window_id):
         return False
-    deferred_tools = _defer_responses_namespace_tools_for_chat(body)
+    deferred_tools = _defer_responses_namespace_tools_for_chat(
+        body,
+        optimize_tool_descriptions=enable_tool_description_optimization(
+            route.tool_adaptation
+        ),
+    )
     window_tools.remember_deferred_tools(codex_window_id, deferred_tools)
     window_tools.enrich_tool_search_outputs(codex_window_id, body)
     window_tools.remember_from_request(codex_window_id, body)
@@ -1306,13 +1340,25 @@ async def handle_non_streaming(
         upstream_model=model,
         model_capabilities=route.model_capabilities,
         reasoning_config_override=route.reasoning_override,
+        conversion_options={
+            "enable_tool_description_optimization": (
+                enable_tool_description_optimization(route.tool_adaptation)
+            )
+        },
     )
 
     # Phase 1+2: Source → IR → Target
     def _on_request_ir_ready(ir_request: dict[str, Any]) -> None:
         store.inject_into_request(ir_request)
         if use_window_tool_search:
-            window_tools.inject_into_request(codex_window_id, ir_request, pipeline)
+            window_tools.inject_into_request(
+                codex_window_id,
+                ir_request,
+                pipeline,
+                optimize_tool_descriptions=enable_tool_description_optimization(
+                    route.tool_adaptation
+                ),
+            )
 
     try:
         target_body = pipeline.convert_request(body, on_ir_ready=_on_request_ir_ready)
@@ -1854,13 +1900,25 @@ async def handle_streaming(
         upstream_model=model,
         model_capabilities=route.model_capabilities,
         reasoning_config_override=route.reasoning_override,
+        conversion_options={
+            "enable_tool_description_optimization": (
+                enable_tool_description_optimization(route.tool_adaptation)
+            )
+        },
     )
 
     # Phase 1+2: Source → IR → Target
     def _on_request_ir_ready(ir_request: dict[str, Any]) -> None:
         store.inject_into_request(ir_request)
         if use_window_tool_search:
-            window_tools.inject_into_request(codex_window_id, ir_request, pipeline)
+            window_tools.inject_into_request(
+                codex_window_id,
+                ir_request,
+                pipeline,
+                optimize_tool_descriptions=enable_tool_description_optimization(
+                    route.tool_adaptation
+                ),
+            )
 
     try:
         target_body = pipeline.convert_request(body, on_ir_ready=_on_request_ir_ready)
@@ -2005,6 +2063,7 @@ async def handle_streaming(
             on_mapping=_persist_stream_mapping,
             capabilities=tool_capabilities,
             read_cache=read_cache,
+            use_apply_patch=use_apply_patch_for_code_edits(route.tool_adaptation),
         )
     else:
         stream_transformer = None
@@ -2023,6 +2082,7 @@ async def handle_streaming(
         if route.source_provider in ("openai_responses", "open_responses")
         and route.target_provider == "openai_chat"
         and codex_window_id
+        and enable_phase_detection(route.tool_adaptation)
         else None
     )
 

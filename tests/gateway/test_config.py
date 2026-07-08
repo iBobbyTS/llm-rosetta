@@ -88,7 +88,10 @@ class TestModelToolAdaptation:
                 "capabilities": ["text", "tools"],
                 "tool_adaptation": {
                     "localize_code_editing_tools": False,
+                    "use_apply_patch_for_code_edits": False,
                     "remove_image_generation": True,
+                    "enable_tool_description_optimization": False,
+                    "enable_phase_detection": False,
                     "tool_call_cache_ttl_hours": 12,
                 },
             }
@@ -99,11 +102,17 @@ class TestModelToolAdaptation:
 
         assert cfg.model_tool_adaptations["gpt-test"] == {
             "localize_code_editing_tools": False,
+            "use_apply_patch_for_code_edits": False,
             "remove_image_generation": True,
+            "enable_tool_description_optimization": False,
+            "enable_phase_detection": False,
             "tool_call_cache_ttl_hours": 12,
         }
         assert route.tool_adaptation == {
             "localize_code_editing_tools": False,
+            "use_apply_patch_for_code_edits": False,
             "remove_image_generation": True,
+            "enable_tool_description_optimization": False,
+            "enable_phase_detection": False,
             "tool_call_cache_ttl_hours": 12,
         }

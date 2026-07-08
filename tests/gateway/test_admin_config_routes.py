@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -88,7 +89,10 @@ def test_put_model_persists_tool_adaptation_and_reloads_runtime_config(tmp_path)
         "capabilities": ["text", "tools"],
         "tool_adaptation": {
             "localize_code_editing_tools": False,
+            "use_apply_patch_for_code_edits": False,
             "remove_image_generation": True,
+            "enable_tool_description_optimization": False,
+            "enable_phase_detection": False,
             "tool_call_cache_ttl_hours": 12,
         },
     }
@@ -99,12 +103,76 @@ def test_put_model_persists_tool_adaptation_and_reloads_runtime_config(tmp_path)
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     assert saved["models"]["gpt-test"]["tool_adaptation"] == {
         "localize_code_editing_tools": False,
+        "use_apply_patch_for_code_edits": False,
         "remove_image_generation": True,
+        "enable_tool_description_optimization": False,
+        "enable_phase_detection": False,
         "tool_call_cache_ttl_hours": 12.0,
     }
     route, _provider = app.gateway_config.resolve("openai_responses", "gpt-test")
     assert route.tool_adaptation == {
         "localize_code_editing_tools": False,
+        "use_apply_patch_for_code_edits": False,
         "remove_image_generation": True,
+        "enable_tool_description_optimization": False,
+        "enable_phase_detection": False,
         "tool_call_cache_ttl_hours": 12.0,
     }
+
+
+def test_put_model_omits_default_tool_adaptation(tmp_path):
+    """Default-only tool adaptation settings do not create config noise."""
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(_config_data()), encoding="utf-8")
+
+    initial_config = GatewayConfig(_config_data())
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(
+        app=app,
+        path_params={"name": "gpt-test"},
+    )
+    request.json = lambda: {
+        "provider": "openai",
+        "capabilities": ["text", "tools"],
+        "tool_adaptation": {
+            "localize_code_editing_tools": False,
+            "use_apply_patch_for_code_edits": True,
+            "remove_image_generation": False,
+            "enable_tool_description_optimization": True,
+            "enable_phase_detection": True,
+            "tool_call_cache_ttl_hours": 24,
+        },
+    }
+
+    response = _run(put_model(request))
+
+    assert response.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert "tool_adaptation" not in saved["models"]["gpt-test"]
+
+
+def test_admin_html_exposes_tool_adaptation_switches():
+    """Model modal exposes all configurable tool adaptation switches."""
+    html_path = (
+        Path(__file__).parents[2]
+        / "src"
+        / "llm_rosetta"
+        / "gateway"
+        / "admin"
+        / "admin.html"
+    )
+    html = html_path.read_text(encoding="utf-8")
+
+    assert 'id="toolUseApplyPatchForCodeEdits" checked' in html
+    assert 'id="toolUseApplyPatchRow" style="display:none' in html
+    assert 'onchange="updateToolAdaptationVisibility()"' in html
+    assert "function updateToolAdaptationVisibility()" in html
+    assert "toolAdaptation.use_apply_patch_for_code_edits !== false" in html
+    assert "toolAdaptation.enable_tool_description_optimization !== false" in html
+    assert "toolAdaptation.enable_phase_detection !== false" in html
+    assert "toolFlattenNestedNamespaceTools" not in html

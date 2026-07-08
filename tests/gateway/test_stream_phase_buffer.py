@@ -446,6 +446,16 @@ def _route() -> ResolvedRoute:
     )
 
 
+def _route_with_tool_adaptation(tool_adaptation: dict[str, Any]) -> ResolvedRoute:
+    return ResolvedRoute(
+        source_provider="openai_responses",
+        target_provider="openai_chat",
+        provider_name="test-provider",
+        upstream_model="glm-5.2",
+        tool_adaptation=tool_adaptation,
+    )
+
+
 def _provider_info() -> MagicMock:
     info = MagicMock()
     info.base_url = "https://api.example.test"
@@ -551,5 +561,35 @@ def test_handle_streaming_skips_phase_buffer_without_codex_window_id():
     joined = "\n".join(asyncio.run(run()))
 
     assert '"phase": "commentary"' not in joined
+    assert "response.output_text.delta" in joined
+    assert "response.output_item.added" in joined
+
+
+def test_handle_streaming_skips_phase_buffer_when_disabled():
+    transport = MagicMock()
+    transport.send_streaming = AsyncMock(return_value=_chat_text_then_tool_stream())
+    body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "run a command"}],
+        "stream": True,
+    }
+
+    async def run() -> list[str]:
+        response, _ = await handle_streaming(
+            _route_with_tool_adaptation({"enable_phase_detection": False}),
+            _provider_info(),
+            body,
+            transport=transport,
+            codex_window_id="thread-1:0",
+        )
+        chunks: list[str] = []
+        async for chunk in response._generator:
+            chunks.append(chunk)
+        return chunks
+
+    joined = "\n".join(asyncio.run(run()))
+
+    assert '"phase": "commentary"' not in joined
+    assert '"phase": "final_answer"' not in joined
     assert "response.output_text.delta" in joined
     assert "response.output_item.added" in joined

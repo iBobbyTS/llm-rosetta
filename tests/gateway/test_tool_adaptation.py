@@ -24,6 +24,7 @@ from llm_rosetta.gateway.tool_adaptation import (
     LocalizedToolCallStreamTransformer,
     NativeToolCapabilities,
     ReadOutputCache,
+    generated_command_for_edit_exact,
     localized_mapping_from_tool_calls,
     generated_patch_for_edit,
     localize_code_editing_chat_request,
@@ -41,6 +42,16 @@ def _route() -> ResolvedRoute:
         provider_name="test-provider",
         upstream_model="glm-5.2",
         tool_adaptation={"localize_code_editing_tools": True},
+    )
+
+
+def _route_with_tool_adaptation(tool_adaptation: dict[str, Any]) -> ResolvedRoute:
+    return ResolvedRoute(
+        source_provider="openai_responses",
+        target_provider="openai_chat",
+        provider_name="test-provider",
+        upstream_model="glm-5.2",
+        tool_adaptation=tool_adaptation,
     )
 
 
@@ -170,6 +181,31 @@ def test_translate_localized_edit_to_exec_command_when_apply_patch_absent():
     assert "+print('new')" in command
 
 
+def test_translate_localized_edit_to_python_when_apply_patch_disabled():
+    translated = translate_localized_tool_call_part(
+        {
+            "type": "tool_call",
+            "tool_call_id": "call_edit",
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "src/app.py",
+                "old_string": "print('old')",
+                "new_string": "print('new')",
+            },
+        },
+        capabilities=NativeToolCapabilities(has_exec_command=True),
+        use_apply_patch=False,
+    )
+
+    assert translated is not None
+    assert translated.part["tool_name"] == "exec_command"
+    assert translated.part["tool_type"] == "function"
+    command = translated.part["tool_input"]["cmd"]
+    assert "python3 -c" in command
+    assert "apply_patch" not in command
+    assert "old_string matched" in command
+
+
 def test_translate_localized_write_to_custom_apply_patch_add_file():
     translated = translate_localized_tool_call_part(
         {
@@ -219,6 +255,54 @@ def test_translate_localized_write_to_exec_command_when_apply_patch_absent():
     assert "+# Title" in command
     assert "+Body" in command
     assert "docs/new.md" in command
+
+
+def test_translate_localized_write_to_python_when_apply_patch_disabled():
+    translated = translate_localized_tool_call_part(
+        {
+            "type": "tool_call",
+            "tool_call_id": "call_write",
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "docs/new.md",
+                "content": "# Title\n\nBody\n",
+            },
+        },
+        capabilities=NativeToolCapabilities(has_exec_command=True),
+        use_apply_patch=False,
+    )
+
+    assert translated is not None
+    assert translated.part["tool_name"] == "exec_command"
+    assert translated.part["tool_type"] == "function"
+    command = translated.part["tool_input"]["cmd"]
+    assert "python3 -c" in command
+    assert "apply_patch" not in command
+    assert "docs/new.md" in command
+
+
+def test_generated_exact_edit_python_command_rejects_ambiguous_matches(tmp_path):
+    target = tmp_path / "example.txt"
+    target.write_text("old\nold\n", encoding="utf-8")
+    command = generated_command_for_edit_exact(
+        {
+            "file_path": str(target),
+            "old_string": "old",
+            "new_string": "new",
+        }
+    )
+
+    completed = subprocess.run(
+        command,
+        shell=True,
+        text=True,
+        capture_output=True,
+        timeout=5,
+    )
+
+    assert completed.returncode == 1
+    assert "old_string matched 2 times" in completed.stderr
+    assert target.read_text(encoding="utf-8") == "old\nold\n"
 
 
 def test_translate_localized_edit_expands_substring_from_read_cache():
@@ -660,6 +744,91 @@ def test_gateway_non_streaming_translates_edit_to_exec_when_apply_patch_absent()
     arguments = json.loads(output[0]["arguments"])
     assert "apply_patch <<'PATCH'" in arguments["cmd"]
     assert "*** Update File: example.txt" in arguments["cmd"]
+
+
+def test_gateway_non_streaming_translates_edit_to_python_when_apply_patch_disabled():
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_edit",
+                            "type": "function",
+                            "function": {
+                                "name": "Edit",
+                                "arguments": json.dumps(
+                                    {
+                                        "file_path": "example.txt",
+                                        "old_string": "old",
+                                        "new_string": "new",
+                                    }
+                                ),
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+    }
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(
+        return_value=UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+    )
+    body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "edit example.txt"}],
+        "tools": [
+            {
+                "type": "function",
+                "name": "exec_command",
+                "parameters": {"type": "object", "properties": {}},
+            },
+            {
+                "type": "custom",
+                "name": "apply_patch",
+                "description": "Apply patch",
+            },
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _route_with_tool_adaptation(
+                {
+                    "localize_code_editing_tools": True,
+                    "use_apply_patch_for_code_edits": False,
+                }
+            ),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_tool_store=CodexToolLocalizationStore(),
+        )
+
+    response, _ = asyncio.run(run())
+
+    assert response.status_code == 200
+    source_body = json.loads(response.body)
+    output = source_body["output"]
+    assert output[0]["type"] == "function_call"
+    assert output[0]["name"] == "exec_command"
+    arguments = json.loads(output[0]["arguments"])
+    assert "python3 -c" in arguments["cmd"]
+    assert "apply_patch" not in arguments["cmd"]
 
 
 def test_gateway_window_tool_search_output_expands_tools_for_same_window():
@@ -1282,6 +1451,129 @@ def test_gateway_patches_github_owner_repo_descriptions_only_for_chat_tools():
     assert "git remote -v" in properties["repo"]["description"]
 
 
+def test_gateway_skips_github_owner_repo_hints_when_optimization_disabled():
+    captured_bodies: list[dict[str, Any]] = []
+    window_store = WindowToolSearchStore()
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_bodies.append(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    route = _route_with_tool_adaptation({"enable_tool_description_optimization": False})
+    initial_body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "check PR"}],
+        "tools": [
+            {
+                "type": "namespace",
+                "name": "mcp__codex_apps__github",
+                "description": "GitHub connector.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "_get_pr_info",
+                        "description": "Get GitHub pull request information.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "owner": {
+                                    "type": "string",
+                                    "description": "Repository owner.",
+                                },
+                                "repo": {
+                                    "type": "string",
+                                    "description": "Repository name.",
+                                },
+                                "number": {"type": "integer"},
+                            },
+                            "required": ["owner", "repo", "number"],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    search_result_body = {
+        "model": "glm-5.2",
+        "input": [
+            {
+                "type": "tool_search_call",
+                "call_id": "call_search",
+                "arguments": {"query": "github pull request get", "limit": 8},
+            },
+            {
+                "type": "tool_search_output",
+                "call_id": "call_search",
+                "tools": [],
+            },
+            {"role": "user", "content": "inspect PR 34"},
+        ],
+        "tools": [
+            {
+                "type": "tool_search",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        ],
+    }
+
+    async def run():
+        first_response, _ = await handle_non_streaming(
+            route,
+            _provider_info(),
+            initial_body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_window_id="thread-abc:0",
+            window_tool_search_store=window_store,
+        )
+        second_response, _ = await handle_non_streaming(
+            route,
+            _provider_info(),
+            search_result_body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_window_id="thread-abc:0",
+            window_tool_search_store=window_store,
+        )
+        return first_response, second_response
+
+    first_response, second_response = asyncio.run(run())
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    chat_tools = captured_bodies[1]["tools"]
+    github_tool = next(
+        tool
+        for tool in chat_tools
+        if tool.get("function", {}).get("name")
+        == "mcp__codex_apps__github___get_pr_info"
+    )
+    properties = github_tool["function"]["parameters"]["properties"]
+    assert properties["owner"]["description"] == "Repository owner."
+    assert properties["repo"]["description"] == "Repository name."
+
+
 def test_gateway_deferred_tool_search_matches_nested_schema_metadata():
     captured_body: dict[str, Any] = {}
     window_store = WindowToolSearchStore()
@@ -1728,6 +2020,85 @@ def test_gateway_defers_preloaded_plugin_namespaces_but_keeps_base_tools():
     assert (
         limit["description"] == "Use 8 unless previous search didn't give enough tools."
     )
+
+
+def test_gateway_deferred_tool_search_uses_minimal_description_when_optimization_disabled():
+    captured_body: dict[str, Any] = {}
+    upstream_body = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 123,
+        "model": "glm-5.2",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_body,
+            raw_content=json.dumps(upstream_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    body = {
+        "model": "glm-5.2",
+        "input": [{"role": "user", "content": "check tools"}],
+        "tools": [
+            {
+                "type": "namespace",
+                "name": "mcp__codex_apps__github",
+                "description": "GitHub connector.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "_fetch_pr",
+                        "description": "Fetch a PR.",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            }
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _route_with_tool_adaptation(
+                {"enable_tool_description_optimization": False}
+            ),
+            _provider_info(),
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_window_id="thread-abc:0",
+            window_tool_search_store=WindowToolSearchStore(),
+        )
+
+    response, _ = asyncio.run(run())
+
+    assert response.status_code == 200
+    tool_search = next(
+        tool
+        for tool in captured_body["tools"]
+        if tool.get("function", {}).get("name") == "tool_search"
+    )
+    assert tool_search["function"]["description"] == "Search deferred Codex tools."
+    assert (
+        "generic capability/source terms" not in tool_search["function"]["description"]
+    )
+    query = tool_search["function"]["parameters"]["properties"]["query"]
+    assert "description" not in query
+    limit = tool_search["function"]["parameters"]["properties"]["limit"]
+    assert "description" not in limit
 
 
 def test_gateway_does_not_defer_preloaded_namespaces_without_codex_window_id():

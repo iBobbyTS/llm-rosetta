@@ -198,6 +198,7 @@ class ConversionPipeline:
         upstream_model: str | None = None,
         model_capabilities: list[str] | None = None,
         reasoning_config_override: dict[str, Any] | None = None,
+        conversion_options: dict[str, Any] | None = None,
     ) -> None:
         from llm_rosetta import get_converter_for_provider
 
@@ -207,6 +208,7 @@ class ConversionPipeline:
         self._upstream_model = upstream_model
         self._model_capabilities = model_capabilities
         self._reasoning_config_override = reasoning_config_override
+        self._conversion_options = dict(conversion_options or {})
 
         self._source_converter = get_converter_for_provider(source_provider)
         self._target_converter = get_converter_for_provider(target_provider)
@@ -326,6 +328,7 @@ class ConversionPipeline:
         # Setup context
         ctx = ConversionContext()
         ctx.options["metadata_mode"] = "preserve"
+        ctx.options.update(self._conversion_options)
         if self._target_provider == "google":
             ctx.options["output_format"] = "rest"
 

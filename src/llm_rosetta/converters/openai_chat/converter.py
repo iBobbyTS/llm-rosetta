@@ -185,7 +185,19 @@ class OpenAIChatConverter(BaseConverter):
         """Apply tools, tool_choice, and tool_config to provider request."""
         tools = ir_request.get("tools")
         if tools:
-            result["tools"] = self._get_cached_tools_to_p(tools)
+            optimize_description = ctx.options.get(
+                "enable_tool_description_optimization", True
+            )
+            if optimize_description:
+                result["tools"] = self._get_cached_tools_to_p(tools)
+            else:
+                result["tools"] = [
+                    self.tool_ops.ir_tool_definition_to_p(
+                        tool,
+                        enable_tool_description_optimization=False,
+                    )
+                    for tool in tools
+                ]
         tool_choice = ir_request.get("tool_choice")
         if tool_choice:
             result["tool_choice"] = self.tool_ops.ir_tool_choice_to_p(tool_choice)

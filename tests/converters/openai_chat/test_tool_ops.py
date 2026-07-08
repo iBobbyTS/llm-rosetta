@@ -91,6 +91,31 @@ class TestOpenAIChatToolOps:
         assert "call create_goal first" in description
         assert result["function"]["parameters"]["required"] == ["status"]
 
+    def test_ir_tool_definition_to_p_skips_chat_guidance_when_disabled(self):
+        """Chat tool description optimization can be disabled."""
+        ir_tool = cast(
+            ToolDefinition,
+            {
+                "type": "function",
+                "name": "update_goal",
+                "description": "Update the existing goal.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"status": {"type": "string"}},
+                    "required": ["status"],
+                },
+                "required_parameters": ["status"],
+                "metadata": {},
+            },
+        )
+
+        result = OpenAIChatToolOps.ir_tool_definition_to_p(
+            ir_tool,
+            enable_tool_description_optimization=False,
+        )
+
+        assert result["function"]["description"] == "Update the existing goal."
+
     def test_ir_tool_definition_to_p_adds_request_user_input_chat_guidance(self):
         """request_user_input gets Plan-mode guidance for Chat models."""
         ir_tool = cast(
