@@ -38,6 +38,7 @@ Currently solved, but not yet heavily production-tested:
 - Code editing tool translation: because these models often recommend Claude Code as their preferred coding agent, this project references Claude Code-style tool definitions. Models can emit familiar tool calls, and Rosetta converts them back to `apply_patch` or other Codex-native calls.
 - Input-cache preservation: because the gateway intercepts and rewrites tool calls, the provider-side cache and Codex's local session history can otherwise diverge. Rosetta rewrites historical tool calls in outgoing requests so provider input caches can still match.
 - Goal, TODO, Plan, and Subagent flows have been tested successfully.
+- Work-process folding, with the trade-off that converted Chat upstream streams are buffered instead of streamed token-by-token.
 
 ## Supported Providers
 
