@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from codex_rosetta.converters.openai_responses._constants import ResponsesEventType
 from codex_rosetta.gateway.proxy import _stream_event_generator, handle_streaming
 from codex_rosetta.gateway.stream_phase_buffer import (
@@ -138,6 +140,34 @@ def _tool_done() -> dict[str, Any]:
     }
 
 
+def _native_search_item(item_type: str) -> dict[str, Any]:
+    if item_type == "tool_search_call":
+        return {
+            "id": "tsc_1",
+            "type": "tool_search_call",
+            "call_id": "call_search_1",
+            "status": "completed",
+            "execution": "client",
+            "arguments": {"query": "github", "limit": 8},
+        }
+    if item_type == "web_search_call":
+        return {
+            "id": "wsc_1",
+            "type": "web_search_call",
+            "status": "completed",
+            "action": {"type": "search", "query": "Codex compatibility"},
+        }
+    raise AssertionError(f"unsupported search item type: {item_type}")
+
+
+def _native_search_event(item_type: str, event_type: str) -> dict[str, Any]:
+    return {
+        "type": event_type,
+        "output_index": 1,
+        "item": _native_search_item(item_type),
+    }
+
+
 def _completed(*, with_tool: bool) -> dict[str, Any]:
     output = [
         {
@@ -162,6 +192,12 @@ def _completed(*, with_tool: bool) -> dict[str, Any]:
         "type": ResponsesEventType.RESPONSE_COMPLETED,
         "response": {"id": "resp_1", "status": "completed", "output": output},
     }
+
+
+def _completed_with_native_search(item_type: str) -> dict[str, Any]:
+    event = _completed(with_tool=False)
+    event["response"]["output"].append(_native_search_item(item_type))
+    return event
 
 
 def _failed() -> dict[str, Any]:
@@ -316,6 +352,57 @@ def test_completed_tool_output_marks_buffered_message_as_commentary():
     assert _message_item(emitted[1])["phase"] == COMMENTARY_PHASE
     assert _completed_message(emitted[-1])["phase"] == COMMENTARY_PHASE
     assert emitted[-1]["response"]["output"][1]["type"] == "function_call"
+
+
+@pytest.mark.parametrize(
+    ("item_type", "event_type"),
+    [
+        ("tool_search_call", ResponsesEventType.OUTPUT_ITEM_DONE),
+        ("web_search_call", ResponsesEventType.OUTPUT_ITEM_ADDED),
+    ],
+)
+def test_text_before_native_search_is_commentary(item_type: str, event_type: str):
+    emitted = _collect(
+        _buffer(),
+        [
+            _created(),
+            _message_added(),
+            _content_added(),
+            _text_delta(),
+            _native_search_event(item_type, event_type),
+            _text_done(),
+            _content_done(),
+            _message_done(),
+            _completed_with_native_search(item_type),
+        ],
+    )
+
+    search_index = next(
+        index
+        for index, event in enumerate(emitted)
+        if event.get("item", {}).get("type") == item_type
+    )
+    assert search_index == 4
+    assert _message_item(emitted[1])["phase"] == COMMENTARY_PHASE
+    assert _completed_message(emitted[-1])["phase"] == COMMENTARY_PHASE
+
+
+@pytest.mark.parametrize("item_type", ["tool_search_call", "web_search_call"])
+def test_completed_native_search_marks_buffered_message_as_commentary(item_type: str):
+    emitted = _collect(
+        _buffer(),
+        [
+            _created(),
+            _message_added(),
+            _content_added(),
+            _text_delta(),
+            _completed_with_native_search(item_type),
+        ],
+    )
+
+    assert _message_item(emitted[1])["phase"] == COMMENTARY_PHASE
+    assert _completed_message(emitted[-1])["phase"] == COMMENTARY_PHASE
+    assert emitted[-1]["response"]["output"][1]["type"] == item_type
 
 
 def test_normal_eof_flushes_buffered_text_without_phase():

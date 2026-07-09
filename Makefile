@@ -10,6 +10,9 @@ VERSION := $(shell grep -oE '__version__[[:space:]]*=[[:space:]]*"[^"]+"' src/co
 V ?= $(VERSION)
 PYPI_MIRROR ?=
 REGISTRY_MIRROR ?=
+CODEX_SOURCE ?= ../openai-codex-src
+CODEX_CONTRACT_BASELINE ?= version-compatibility/codex-source-contract.json
+CODEX_CONTRACT_SCRIPT := scripts/check_codex_compatibility.py
 
 # Default target
 all: lint test build
@@ -21,16 +24,16 @@ all: lint test build
 # Run ruff linter
 lint:
 	@echo "Running ruff check..."
-	ruff check src/ tests/
+	ruff check src/ tests/ $(CODEX_CONTRACT_SCRIPT)
 	@echo "Running ruff format check..."
-	ruff format --check src/ tests/
+	ruff format --check src/ tests/ $(CODEX_CONTRACT_SCRIPT)
 	@echo "Lint complete."
 
 # Auto-fix lint issues
 lint-fix:
 	@echo "Auto-fixing lint issues..."
-	ruff check --fix src/ tests/
-	ruff format src/ tests/
+	ruff check --fix src/ tests/ $(CODEX_CONTRACT_SCRIPT)
+	ruff format src/ tests/ $(CODEX_CONTRACT_SCRIPT)
 	@echo "Lint fix complete."
 
 # ──────────────────────────────────────────────
@@ -59,6 +62,20 @@ test-gateway:
 	@echo "Running gateway integration tests..."
 	@./scripts/run_gateway_integration.sh
 	@echo "Gateway integration tests completed."
+
+# Compare the current sibling Codex checkout against the reviewed source contract.
+check-codex-compat:
+	@echo "Checking Codex source compatibility contract..."
+	python $(CODEX_CONTRACT_SCRIPT) \
+		--source $(CODEX_SOURCE) \
+		--baseline $(CODEX_CONTRACT_BASELINE)
+
+# Refresh only after reviewing the reported Codex source contract changes.
+update-codex-compat-baseline:
+	python $(CODEX_CONTRACT_SCRIPT) \
+		--source $(CODEX_SOURCE) \
+		--baseline $(CODEX_CONTRACT_BASELINE) \
+		--write-baseline
 
 # ──────────────────────────────────────────────
 # Package targets
@@ -178,6 +195,8 @@ help:
 	@echo "  test               - Run unit tests with pytest"
 	@echo "  test-integration   - Run integration tests via proxychains"
 	@echo "  test-gateway       - Run gateway integration tests (all SDKs × all models)"
+	@echo "  check-codex-compat - Compare ../openai-codex-src with the reviewed contract"
+	@echo "  update-codex-compat-baseline - Refresh the reviewed Codex contract snapshot"
 	@echo ""
 	@echo "Package:"
 	@echo "  build-package  - Build the Python package"
@@ -222,4 +241,4 @@ help:
 	@echo ""
 	@echo "Detected version: $(VERSION)"
 
-.PHONY: all lint lint-fix test test-integration test-gateway build-package push-package clean-package build push clean build-docker push-docker clean-docker deploy-dev help
+.PHONY: all lint lint-fix test test-integration test-gateway check-codex-compat update-codex-compat-baseline build-package push-package clean-package build push clean build-docker push-docker clean-docker deploy-dev help

@@ -304,3 +304,33 @@ those branches have no `.pre-commit-config.yaml`.
 
 - `src/codex_rosetta/_vendor/**` — vendored dependencies, managed externally
 - `docs_en/`, `docs_zh/` — separate git branches, edit inside the worktree only
+
+## Codex source and version compatibility
+
+- The local OpenAI Codex source checkout is at `../openai-codex-src` relative to
+  this repository.
+- Treat the installed Codex CLI version and the source checkout commit as two
+  separate compatibility identifiers. The source manifests can contain
+  development placeholders, so never infer the source revision from the CLI
+  version alone.
+- Before changing a Codex-facing request, response, stream, tool, session, or
+  model-catalog behavior, read `version-compatibility/README.md` and
+  `version-compatibility/compatibility-points.md`.
+- Every Codex version update requires a source-contract review and the tests in
+  `version-compatibility/upgrade-checklist.md`. Record the new CLI version,
+  Codex source commit, reviewed contract changes, test results, and any accepted
+  gaps before claiming compatibility.
+- During normal development, every Codex-specific compatibility point must be
+  recorded in `version-compatibility/compatibility-points.md` with both its
+  automatable checks and the real Codex/API tests required when triggered.
+- For a Codex upgrade, first record the previous source commit, then update
+  `../openai-codex-src` with a fast-forward-only pull. Classify every recorded
+  compatibility point as high-confidence unchanged, possibly unchanged, or
+  changed; contract-group output alone is not the final per-point report.
+- Run all automatable checks. Every possibly-unchanged or changed compatibility
+  point requires a real Codex/API test before the upgrade can be accepted.
+- Only after repairs and all required tests pass, update the Codex-Rosetta
+  package version to the target Codex release version and record the exact
+  source commit as the second compatibility identifier.
+- When a Codex-specific compatibility point is added, changed, or removed,
+  update the compatibility ledger and upgrade checklist in the same task.

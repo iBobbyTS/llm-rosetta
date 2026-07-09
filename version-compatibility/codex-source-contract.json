@@ -1,0 +1,287 @@
+{
+  "codex_source_commit": "cca16a10878202cb2f6e9666b6b4330329ea7e65",
+  "contract": {
+    "apply_patch": {
+      "format_type": "grammar",
+      "grammar_sha256": "d6367f4826ed608c424b0a308f3d6163527df63c22513d089b91863552f8bfeb",
+      "name": "apply_patch",
+      "syntax": "lark"
+    },
+    "codex_header_constants": {
+      "OPENAI_BETA_HEADER": "OpenAI-Beta",
+      "X_CODEX_INSTALLATION_ID_HEADER": "x-codex-installation-id",
+      "X_CODEX_PARENT_THREAD_ID_HEADER": "x-codex-parent-thread-id",
+      "X_CODEX_TURN_METADATA_HEADER": "x-codex-turn-metadata",
+      "X_CODEX_TURN_STATE_HEADER": "x-codex-turn-state",
+      "X_CODEX_WINDOW_ID_HEADER": "x-codex-window-id",
+      "X_OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER": "x-openai-internal-codex-responses-lite",
+      "X_OPENAI_MEMGEN_REQUEST_HEADER": "x-openai-memgen-request",
+      "X_OPENAI_SUBAGENT_HEADER": "x-openai-subagent",
+      "X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER": "x-responsesapi-include-timing-metrics"
+    },
+    "compaction_input_fields": [
+      "input",
+      "instructions",
+      "model",
+      "parallel_tool_calls",
+      "prompt_cache_key",
+      "reasoning",
+      "service_tier",
+      "text",
+      "tools"
+    ],
+    "content_item_variants": [
+      "InputImage",
+      "InputText",
+      "OutputText"
+    ],
+    "endpoints": {
+      "MEMORIES_SUMMARIZE_ENDPOINT": "/memories/trace_summarize",
+      "RESPONSES_COMPACT_ENDPOINT": "/responses/compact",
+      "RESPONSES_ENDPOINT": "/responses"
+    },
+    "message_phase_variants": [
+      "Commentary",
+      "FinalAnswer"
+    ],
+    "model_enum_variants": {
+      "ApplyPatchToolType": [
+        "Freeform"
+      ],
+      "ConfigShellToolType": [
+        "Default",
+        "Disabled",
+        "Local",
+        "ShellCommand",
+        "UnifiedExec"
+      ],
+      "InputModality": [
+        "Image",
+        "Text"
+      ],
+      "ModelVisibility": [
+        "Hide",
+        "List",
+        "None"
+      ],
+      "MultiAgentVersion": [
+        "Disabled",
+        "V1",
+        "V2"
+      ],
+      "ReasoningEffort": [
+        "Custom",
+        "High",
+        "Low",
+        "Max",
+        "Medium",
+        "Minimal",
+        "None",
+        "Ultra",
+        "XHigh"
+      ],
+      "ReasoningSummary": [
+        "Auto",
+        "Concise",
+        "Detailed",
+        "None"
+      ],
+      "ToolMode": [
+        "CodeMode",
+        "CodeModeOnly",
+        "Direct"
+      ],
+      "TruncationMode": [
+        "Bytes",
+        "Tokens"
+      ],
+      "Verbosity": [
+        "High",
+        "Low",
+        "Medium"
+      ],
+      "WebSearchToolType": [
+        "Text",
+        "TextAndImage"
+      ]
+    },
+    "model_info_fields": [
+      "additional_speed_tiers",
+      "apply_patch_tool_type",
+      "auto_compact_token_limit",
+      "auto_review_model_override",
+      "availability_nux",
+      "base_instructions",
+      "comp_hash",
+      "context_window",
+      "default_reasoning_level",
+      "default_reasoning_summary",
+      "default_service_tier",
+      "default_verbosity",
+      "description",
+      "display_name",
+      "effective_context_window_percent",
+      "experimental_supported_tools",
+      "include_skills_usage_instructions",
+      "input_modalities",
+      "max_context_window",
+      "model_messages",
+      "multi_agent_version",
+      "priority",
+      "service_tiers",
+      "shell_type",
+      "slug",
+      "support_verbosity",
+      "supported_in_api",
+      "supported_reasoning_levels",
+      "supports_image_detail_original",
+      "supports_parallel_tool_calls",
+      "supports_reasoning_summaries",
+      "supports_search_tool",
+      "tool_mode",
+      "truncation_policy",
+      "upgrade",
+      "use_responses_lite",
+      "used_fallback_model_metadata",
+      "visibility",
+      "web_search_tool_type"
+    ],
+    "reasoning_fields": [
+      "context",
+      "effort",
+      "summary"
+    ],
+    "response_create_ws_request_fields": [
+      "client_metadata",
+      "generate",
+      "include",
+      "input",
+      "instructions",
+      "model",
+      "parallel_tool_calls",
+      "previous_response_id",
+      "prompt_cache_key",
+      "reasoning",
+      "service_tier",
+      "store",
+      "stream",
+      "stream_options",
+      "text",
+      "tool_choice",
+      "tools"
+    ],
+    "response_event_variants": [
+      "Completed",
+      "Created",
+      "ModelVerifications",
+      "ModelsEtag",
+      "OutputItemAdded",
+      "OutputItemDone",
+      "OutputTextDelta",
+      "RateLimits",
+      "ReasoningContentDelta",
+      "ReasoningSummaryDelta",
+      "ReasoningSummaryDone",
+      "ReasoningSummaryPartAdded",
+      "SafetyBuffering",
+      "ServerModel",
+      "ServerReasoningIncluded",
+      "ToolCallInputDelta",
+      "TurnModerationMetadata"
+    ],
+    "response_input_item_variants": [
+      "CustomToolCallOutput",
+      "FunctionCallOutput",
+      "McpToolCallOutput",
+      "Message",
+      "ToolSearchOutput"
+    ],
+    "response_item_variants": [
+      "AdditionalTools",
+      "AgentMessage",
+      "Compaction",
+      "CompactionTrigger",
+      "ContextCompaction",
+      "CustomToolCall",
+      "CustomToolCallOutput",
+      "FunctionCall",
+      "FunctionCallOutput",
+      "ImageGenerationCall",
+      "LocalShellCall",
+      "Message",
+      "Other",
+      "Reasoning",
+      "ToolSearchCall",
+      "ToolSearchOutput",
+      "WebSearchCall"
+    ],
+    "responses_api_request_fields": [
+      "client_metadata",
+      "include",
+      "input",
+      "instructions",
+      "model",
+      "parallel_tool_calls",
+      "prompt_cache_key",
+      "reasoning",
+      "service_tier",
+      "store",
+      "stream",
+      "stream_options",
+      "text",
+      "tool_choice",
+      "tools"
+    ],
+    "responses_metadata_keys": {
+      "COMPACTION_KEY": "compaction",
+      "FORKED_FROM_THREAD_ID_KEY": "forked_from_thread_id",
+      "INSTALLATION_ID_KEY": "installation_id",
+      "PARENT_THREAD_ID_KEY": "parent_thread_id",
+      "REQUEST_KIND_KEY": "request_kind",
+      "SANDBOX_KEY": "sandbox",
+      "SESSION_ID_KEY": "session_id",
+      "SUBAGENT_KIND_KEY": "subagent_kind",
+      "THREAD_ID_KEY": "thread_id",
+      "THREAD_SOURCE_KEY": "thread_source",
+      "TURN_ID_KEY": "turn_id",
+      "TURN_STARTED_AT_UNIX_MS_KEY": "turn_started_at_unix_ms",
+      "WINDOW_ID_KEY": "window_id",
+      "WORKSPACES_KEY": "workspaces"
+    },
+    "sse_event_names": [
+      "response.completed",
+      "response.created",
+      "response.custom_tool_call_input.delta",
+      "response.failed",
+      "response.incomplete",
+      "response.output_item.added",
+      "response.output_item.done",
+      "response.output_text.delta",
+      "response.reasoning_summary_part.added",
+      "response.reasoning_summary_text.delta",
+      "response.reasoning_summary_text.done",
+      "response.reasoning_text.delta"
+    ],
+    "stream_options_fields": [
+      "reasoning_summary_delivery"
+    ],
+    "tool_spec_wire_types": {
+      "custom": "Freeform",
+      "function": "Function",
+      "image_generation": "ImageGeneration",
+      "namespace": "Namespace",
+      "tool_search": "ToolSearch",
+      "web_search": "WebSearch"
+    },
+    "transport_constants": {
+      "RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE": "responses_websockets=2026-02-06"
+    },
+    "websocket_client_metadata_keys": {
+      "WS_REQUEST_HEADER_RESPONSES_LITE_CLIENT_METADATA_KEY": "ws_request_header_x_openai_internal_codex_responses_lite",
+      "WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY": "ws_request_header_traceparent",
+      "WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY": "ws_request_header_tracestate",
+      "X_CODEX_WS_STREAM_REQUEST_START_MS_CLIENT_METADATA_KEY": "x-codex-ws-stream-request-start-ms"
+    }
+  },
+  "schema_version": 1
+}

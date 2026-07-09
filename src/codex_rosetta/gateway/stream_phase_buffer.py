@@ -22,6 +22,8 @@ _TOOL_ITEM_TYPES = {
     "mcp_call",
     "shell_call",
     "computer_call",
+    "tool_search_call",
+    "web_search_call",
 }
 _TOOL_EVENT_TYPES = {
     ResponsesEventType.FUNCTION_CALL_ARGS_DELTA,
