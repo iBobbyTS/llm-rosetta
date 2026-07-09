@@ -210,15 +210,18 @@ class GatewayConfig:
             self._raw_providers
         )
 
+        self._expanded_raw_models = self._expand_model_groups(
+            raw.get("models", {}), raw.get("model_groups", {})
+        )
         self.models, self.model_capabilities, self.model_upstream_names = (
-            self._parse_models(raw.get("models", {}), self._raw_providers)
+            self._parse_models(self._expanded_raw_models, self._raw_providers)
         )
 
         # Per-model reasoning overrides from config.jsonc (admin UI edits).
         # Keyed by gateway model name (same as self.models keys).
         self.model_reasoning_overrides: dict[str, dict[str, Any]] = {}
         self.model_tool_adaptations: dict[str, dict[str, Any]] = {}
-        for model_name, value in raw.get("models", {}).items():
+        for model_name, value in self._expanded_raw_models.items():
             if isinstance(value, dict) and value.get("reasoning_override"):
                 self.model_reasoning_overrides[model_name] = value["reasoning_override"]
             if isinstance(value, dict) and value.get("tool_adaptation"):
@@ -334,6 +337,55 @@ class GatewayConfig:
             provider_types[name] = provider_type
             provider_shim_names[name] = shim_name
         return provider_types, provider_shim_names
+
+    @classmethod
+    def _expand_model_groups(
+        cls,
+        raw_models: dict[str, Any],
+        raw_model_groups: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Expand admin model groups into the flat routing table shape."""
+        expanded = dict(raw_models) if isinstance(raw_models, dict) else {}
+        if not raw_model_groups:
+            return expanded
+        if not isinstance(raw_model_groups, dict):
+            raise ValueError("config: 'model_groups' must be an object")
+
+        for group_name, group_value in raw_model_groups.items():
+            if not isinstance(group_value, dict):
+                raise ValueError(
+                    f"config: invalid model group entry for '{group_name}'"
+                )
+            provider_name = group_value.get("provider")
+            if not provider_name:
+                raise ValueError(
+                    f"config: model group '{group_name}' requires a provider"
+                )
+            group_models = group_value.get("models", {})
+            if not isinstance(group_models, dict):
+                raise ValueError(
+                    f"config: model group '{group_name}' models must be an object"
+                )
+
+            for model_name, model_value in group_models.items():
+                if model_name in expanded:
+                    raise ValueError(
+                        f"config: model '{model_name}' is defined more than once"
+                    )
+                if isinstance(model_value, str):
+                    entry: dict[str, Any] = {"provider": provider_name}
+                    if model_value:
+                        entry["upstream_model"] = model_value
+                elif isinstance(model_value, dict):
+                    entry = dict(model_value)
+                    entry["provider"] = provider_name
+                else:
+                    raise ValueError(
+                        f"config: invalid model entry for '{model_name}' "
+                        f"in model group '{group_name}'"
+                    )
+                expanded[model_name] = entry
+        return expanded
 
     @classmethod
     def _parse_models(

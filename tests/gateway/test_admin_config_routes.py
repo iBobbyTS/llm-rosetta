@@ -9,8 +9,10 @@ from types import SimpleNamespace
 from typing import Any
 
 from llm_rosetta.gateway.admin.routes.config import (
+    delete_model_group,
     get_config,
     put_model,
+    put_model_group,
     put_provider,
     put_server_settings,
 )
@@ -300,6 +302,139 @@ def test_put_model_omits_default_tool_adaptation(tmp_path):
     assert "tool_adaptation" not in saved["models"]["gpt-test"]
 
 
+def test_get_config_returns_model_groups_and_effective_models(tmp_path):
+    """Admin config exposes grouped management data and expanded runtime models."""
+    config = _config_data()
+    config["models"] = {"standalone": "openai"}
+    config["model_groups"] = {
+        "OpenAI": {
+            "provider": "openai",
+            "models": {
+                "grouped": {
+                    "upstream_model": "grouped-upstream",
+                    "capabilities": ["text", "tools"],
+                }
+            },
+        }
+    }
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=GatewayConfig(config),
+    )
+    request = SimpleNamespace(app=app)
+
+    response = _run(get_config(request))
+
+    assert response.status_code == 200
+    body = json.loads(response.body.decode("utf-8"))
+    assert set(body["models"]) == {"standalone", "grouped"}
+    assert set(body["standalone_models"]) == {"standalone"}
+    assert body["model_groups"]["OpenAI"]["provider"] == "openai"
+    assert body["model_groups"]["OpenAI"]["models"]["grouped"]["upstream_model"] == (
+        "grouped-upstream"
+    )
+    assert body["models"]["grouped"]["provider"] == "openai"
+
+
+def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
+    """Saving a model group persists grouped config and expands runtime routes."""
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(_config_data()), encoding="utf-8")
+
+    initial_config = GatewayConfig(_config_data())
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app, path_params={"name": "OpenAI"})
+    request.json = lambda: {
+        "provider": "openai",
+        "models": {
+            "gpt-grouped": {
+                "upstream_model": "gpt-upstream",
+                "capabilities": ["text", "tools"],
+            }
+        },
+    }
+
+    response = _run(put_model_group(request))
+
+    assert response.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["model_groups"]["OpenAI"] == {
+        "provider": "openai",
+        "models": {
+            "gpt-grouped": {
+                "capabilities": ["text", "tools"],
+                "upstream_model": "gpt-upstream",
+            }
+        },
+    }
+    route, _provider = app.gateway_config.resolve("openai_responses", "gpt-grouped")
+    assert route.provider_name == "openai"
+    assert route.upstream_model == "gpt-upstream"
+    assert route.model_capabilities == ["text", "tools"]
+
+
+def test_put_model_group_rejects_duplicate_flat_model_name(tmp_path):
+    """A grouped model cannot reuse an existing top-level model name."""
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(_config_data()), encoding="utf-8")
+
+    initial_config = GatewayConfig(_config_data())
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app, path_params={"name": "OpenAI"})
+    request.json = lambda: {
+        "provider": "openai",
+        "models": {"gpt-test": {"capabilities": ["text"]}},
+    }
+
+    response = _run(put_model_group(request))
+
+    assert response.status_code == 409
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert "model_groups" not in saved
+
+
+def test_delete_model_group_removes_group_and_runtime_models(tmp_path):
+    """Deleting a model group removes its expanded model routes."""
+    config = _config_data()
+    config["model_groups"] = {
+        "OpenAI": {
+            "provider": "openai",
+            "models": {"gpt-grouped": "gpt-upstream"},
+        }
+    }
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    initial_config = GatewayConfig(config)
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app, path_params={"name": "OpenAI"})
+
+    response = _run(delete_model_group(request))
+
+    assert response.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["model_groups"] == {}
+    assert "gpt-grouped" not in app.gateway_config.models
+
+
 def test_admin_html_exposes_tool_adaptation_switches():
     """Model modal exposes all configurable tool adaptation switches."""
     html_path = (
@@ -367,6 +502,30 @@ def test_admin_html_exposes_provider_preset_protocol_controls():
     ]
     positions = [html.index(item) for item in provider_order]
     assert positions == sorted(positions)
+
+
+def test_admin_html_exposes_model_group_controls():
+    """Models page exposes model group management controls."""
+    html_path = (
+        Path(__file__).parents[2]
+        / "src"
+        / "llm_rosetta"
+        / "gateway"
+        / "admin"
+        / "admin.html"
+    )
+    html = html_path.read_text(encoding="utf-8")
+
+    assert 'onclick="openModelGroupModal()"' in html
+    assert 'id="modelGroupList"' in html
+    assert 'id="modelGroupModal"' in html
+    assert 'id="modelGroupRows"' in html
+    assert "function openModelGroupModal(groupName)" in html
+    assert "function saveModelGroup()" in html
+    assert "/admin/api/config/model-groups/" in html
+    assert "configData.standalone_models || models" in html
+    assert "'btn.addModelGroup':'+ Add Model Group'" in html
+    assert "'btn.addModelGroup':'+ \\u6dfb\\u52a0\\u6a21\\u578b\\u7ec4'" in html
 
 
 def test_admin_html_uses_page_routes():

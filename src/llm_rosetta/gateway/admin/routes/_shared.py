@@ -131,4 +131,9 @@ def _handle_provider_rename(
             models[model_name] = name
         elif isinstance(model_val, dict) and model_val.get("provider") == rename_from:
             model_val["provider"] = name
+    model_groups = data.get("model_groups", {})
+    if isinstance(model_groups, dict):
+        for group_val in model_groups.values():
+            if isinstance(group_val, dict) and group_val.get("provider") == rename_from:
+                group_val["provider"] = name
     return None

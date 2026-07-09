@@ -282,6 +282,19 @@ canvas { width: 100%; height: 160px; }
 .checkbox-group { display: flex; gap: 14px; flex-wrap: wrap; }
 .checkbox-group label { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 5px; cursor: pointer; text-transform: none; letter-spacing: 0; }
 .checkbox-group input[type="checkbox"] { accent-color: var(--accent); }
+.model-group-list { display:flex;flex-direction:column;gap:12px;margin-bottom:14px; }
+.model-group-card { border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);overflow:hidden; }
+.model-group-head { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border); }
+.model-group-title { font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;min-width:0; }
+.model-group-title code { font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.model-group-meta { font-size:12px;color:var(--text-dim);white-space:nowrap; }
+.model-group-actions { display:flex;gap:6px;flex-shrink:0; }
+.model-group-row { display:grid;grid-template-columns:minmax(160px,1fr) minmax(160px,1fr) auto;gap:8px;align-items:start;padding:8px 0;border-bottom:1px solid var(--border); }
+.model-group-row:last-child { border-bottom:none; }
+.model-group-row input { padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:var(--mono); }
+.model-group-row .checkbox-group { gap:8px; }
+.model-group-row .checkbox-group label { font-size:12px; }
+.model-group-row-actions { display:flex;align-items:center;justify-content:flex-end; }
 .config-details { margin: 0 0 14px; }
 .config-details summary {
   cursor: pointer; font-size: 12px; color: var(--text-dim); user-select: none;
@@ -558,6 +571,7 @@ body { padding-bottom: 26px; }
         <h2 data-i18n="section.models">Model Routing</h2>
         <div style="display:flex;gap:6px">
           <button class="btn btn-sm" onclick="openFetchModelsModal()" data-i18n="btn.fetchModels">&#x2B07; Fetch from Provider</button>
+          <button class="btn btn-sm" onclick="openModelGroupModal()" data-i18n="btn.addModelGroup">+ Add Model Group</button>
           <button class="btn btn-primary btn-sm" onclick="openModelModal()" data-i18n="btn.addModel">+ Add Model</button>
         </div>
       </div>
@@ -568,6 +582,7 @@ body { padding-bottom: 26px; }
         <input id="modelSearch" placeholder="Search models..." oninput="renderModels()" data-i18n-placeholder="label.searchModels">
         <span class="model-count" id="modelCount"></span>
       </div>
+      <div class="model-group-list" id="modelGroupList"></div>
       <div class="table-scroll"><table>
         <thead><tr>
           <th class="sortable" onclick="sortModels('name')" id="sortName" data-i18n="col.model">Model</th>
@@ -885,6 +900,30 @@ body { padding-bottom: 26px; }
   </div>
 </div>
 
+<!-- Model Group Modal -->
+<div class="modal-overlay" id="modelGroupModal">
+  <div class="modal modal-wide">
+    <h3 id="modelGroupModalTitle" data-i18n="modal.addModelGroup">Add Model Group</h3>
+    <div class="form-group">
+      <label data-i18n="label.modelGroupName">Model Group Name</label>
+      <input id="modelGroupName" placeholder="e.g. OpenAI Production">
+    </div>
+    <div class="form-group">
+      <label data-i18n="label.provider">Provider</label>
+      <select id="modelGroupProvider"></select>
+    </div>
+    <div class="form-group">
+      <label data-i18n="label.modelMappings">Model Mappings</label>
+      <div id="modelGroupRows"></div>
+      <button type="button" class="btn btn-sm" onclick="addModelGroupRow()" data-i18n="btn.addMapping">+ Add Mapping</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modelGroupModal')" data-i18n="btn.cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="saveModelGroup()" data-i18n="btn.save">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Fetch Models Modal -->
 <div class="modal-overlay" id="fetchModelsModal">
   <div class="modal modal-wide">
@@ -1097,6 +1136,7 @@ const I18N = {
     'test.text':'Simple Text', 'test.stream':'Stream',
     'test.tools':'Function Call', 'test.vision':'Image Understanding', 'test.embedding':'Embedding', 'test.reasoning':'Reasoning',
     'empty.providers':'No providers configured.', 'empty.models':'No models configured.',
+    'empty.modelGroups':'No model groups configured.', 'empty.standaloneModels':'No standalone models configured.',
     'empty.logs':'No requests logged yet', 'empty.data':'No data yet',
     'toast.serverSaved':'Server settings saved',
     'toast.webSearchSaved':'Web search settings saved',
@@ -1114,6 +1154,8 @@ const I18N = {
     'protocol.unsupportedSuffix':'May not compatible',
     'toast.modelSaved':"Model '{name}' saved",
     'toast.modelDeleted':"Model '{name}' deleted",
+    'toast.modelGroupSaved':"Model group '{name}' saved",
+    'toast.modelGroupDeleted':"Model group '{name}' deleted",
     'confirm.deleteProvider':"Delete provider '{name}'?",
     'confirm.deleteProviderTitle':'Delete Provider',
     'confirm.typeToConfirm':"To confirm, type {name} below",
@@ -1121,6 +1163,7 @@ const I18N = {
     'confirm.deleteModel':"Delete model '{name}'?",
     'error.fieldsRequired':'Name, Base URL, and API Key are required',
     'error.modelRequired':'All fields are required',
+    'error.modelGroupRequired':'Model group name, provider, and at least one model mapping are required',
     'page.info':'Page {current} / {total} ({count} total)',
     'test.connecting':'Connecting...', 'test.cancel':'Cancel', 'test.sending':'Sending request...', 'test.rawRequest':'Raw Request', 'test.rawResponse':'Raw Response', 'test.testImage':'Test Image',
     'test.emptyResponse':'(empty response)',
@@ -1155,11 +1198,17 @@ const I18N = {
     'confirm.deleteKey':"Delete API key '{label}'?",
     'filter.allKeys':'All Keys',
     'btn.fetchModels':'\u2B07 Fetch from Provider',
+    'btn.addModelGroup':'+ Add Model Group',
+    'btn.addMapping':'+ Add Mapping',
     'btn.selectAll':'Select All', 'btn.deselectAll':'Deselect All',
     'btn.addSelected':'Add Selected',
     'modal.fetchModels':'Fetch Models from Provider',
+    'modal.addModelGroup':'Add Model Group',
+    'modal.editModelGroup':'Edit Model Group',
     'label.selectProvider':'Select Provider',
     'label.modelPrefix':'Prefix:',
+    'label.modelGroupName':'Model Group Name',
+    'label.modelMappings':'Model Mappings',
     'label.modelType':'Model Type',
     'label.llm':'LLM',
     'label.embedding':'Embedding',
@@ -1236,6 +1285,7 @@ const I18N = {
     'test.text':'\u7b80\u5355\u6587\u672c', 'test.stream':'\u6d41\u5f0f',
     'test.tools':'\u51fd\u6570\u8c03\u7528', 'test.vision':'\u56fe\u50cf\u7406\u89e3', 'test.embedding':'Embedding', 'test.reasoning':'\u63a8\u7406',
     'empty.providers':'\u6682\u65e0\u670d\u52a1\u65b9\u914d\u7f6e\u3002', 'empty.models':'\u6682\u65e0\u6a21\u578b\u914d\u7f6e\u3002',
+    'empty.modelGroups':'\u6682\u65e0\u6a21\u578b\u7ec4\u3002', 'empty.standaloneModels':'\u6682\u65e0\u72ec\u7acb\u6a21\u578b\u914d\u7f6e\u3002',
     'empty.logs':'\u6682\u65e0\u8bf7\u6c42\u8bb0\u5f55', 'empty.data':'\u6682\u65e0\u6570\u636e',
     'toast.serverSaved':'\u670d\u52a1\u5668\u8bbe\u7f6e\u5df2\u4fdd\u5b58',
     'toast.webSearchSaved':'\u8054\u7f51\u641c\u7d22\u8bbe\u7f6e\u5df2\u4fdd\u5b58',
@@ -1253,6 +1303,8 @@ const I18N = {
     'protocol.unsupportedSuffix':'May not compatible',
     'toast.modelSaved':"\u6a21\u578b '{name}' \u5df2\u4fdd\u5b58",
     'toast.modelDeleted':"\u6a21\u578b '{name}' \u5df2\u5220\u9664",
+    'toast.modelGroupSaved':"\u6a21\u578b\u7ec4 '{name}' \u5df2\u4fdd\u5b58",
+    'toast.modelGroupDeleted':"\u6a21\u578b\u7ec4 '{name}' \u5df2\u5220\u9664",
     'confirm.deleteProvider':"\u786e\u5b9a\u5220\u9664\u670d\u52a1\u65b9 '{name}'\uff1f",
     'confirm.deleteProviderTitle':'\u5220\u9664\u670d\u52a1\u65b9',
     'confirm.typeToConfirm':"\u8bf7\u8f93\u5165 {name} \u4ee5\u786e\u8ba4\u5220\u9664",
@@ -1260,6 +1312,7 @@ const I18N = {
     'confirm.deleteModel':"\u786e\u5b9a\u5220\u9664\u6a21\u578b '{name}'\uff1f",
     'error.fieldsRequired':'\u540d\u79f0\u3001Base URL \u548c API Key \u4e3a\u5fc5\u586b\u9879',
     'error.modelRequired':'\u6240\u6709\u5b57\u6bb5\u4e3a\u5fc5\u586b\u9879',
+    'error.modelGroupRequired':'\u6a21\u578b\u7ec4\u540d\u79f0\u3001\u670d\u52a1\u65b9\u548c\u81f3\u5c11\u4e00\u4e2a\u6a21\u578b\u6620\u5c04\u4e3a\u5fc5\u586b\u9879',
     'page.info':'\u7b2c {current} / {total} \u9875\uff08\u5171 {count} \u6761\uff09',
     'test.connecting':'\u8fde\u63a5\u4e2d...', 'test.cancel':'\u53d6\u6d88', 'test.sending':'\u53d1\u9001\u8bf7\u6c42\u4e2d...', 'test.rawRequest':'\u539f\u59cb\u8bf7\u6c42', 'test.rawResponse':'\u539f\u59cb\u54cd\u5e94', 'test.testImage':'\u6d4b\u8bd5\u56fe\u7247',
     'test.emptyResponse':'\uff08\u7a7a\u54cd\u5e94\uff09',
@@ -1294,11 +1347,17 @@ const I18N = {
     'confirm.deleteKey':"\u786e\u5b9a\u5220\u9664 API \u5bc6\u94a5 '{label}'\uff1f",
     'filter.allKeys':'\u5168\u90e8\u5bc6\u94a5',
     'btn.fetchModels':'\u2B07 \u4ece\u670d\u52a1\u65b9\u83b7\u53d6',
+    'btn.addModelGroup':'+ \u6dfb\u52a0\u6a21\u578b\u7ec4',
+    'btn.addMapping':'+ \u6dfb\u52a0\u6620\u5c04',
     'btn.selectAll':'\u5168\u9009', 'btn.deselectAll':'\u5168\u4e0d\u9009',
     'btn.addSelected':'\u6dfb\u52a0\u5df2\u9009',
     'modal.fetchModels':'\u4ece\u670d\u52a1\u65b9\u83b7\u53d6\u6a21\u578b',
+    'modal.addModelGroup':'\u6dfb\u52a0\u6a21\u578b\u7ec4',
+    'modal.editModelGroup':'\u7f16\u8f91\u6a21\u578b\u7ec4',
     'label.selectProvider':'\u9009\u62e9\u670d\u52a1\u65b9',
     'label.modelPrefix':'\u524d\u7f00\uff1a',
+    'label.modelGroupName':'\u6a21\u578b\u7ec4\u540d\u79f0',
+    'label.modelMappings':'\u6a21\u578b\u6620\u5c04',
     'label.modelType':'\u6a21\u578b\u7c7b\u578b',
     'label.llm':'LLM',
     'label.embedding':'Embedding',
@@ -1966,6 +2025,112 @@ function updateToolAdaptationVisibility() {
   document.getElementById('toolUseApplyPatchRow').style.display = localize ? '' : 'none';
 }
 
+function _populateProviderSelect(selectId, selectedProvider) {
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '';
+  if (configData) {
+    for (const p of Object.keys(configData.providers)) {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      if (p === selectedProvider) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+}
+
+function openModelGroupModal(groupName) {
+  const groups = (configData && configData.model_groups) || {};
+  const group = groupName ? groups[groupName] : null;
+  _editingModelGroupName = groupName || null;
+  document.getElementById('modelGroupModalTitle').textContent = groupName ? t('modal.editModelGroup') : t('modal.addModelGroup');
+  document.getElementById('modelGroupName').value = groupName || '';
+  document.getElementById('modelGroupName').dataset.originalName = groupName || '';
+  const provider = group ? group.provider : Object.keys((configData && configData.providers) || {})[0] || '';
+  _populateProviderSelect('modelGroupProvider', provider);
+  document.getElementById('modelGroupRows').innerHTML = '';
+  const models = group ? (group.models || {}) : {};
+  const entries = Object.entries(models);
+  if (entries.length) {
+    entries.forEach(([modelName, info]) => addModelGroupRow(modelName, info));
+  } else {
+    addModelGroupRow();
+  }
+  document.getElementById('modelGroupModal').classList.add('open');
+}
+
+function addModelGroupRow(modelName, info) {
+  const row = document.createElement('div');
+  row.className = 'model-group-row';
+  const caps = _modelCaps(info || {});
+  row._modelExtra = {
+    reasoning_override: info && info.reasoning_override ? info.reasoning_override : null,
+    tool_adaptation: info && info.tool_adaptation ? info.tool_adaptation : null,
+  };
+  const checked = cap => caps.includes(cap) ? ' checked' : '';
+  row.innerHTML = `
+    <input class="group-model-name" value="${esc(modelName || '')}" placeholder="exposed model name">
+    <input class="group-upstream-model" value="${esc(_modelUpstream(info || {}))}" placeholder="upstream model (optional)">
+    <div>
+      <div class="checkbox-group">
+        <label><input type="checkbox" class="group-cap" value="text"${checked('text')}> text</label>
+        <label><input type="checkbox" class="group-cap" value="vision"${checked('vision')}> vision</label>
+        <label><input type="checkbox" class="group-cap" value="tools"${checked('tools')}> tools</label>
+        <label><input type="checkbox" class="group-cap" value="reasoning"${checked('reasoning')}> reasoning</label>
+        <label><input type="checkbox" class="group-cap" value="embedding"${checked('embedding')}> embedding</label>
+      </div>
+      <div class="model-group-row-actions">
+        <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.model-group-row').remove()">${t('btn.delete')}</button>
+      </div>
+    </div>`;
+  document.getElementById('modelGroupRows').appendChild(row);
+}
+
+async function saveModelGroup() {
+  const name = document.getElementById('modelGroupName').value.trim();
+  const provider = document.getElementById('modelGroupProvider').value;
+  const rows = [...document.querySelectorAll('#modelGroupRows .model-group-row')];
+  const models = {};
+  for (const row of rows) {
+    const modelName = row.querySelector('.group-model-name').value.trim();
+    if (!modelName) continue;
+    if (models[modelName]) {
+      showToast(`Duplicate model: ${modelName}`, 'error');
+      return;
+    }
+    const caps = [...row.querySelectorAll('.group-cap:checked')].map(cb => cb.value);
+    const upstream = row.querySelector('.group-upstream-model').value.trim();
+    const entry = {capabilities: caps.length ? caps : ['text']};
+    if (upstream) entry.upstream_model = upstream;
+    if (row._modelExtra && row._modelExtra.reasoning_override) entry.reasoning_override = row._modelExtra.reasoning_override;
+    if (row._modelExtra && row._modelExtra.tool_adaptation) entry.tool_adaptation = row._modelExtra.tool_adaptation;
+    models[modelName] = entry;
+  }
+  if (!name || !provider || Object.keys(models).length === 0) {
+    showToast(t('error.modelGroupRequired'), 'error');
+    return;
+  }
+  const body = {provider, models};
+  const originalName = document.getElementById('modelGroupName').dataset.originalName;
+  if (originalName && originalName !== name) {
+    body.rename_from = originalName;
+  }
+  const res = await api.put(`/admin/api/config/model-groups/${encodeURIComponent(name)}`, body);
+  if (res.ok) { showToast(t('toast.modelGroupSaved',{name})); closeModal('modelGroupModal'); loadConfig(); }
+  else { showToast(res.error || 'Failed', 'error'); }
+}
+
+async function _doDeleteModelGroup(name) {
+  const res = await api.del(`/admin/api/config/model-groups/${encodeURIComponent(name)}`);
+  if (res.ok) { showToast(t('toast.modelGroupDeleted',{name})); loadConfig(); }
+  else { showToast(res.error || 'Failed', 'error'); }
+}
+
+function deleteModelGroup(name, btn) {
+  if (!btn) { _doDeleteModelGroup(name); return; }
+  inlineConfirm(btn, () => _doDeleteModelGroup(name));
+}
+
 // ===================== Config Pages =====================
 async function loadConfig() {
   try {
@@ -2190,6 +2355,7 @@ function _updateViewToggle() {
 
 let _modelSortKey = 'name';
 let _modelSortDir = 'asc';
+let _editingModelGroupName = null;
 
 function sortModels(key) {
   if (_modelSortKey === key) {
@@ -2201,9 +2367,55 @@ function sortModels(key) {
   renderModels();
 }
 
+function _modelCaps(info) {
+  return (typeof info === 'object' && info.capabilities) ? info.capabilities : ['text'];
+}
+
+function _modelUpstream(info) {
+  return (typeof info === 'object' && info.upstream_model) ? info.upstream_model : '';
+}
+
+function _modelCapBadges(caps) {
+  return caps.map(c => {
+    const cls = c === 'vision' ? 'badge-cap-vision' : c === 'tools' ? 'badge-cap-tools' : c === 'embedding' ? 'badge-cap-embed' : c === 'reasoning' ? 'badge-cap-reasoning' : 'badge-cap';
+    return `<span class="badge ${cls}">${esc(c)}</span>`;
+  }).join('');
+}
+
+function _modelTestControls(name, caps) {
+  const hasVision = caps.includes('vision');
+  const hasTools = caps.includes('tools');
+  const hasReasoning = caps.includes('reasoning');
+  const isEmbedding = caps.includes('embedding');
+  if (isEmbedding) {
+    return `<button class="btn btn-sm btn-test" style="border-radius:var(--radius);color:var(--orange);font-weight:600" onclick="runTest('${esc(name)}','embedding')">${t('btn.test')}</button>`;
+  }
+  return `<div class="test-group">
+    <button class="btn btn-sm btn-test" onclick="runTest('${esc(name)}','text')">${t('btn.test')}</button>
+    <button class="btn btn-sm btn-caret" onclick="toggleTestMenu(this)">&#9662;</button>
+    <div class="test-menu">
+      <div class="test-menu-item" onclick="runTest('${esc(name)}','text')">${t('test.text')}</div>
+      <div class="test-menu-item" onclick="runTest('${esc(name)}','stream')">${t('test.stream')}</div>
+      <div class="test-menu-item${hasTools ? '' : ' disabled'}" onclick="${hasTools ? `runTest('${esc(name)}','tools')` : ''}">${t('test.tools')}</div>
+      <div class="test-menu-item${hasVision ? '' : ' disabled'}" onclick="${hasVision ? `runTest('${esc(name)}','vision')` : ''}">${t('test.vision')}</div>
+      <div class="test-menu-item${hasReasoning ? '' : ' disabled'}" onclick="${hasReasoning ? `runTest('${esc(name)}','reasoning')` : ''}">${t('test.reasoning')}</div>
+    </div>
+  </div>`;
+}
+
+function _modelMatchesQuery(name, provider, info, query) {
+  if (!query) return true;
+  const upstream = _modelUpstream(info);
+  return name.toLowerCase().includes(query) ||
+    provider.toLowerCase().includes(query) ||
+    upstream.toLowerCase().includes(query);
+}
+
 function renderModels() {
   const tbody = document.getElementById('modelTable');
   const models = configData.models || {};
+  const standaloneModels = configData.standalone_models || models;
+  const modelGroups = configData.model_groups || {};
   const totalCount = Object.keys(models).length;
 
   // Populate provider filter dropdown (preserve selection)
@@ -2221,6 +2433,7 @@ function renderModels() {
   document.getElementById('sortProvider').className = 'sortable' + (_modelSortKey === 'provider' ? ` ${_modelSortDir}` : '');
 
   if (totalCount === 0) {
+    document.getElementById('modelGroupList').innerHTML = `<div style="color:var(--text-dim);font-size:13px">${t('empty.modelGroups')}</div>`;
     tbody.innerHTML = `<tr><td colspan="3" style="color:var(--text-dim)">${t('empty.models')}</td></tr>`;
     document.getElementById('modelCount').textContent = '';
     return;
@@ -2229,7 +2442,7 @@ function renderModels() {
   // Filter by provider dropdown and search query
   const selectedProv = provFilter.value;
   const query = (document.getElementById('modelSearch').value || '').trim().toLowerCase();
-  let entries = Object.entries(models).map(([name, info]) => {
+  let entries = Object.entries(standaloneModels).map(([name, info]) => {
     const prov = typeof info === 'string' ? info : info.provider;
     return {name, prov, info};
   });
@@ -2237,7 +2450,7 @@ function renderModels() {
     entries = entries.filter(e => e.prov === selectedProv);
   }
   if (query) {
-    entries = entries.filter(e => e.name.toLowerCase().includes(query) || e.prov.toLowerCase().includes(query));
+    entries = entries.filter(e => _modelMatchesQuery(e.name, e.prov, e.info, query));
   }
 
   // Sort
@@ -2252,51 +2465,72 @@ function renderModels() {
   const countEl = document.getElementById('modelCount');
   countEl.textContent = t('model.count', {shown: entries.length, total: totalCount});
 
-  if (entries.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="3" style="color:var(--text-dim)">${t('empty.models')}</td></tr>`;
-    return;
-  }
-
   // Determine which providers are disabled
   const providers = configData.providers || {};
   const disabledProviders = new Set(
     Object.entries(providers).filter(([,cfg]) => cfg.enabled === false).map(([n]) => n)
   );
 
+  let groupShownCount = 0;
+  const groupCards = Object.entries(modelGroups).map(([groupName, group]) => {
+    const provider = group.provider || '';
+    if (selectedProv && provider !== selectedProv) return '';
+    const groupModels = group.models || {};
+    const groupMatchesQuery = !!query && (
+      groupName.toLowerCase().includes(query) || provider.toLowerCase().includes(query)
+    );
+    const modelEntries = Object.entries(groupModels)
+      .filter(([modelName, info]) => groupMatchesQuery || _modelMatchesQuery(modelName, provider, info, query))
+      .sort(([aName], [bName]) => aName.localeCompare(bName));
+    if (query && !groupMatchesQuery && modelEntries.length === 0) return '';
+    if (!query && modelEntries.length === 0) return '';
+    groupShownCount += modelEntries.length;
+    const providerDisabled = disabledProviders.has(provider);
+    const rows = modelEntries.map(([modelName, info]) => {
+      const caps = _modelCaps(info);
+      const upstream = _modelUpstream(info);
+      const upstreamTag = upstream ? ` <span style="font-size:11px;color:var(--text-dim)" title="Upstream: ${esc(upstream)}">→ ${esc(upstream)}</span>` : '';
+      return `<tr${providerDisabled ? ' style="opacity:0.4"' : ''}>
+        <td><code class="copyable" title="Click to copy" onclick="copyText('${esc(modelName)}')">${esc(modelName)}</code>${upstreamTag} ${_modelCapBadges(caps)}</td>
+        <td>${esc(provider)}${providerDisabled ? ` <span style="color:var(--text-dim);font-size:11px">(${t('provider.disabled')})</span>` : ''}</td>
+        <td style="text-align:right;white-space:nowrap">${_modelTestControls(modelName, caps)}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="model-group-card">
+      <div class="model-group-head">
+        <div class="model-group-title"><code>${esc(groupName)}</code><span class="model-group-meta">${esc(provider)} · ${modelEntries.length}</span></div>
+        <div class="model-group-actions">
+          <button class="btn btn-sm" onclick="openModelGroupModal('${esc(groupName)}')">${t('btn.edit')}</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteModelGroup('${esc(groupName)}', this)">${t('btn.delete')}</button>
+        </div>
+      </div>
+      <div class="table-scroll"><table><tbody>${rows}</tbody></table></div>
+    </div>`;
+  }).filter(Boolean);
+  document.getElementById('modelGroupList').innerHTML = groupCards.length
+    ? groupCards.join('')
+    : `<div style="color:var(--text-dim);font-size:13px">${Object.keys(modelGroups).length ? t('empty.searchResults') : t('empty.modelGroups')}</div>`;
+
   tbody.innerHTML = entries.map(({name, prov, info}) => {
     const provDisabled = disabledProviders.has(prov);
-    const caps = typeof info === 'string' ? ['text'] : (info.capabilities || ['text']);
-    const capBadges = caps.map(c => {
-      const cls = c === 'vision' ? 'badge-cap-vision' : c === 'tools' ? 'badge-cap-tools' : c === 'embedding' ? 'badge-cap-embed' : c === 'reasoning' ? 'badge-cap-reasoning' : 'badge-cap';
-      return `<span class="badge ${cls}">${esc(c)}</span>`;
-    }).join('');
-    const hasVision = caps.includes('vision');
-    const hasTools = caps.includes('tools');
-    const hasReasoning = caps.includes('reasoning');
-    const isEmbedding = caps.includes('embedding');
-    const upstream = (typeof info === 'object' && info.upstream_model) ? info.upstream_model : '';
+    const caps = _modelCaps(info);
+    const upstream = _modelUpstream(info);
     const upstreamTag = upstream ? ` <span style="font-size:11px;color:var(--text-dim)" title="Upstream: ${esc(upstream)}">→ ${esc(upstream)}</span>` : '';
     return `<tr${provDisabled ? ' style="opacity:0.4"' : ''}>
-      <td><code class="copyable" title="Click to copy" onclick="copyText('${esc(name)}')">${esc(name)}</code>${upstreamTag} ${capBadges}</td>
+      <td><code class="copyable" title="Click to copy" onclick="copyText('${esc(name)}')">${esc(name)}</code>${upstreamTag} ${_modelCapBadges(caps)}</td>
       <td>${esc(prov)}${provDisabled ? ` <span style="color:var(--text-dim);font-size:11px">(${t('provider.disabled')})</span>` : ''}</td>
       <td style="text-align:right; white-space:nowrap">
-        ${isEmbedding ? `<button class="btn btn-sm btn-test" style="border-radius:var(--radius);color:var(--orange);font-weight:600" onclick="runTest('${esc(name)}','embedding')">${t('btn.test')}</button>` : `<div class="test-group">
-          <button class="btn btn-sm btn-test" onclick="runTest('${esc(name)}','text')">${t('btn.test')}</button>
-          <button class="btn btn-sm btn-caret" onclick="toggleTestMenu(this)">&#9662;</button>
-          <div class="test-menu">
-            <div class="test-menu-item" onclick="runTest('${esc(name)}','text')">${t('test.text')}</div>
-            <div class="test-menu-item" onclick="runTest('${esc(name)}','stream')">${t('test.stream')}</div>
-            <div class="test-menu-item${hasTools ? '' : ' disabled'}" onclick="${hasTools ? `runTest('${esc(name)}','tools')` : ''}">${t('test.tools')}</div>
-            <div class="test-menu-item${hasVision ? '' : ' disabled'}" onclick="${hasVision ? `runTest('${esc(name)}','vision')` : ''}">${t('test.vision')}</div>
-            <div class="test-menu-item${hasReasoning ? '' : ' disabled'}" onclick="${hasReasoning ? `runTest('${esc(name)}','reasoning')` : ''}">${t('test.reasoning')}</div>
-          </div>
-        </div>`}
+        ${_modelTestControls(name, caps)}
         <button class="btn btn-sm" onclick="cloneModel('${esc(name)}')">${t('btn.clone')}</button>
         <button class="btn btn-sm" onclick="editModel('${esc(name)}','${esc(prov)}')">${t('btn.edit')}</button>
         <button class="btn btn-sm btn-danger" onclick="deleteModel('${esc(name)}', this)">${t('btn.delete')}</button>
       </td>
     </tr>`;
   }).join('');
+  if (entries.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="3" style="color:var(--text-dim)">${Object.keys(standaloneModels).length ? t('empty.searchResults') : t('empty.standaloneModels')}</td></tr>`;
+  }
+  countEl.textContent = t('model.count', {shown: entries.length + groupShownCount, total: totalCount});
 
   // Update filter dropdowns
   updateFilterOptions();

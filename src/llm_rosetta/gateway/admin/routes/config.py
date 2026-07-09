@@ -208,6 +208,234 @@ def _resolve_model_reasoning(
     }
 
 
+def _normalize_model_entry(
+    model_name: str,
+    value: Any,
+    *,
+    group_provider: str | None = None,
+) -> dict[str, Any]:
+    """Return a model config entry in admin-UI dict form."""
+    if group_provider is not None:
+        entry: dict[str, Any] = {
+            "provider": group_provider,
+            "capabilities": ["text"],
+        }
+        if isinstance(value, str):
+            if value:
+                entry["upstream_model"] = value
+            return entry
+        if not isinstance(value, dict):
+            return entry
+        entry["capabilities"] = value.get("capabilities", ["text"])
+        if value.get("upstream_model"):
+            entry["upstream_model"] = value["upstream_model"]
+    elif isinstance(value, str):
+        entry = {"provider": value, "capabilities": ["text"]}
+    elif isinstance(value, dict):
+        entry = {
+            "provider": value.get("provider", ""),
+            "capabilities": value.get("capabilities", ["text"]),
+        }
+        if value.get("upstream_model"):
+            entry["upstream_model"] = value["upstream_model"]
+    else:
+        return {}
+
+    if isinstance(value, dict):
+        if value.get("reasoning_override"):
+            entry["reasoning_override"] = value["reasoning_override"]
+        if value.get("tool_adaptation"):
+            entry["tool_adaptation"] = value["tool_adaptation"]
+    return entry
+
+
+def _normalize_models_for_admin(
+    raw_models: dict[str, Any],
+    providers: dict[str, Any],
+    reasoning_raw_models: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Normalize a flat model mapping and attach effective reasoning metadata."""
+    reasoning_raw_models = reasoning_raw_models or raw_models
+    normalized: dict[str, Any] = {}
+    for name, value in raw_models.items():
+        entry = _normalize_model_entry(name, value)
+        if not entry:
+            continue
+        entry["reasoning"] = _resolve_model_reasoning(
+            name, entry, reasoning_raw_models, providers
+        )
+        normalized[name] = entry
+    return normalized
+
+
+def _normalize_model_groups_for_admin(
+    raw_model_groups: dict[str, Any],
+    providers: dict[str, Any],
+    expanded_raw_models: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize model group config for admin UI consumption."""
+    groups: dict[str, Any] = {}
+    if not isinstance(raw_model_groups, dict):
+        return groups
+
+    for group_name, group_value in raw_model_groups.items():
+        if not isinstance(group_value, dict):
+            continue
+        provider = group_value.get("provider", "")
+        raw_group_models = group_value.get("models", {})
+        models: dict[str, Any] = {}
+        if isinstance(raw_group_models, dict):
+            for model_name, model_value in raw_group_models.items():
+                entry = _normalize_model_entry(
+                    model_name, model_value, group_provider=provider
+                )
+                entry.pop("provider", None)
+                reasoning_entry = dict(entry)
+                reasoning_entry["provider"] = provider
+                entry["reasoning"] = _resolve_model_reasoning(
+                    model_name,
+                    reasoning_entry,
+                    expanded_raw_models,
+                    providers,
+                )
+                models[model_name] = entry
+        groups[group_name] = {"provider": provider, "models": models}
+    return groups
+
+
+def _clean_group_model_entry(value: Any) -> dict[str, Any]:
+    """Normalize one model entry inside a model group request."""
+    if isinstance(value, str):
+        return {"upstream_model": value} if value else {}
+    if not isinstance(value, dict):
+        raise ValueError("model entries must be objects or strings")
+
+    capabilities = value.get("capabilities", ["text"])
+    if not isinstance(capabilities, list) or not capabilities:
+        capabilities = ["text"]
+    entry: dict[str, Any] = {"capabilities": [str(c) for c in capabilities]}
+
+    upstream_model = str(value.get("upstream_model") or "").strip()
+    if upstream_model:
+        entry["upstream_model"] = upstream_model
+
+    reasoning_override = value.get("reasoning_override")
+    if isinstance(reasoning_override, dict):
+        cleaned = {k: v for k, v in reasoning_override.items() if v is not None}
+        if cleaned:
+            entry["reasoning_override"] = cleaned
+
+    cleaned_tool_adaptation = _clean_tool_adaptation(value.get("tool_adaptation"))
+    if cleaned_tool_adaptation:
+        entry["tool_adaptation"] = cleaned_tool_adaptation
+
+    return entry
+
+
+def _model_group_model_names(
+    model_groups: dict[str, Any],
+    *,
+    exclude_group: str | None = None,
+) -> set[str]:
+    """Return downstream model names defined by model groups."""
+    names: set[str] = set()
+    if not isinstance(model_groups, dict):
+        return names
+    for group_name, group_value in model_groups.items():
+        if exclude_group and group_name == exclude_group:
+            continue
+        if not isinstance(group_value, dict):
+            continue
+        group_models = group_value.get("models", {})
+        if isinstance(group_models, dict):
+            names.update(str(name) for name in group_models)
+    return names
+
+
+def _handle_model_rename(
+    data: dict[str, Any], rename_from: str | None, name: str
+) -> Response | None:
+    """Apply top-level model rename validation and mutation."""
+    if not rename_from or rename_from == name:
+        return None
+
+    models = data.setdefault("models", {})
+    if rename_from not in models:
+        return JSONResponse(
+            {"error": f"Original model '{rename_from}' not found"},
+            status_code=404,
+        )
+    if name in models:
+        return JSONResponse(
+            {"error": f"Model '{name}' already exists"},
+            status_code=409,
+        )
+    del models[rename_from]
+    return None
+
+
+def _handle_model_group_rename(
+    model_groups: dict[str, Any], rename_from: str | None, name: str
+) -> Response | None:
+    """Apply model group rename validation and mutation."""
+    if not rename_from or rename_from == name:
+        return None
+
+    if rename_from not in model_groups:
+        return JSONResponse(
+            {"error": f"Original model group '{rename_from}' not found"},
+            status_code=404,
+        )
+    if name in model_groups:
+        return JSONResponse(
+            {"error": f"Model group '{name}' already exists"},
+            status_code=409,
+        )
+    del model_groups[rename_from]
+    return None
+
+
+def _clean_group_models(models_body: dict[str, Any]) -> dict[str, Any]:
+    """Normalize all model entries from a model group request."""
+    cleaned_models: dict[str, Any] = {}
+    for model_name, model_value in models_body.items():
+        clean_name = str(model_name).strip()
+        if not clean_name:
+            continue
+        cleaned_models[clean_name] = _clean_group_model_entry(model_value)
+    return cleaned_models
+
+
+def _model_group_duplicate_response(
+    data: dict[str, Any],
+    model_groups: dict[str, Any],
+    cleaned_models: dict[str, Any],
+    *,
+    exclude_group: str | None,
+) -> Response | None:
+    """Return a conflict response when grouped models duplicate other routes."""
+    flat_models = data.get("models", {})
+    duplicate_flat = sorted(set(cleaned_models) & set(flat_models))
+    if duplicate_flat:
+        return JSONResponse(
+            {"error": f"Models already exist outside this group: {duplicate_flat}"},
+            status_code=409,
+        )
+
+    duplicate_group = sorted(
+        set(cleaned_models)
+        & _model_group_model_names(model_groups, exclude_group=exclude_group)
+    )
+    if duplicate_group:
+        return JSONResponse(
+            {
+                "error": f"Models already exist in another model group: {duplicate_group}"
+            },
+            status_code=409,
+        )
+    return None
+
+
 async def get_config(request: Any) -> Response:
     """Return the current (raw) gateway configuration."""
     config_path = _get_config_path(request)
@@ -231,30 +459,23 @@ async def get_config(request: Any) -> Response:
             masked["type"] = name
         masked_providers[name] = masked
 
-    # Normalize models to dict format for consistent admin UI
-    raw_models = raw.get("models", {})
-    models_normalized: dict[str, Any] = {}
-    for name, value in raw_models.items():
-        if isinstance(value, str):
-            models_normalized[name] = {"provider": value, "capabilities": ["text"]}
-        elif isinstance(value, dict):
-            entry = {
-                "provider": value.get("provider", ""),
-                "capabilities": value.get("capabilities", ["text"]),
-            }
-            if value.get("upstream_model"):
-                entry["upstream_model"] = value["upstream_model"]
-            if value.get("reasoning_override"):
-                entry["reasoning_override"] = value["reasoning_override"]
-            if value.get("tool_adaptation"):
-                entry["tool_adaptation"] = value["tool_adaptation"]
-            models_normalized[name] = entry
-
-    # Resolve effective reasoning config per model
-    for model_name, entry in models_normalized.items():
-        entry["reasoning"] = _resolve_model_reasoning(
-            model_name, entry, raw_models, providers
-        )
+    # Normalize models to dict format for consistent admin UI.  ``models`` is
+    # the effective runtime view; ``standalone_models`` and ``model_groups`` are
+    # the management views used by the admin page.
+    raw_models = raw.get("models", {}) or {}
+    raw_model_groups = raw.get("model_groups", {}) or {}
+    expanded_raw_models = GatewayConfig._expand_model_groups(
+        raw_models, raw_model_groups
+    )
+    standalone_models = _normalize_models_for_admin(
+        raw_models, providers, expanded_raw_models
+    )
+    models_normalized = _normalize_models_for_admin(
+        expanded_raw_models, providers, expanded_raw_models
+    )
+    model_groups = _normalize_model_groups_for_admin(
+        raw_model_groups, providers, expanded_raw_models
+    )
 
     server = _mask_server_config(raw.get("server", {}))
 
@@ -264,6 +485,8 @@ async def get_config(request: Any) -> Response:
             "config_path": config_path,
             "providers": masked_providers,
             "models": models_normalized,
+            "standalone_models": standalone_models,
+            "model_groups": model_groups,
             "server": server,
             "credential_visible": config.credential_visible,
             "version": _get_version(),
@@ -380,14 +603,24 @@ async def delete_provider(request: Any, **kwargs: Any) -> Response:
         for m, p in models.items()
         if (p["provider"] if isinstance(p, dict) else p) == name
     ]
+    raw_model_groups = data.get("model_groups", {})
+    model_groups = raw_model_groups if isinstance(raw_model_groups, dict) else {}
+    referencing_groups = [
+        group_name
+        for group_name, group in model_groups.items()
+        if isinstance(group, dict) and group.get("provider") == name
+    ]
 
     from ._shared import _qp
 
     cascade = _qp(request, "cascade") in ("true", "1")
-    if referencing and not cascade:
+    if (referencing or referencing_groups) and not cascade:
         return JSONResponse(
             {
-                "error": f"Cannot delete provider '{name}': referenced by models: {referencing}"
+                "error": (
+                    f"Cannot delete provider '{name}': referenced by models: "
+                    f"{referencing}, model groups: {referencing_groups}"
+                )
             },
             status_code=409,
         )
@@ -398,6 +631,11 @@ async def delete_provider(request: Any, **kwargs: Any) -> Response:
         for model_name in referencing:
             del models[model_name]
             cascade_deleted.append(model_name)
+    cascade_deleted_groups: list[str] = []
+    if referencing_groups and cascade:
+        for group_name in referencing_groups:
+            del model_groups[group_name]
+            cascade_deleted_groups.append(group_name)
 
     del providers[name]
 
@@ -427,6 +665,8 @@ async def delete_provider(request: Any, **kwargs: Any) -> Response:
     }
     if cascade_deleted:
         result["cascade_deleted_models"] = cascade_deleted
+    if cascade_deleted_groups:
+        result["cascade_deleted_model_groups"] = cascade_deleted_groups
     return JSONResponse(result)
 
 
@@ -512,19 +752,16 @@ async def put_model(request: Any, **kwargs: Any) -> Response:
 
     # Handle rename: remove old entry
     rename_from = body.get("rename_from")
-    if rename_from and rename_from != name:
-        models = data.get("models", {})
-        if rename_from not in models:
-            return JSONResponse(
-                {"error": f"Original model '{rename_from}' not found"},
-                status_code=404,
-            )
-        if name in models:
-            return JSONResponse(
-                {"error": f"Model '{name}' already exists"},
-                status_code=409,
-            )
-        del models[rename_from]
+    models = data.setdefault("models", {})
+    grouped_model_names = _model_group_model_names(data.get("model_groups", {}))
+    if name in grouped_model_names:
+        return JSONResponse(
+            {"error": f"Model '{name}' already exists in a model group"},
+            status_code=409,
+        )
+    rename_error = _handle_model_rename(data, rename_from, name)
+    if rename_error is not None:
+        return rename_error
 
     model_entry: dict[str, Any] = {
         "provider": provider,
@@ -544,7 +781,7 @@ async def put_model(request: Any, **kwargs: Any) -> Response:
     cleaned_tool_adaptation = _clean_tool_adaptation(body.get("tool_adaptation"))
     if cleaned_tool_adaptation:
         model_entry["tool_adaptation"] = cleaned_tool_adaptation
-    data.setdefault("models", {})[name] = model_entry
+    models[name] = model_entry
 
     try:
         write_config(config_path, data)
@@ -594,6 +831,144 @@ async def delete_model(request: Any, **kwargs: Any) -> Response:
         return JSONResponse({"error": f"Model '{name}' not found"}, status_code=404)
 
     del models[name]
+
+    try:
+        write_config(config_path, data)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Failed to write config: {exc}"}, status_code=500
+        )
+
+    try:
+        new_config = _reload_gateway_config(request, config_path)
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "error": f"Config saved but reload failed: {exc}",
+                "saved": True,
+                "reloaded": False,
+            },
+            status_code=500,
+        )
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "deleted": name,
+            "models": dict(new_config.models),
+        }
+    )
+
+
+async def put_model_group(request: Any, **kwargs: Any) -> Response:
+    """Add or update a grouped set of model routing entries."""
+    config_path = _get_config_path(request)
+    if not config_path:
+        return JSONResponse({"error": "No config file path available"}, status_code=500)
+
+    name = request.path_params["name"]
+
+    try:
+        body = request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    provider = body.get("provider")
+    if not provider:
+        return JSONResponse({"error": "'provider' is required"}, status_code=400)
+
+    models_body = body.get("models", {})
+    if not isinstance(models_body, dict):
+        return JSONResponse({"error": "'models' must be an object"}, status_code=400)
+
+    try:
+        data = load_config_raw(config_path)
+    except Exception as exc:
+        return JSONResponse({"error": f"Failed to read config: {exc}"}, status_code=500)
+
+    providers = data.get("providers", {})
+    if provider not in providers:
+        return JSONResponse(
+            {"error": f"Provider '{provider}' not found in config"}, status_code=400
+        )
+
+    model_groups = data.setdefault("model_groups", {})
+    if not isinstance(model_groups, dict):
+        return JSONResponse(
+            {"error": "'model_groups' must be an object"}, status_code=400
+        )
+
+    rename_from = body.get("rename_from")
+    resolve_name = rename_from or name
+    rename_error = _handle_model_group_rename(model_groups, rename_from, name)
+    if rename_error is not None:
+        return rename_error
+
+    try:
+        cleaned_models = _clean_group_models(models_body)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    duplicate_error = _model_group_duplicate_response(
+        data,
+        model_groups,
+        cleaned_models,
+        exclude_group=resolve_name,
+    )
+    if duplicate_error is not None:
+        return duplicate_error
+
+    model_groups[name] = {"provider": provider, "models": cleaned_models}
+
+    try:
+        write_config(config_path, data)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Failed to write config: {exc}"}, status_code=500
+        )
+
+    try:
+        new_config = _reload_gateway_config(request, config_path)
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "error": f"Config saved but reload failed: {exc}",
+                "saved": True,
+                "reloaded": False,
+            },
+            status_code=500,
+        )
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "model_group": name,
+            "provider": provider,
+            "models": dict(new_config.models),
+        }
+    )
+
+
+async def delete_model_group(request: Any, **kwargs: Any) -> Response:
+    """Remove a model group and its grouped model mappings."""
+    config_path = _get_config_path(request)
+    if not config_path:
+        return JSONResponse({"error": "No config file path available"}, status_code=500)
+
+    name = request.path_params["name"]
+
+    try:
+        data = load_config_raw(config_path)
+    except Exception as exc:
+        return JSONResponse({"error": f"Failed to read config: {exc}"}, status_code=500)
+
+    model_groups = data.get("model_groups", {})
+    if not isinstance(model_groups, dict) or name not in model_groups:
+        return JSONResponse(
+            {"error": f"Model group '{name}' not found"}, status_code=404
+        )
+
+    del model_groups[name]
 
     try:
         write_config(config_path, data)
@@ -873,12 +1248,13 @@ async def bulk_add_models(request: Any) -> Response:
         )
 
     models_section = data.setdefault("models", {})
+    grouped_model_names = _model_group_model_names(data.get("model_groups", {}))
     added: list[str] = []
     skipped: list[str] = []
 
     for model_id in models_to_add:
         display_name = f"{prefix}{model_id}" if prefix else model_id
-        if display_name in models_section:
+        if display_name in models_section or display_name in grouped_model_names:
             skipped.append(display_name)
             continue
         entry: dict[str, Any] = {

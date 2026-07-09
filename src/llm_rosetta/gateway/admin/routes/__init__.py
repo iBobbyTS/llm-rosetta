@@ -32,10 +32,12 @@ from .auth import (
 from .config import (
     bulk_add_models,
     delete_model,
+    delete_model_group,
     delete_provider,
     fetch_upstream_models,
     get_config,
     put_model,
+    put_model_group,
     put_provider,
     put_server_settings,
     reload_config,
@@ -111,6 +113,12 @@ def register_admin_routes(app: Any) -> None:
     )
     app.route("/admin/api/config/models/<path:name>", methods=["PUT"])(put_model)
     app.route("/admin/api/config/models/<path:name>", methods=["DELETE"])(delete_model)
+    app.route("/admin/api/config/model-groups/<path:name>", methods=["PUT"])(
+        put_model_group
+    )
+    app.route("/admin/api/config/model-groups/<path:name>", methods=["DELETE"])(
+        delete_model_group
+    )
     app.route("/admin/api/config/providers/<name>/models", methods=["GET"])(
         fetch_upstream_models
     )

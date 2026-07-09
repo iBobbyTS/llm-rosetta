@@ -199,3 +199,81 @@ class TestModelToolAdaptation:
             "enable_phase_detection": False,
             "tool_call_cache_ttl_hours": 12,
         }
+
+
+class TestModelGroups:
+    """Model groups expand into the existing flat runtime routing table."""
+
+    def test_group_string_mapping_uses_group_provider_and_upstream_model(self):
+        raw = _minimal_raw()
+        raw["models"] = {}
+        raw["model_groups"] = {
+            "OpenAI": {
+                "provider": "test",
+                "models": {
+                    "gpt-public": "gpt-upstream",
+                },
+            }
+        }
+
+        cfg = GatewayConfig(raw)
+        route, _provider = cfg.resolve("openai_responses", "gpt-public")
+
+        assert cfg.models == {"gpt-public": "test"}
+        assert cfg.model_upstream_names == {"gpt-public": "gpt-upstream"}
+        assert cfg.model_capabilities == {"gpt-public": ["text"]}
+        assert route.provider_name == "test"
+        assert route.upstream_model == "gpt-upstream"
+
+    def test_group_dict_mapping_preserves_capabilities_and_model_overrides(self):
+        raw = _minimal_raw()
+        raw["models"] = {}
+        raw["model_groups"] = {
+            "OpenAI": {
+                "provider": "test",
+                "models": {
+                    "gpt-tools": {
+                        "upstream_model": "gpt-tools-upstream",
+                        "capabilities": ["text", "tools", "reasoning"],
+                        "reasoning_override": {"thinking_type": "adaptive"},
+                        "tool_adaptation": {"remove_image_generation": True},
+                    },
+                },
+            }
+        }
+
+        cfg = GatewayConfig(raw)
+        route, _provider = cfg.resolve("openai_responses", "gpt-tools")
+
+        assert cfg.models == {"gpt-tools": "test"}
+        assert cfg.model_upstream_names == {"gpt-tools": "gpt-tools-upstream"}
+        assert cfg.model_capabilities == {"gpt-tools": ["text", "tools", "reasoning"]}
+        assert route.reasoning_override == {"thinking_type": "adaptive"}
+        assert route.tool_adaptation == {"remove_image_generation": True}
+
+    def test_duplicate_model_names_across_flat_and_group_config_are_rejected(self):
+        raw = _minimal_raw()
+        raw["model_groups"] = {
+            "OpenAI": {
+                "provider": "test",
+                "models": {"gpt-test": "gpt-upstream"},
+            }
+        }
+
+        with pytest.raises(ValueError, match="defined more than once"):
+            GatewayConfig(raw)
+
+    def test_models_from_disabled_group_provider_are_skipped(self):
+        raw = _minimal_raw()
+        raw["providers"]["test"]["enabled"] = False
+        raw["models"] = {}
+        raw["model_groups"] = {
+            "OpenAI": {
+                "provider": "test",
+                "models": {"gpt-public": "gpt-upstream"},
+            }
+        }
+
+        cfg = GatewayConfig(raw)
+
+        assert cfg.models == {}
