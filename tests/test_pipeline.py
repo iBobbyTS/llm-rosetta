@@ -468,6 +468,103 @@ class TestConversionPipeline:
         assert target["include"] == ["reasoning.encrypted_content"]
         assert target["reasoning"] == {"effort": "low"}
 
+    def test_responses_to_deepseek_v4_chat_applies_reasoning_mapping(self):
+        """Responses effort maps to DeepSeek V4 thinking and capped effort."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline(
+            "openai_responses",
+            "openai_chat",
+            upstream_model="deepseek-v4-flash",
+            model_capabilities=["text", "reasoning"],
+            reasoning_mapping="deepseek_v4",
+        )
+        target = pipeline.convert_request(
+            {
+                "model": "deepseek-v4-flash",
+                "input": "test",
+                "reasoning": {"effort": "medium"},
+            }
+        )
+
+        assert target["thinking"] == {"type": "enabled"}
+        assert target["reasoning_effort"] == "high"
+
+    def test_responses_to_qwen_3_7_chat_auto_mapping_uses_budget(self):
+        """Auto mapping detects Qwen 3.7 from the upstream model name."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline(
+            "openai_responses",
+            "openai_chat",
+            upstream_model="qwen3.7-plus",
+            model_capabilities=["text", "reasoning"],
+            reasoning_mapping="auto",
+        )
+        target = pipeline.convert_request(
+            {
+                "model": "qwen3.7-plus",
+                "input": "test",
+                "reasoning": {"effort": "medium"},
+            }
+        )
+
+        assert target["enable_thinking"] is True
+        assert target["thinking_budget"] == 4096
+        assert target["preserve_thinking"] is True
+
+    def test_anthropic_target_fallback_applies_official_reasoning_format(self):
+        """Unknown model on Anthropic target uses Anthropic official fields."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline(
+            "openai_chat",
+            "anthropic",
+            upstream_model="unknown-model",
+            model_capabilities=["text", "reasoning"],
+            reasoning_mapping="auto",
+        )
+        target = pipeline.convert_request(
+            {
+                "model": "unknown-model",
+                "messages": [{"role": "user", "content": "test"}],
+                "reasoning_effort": "xhigh",
+            }
+        )
+
+        assert target["thinking"] == {"type": "adaptive"}
+        assert target["output_config"] == {"effort": "xhigh"}
+
+    def test_kimi_mapping_preserves_empty_reasoning_content(self):
+        """Kimi mapping is no-op for controls and keeps empty reasoning_content."""
+        from llm_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline(
+            "openai_chat",
+            "openai_chat",
+            upstream_model="kimi-k2.7-code",
+            model_capabilities=["text", "reasoning"],
+            reasoning_mapping="kimi_k2_7_code",
+        )
+        target = pipeline.convert_request(
+            {
+                "model": "kimi-k2.7-code",
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": "",
+                        "reasoning_content": "",
+                    },
+                    {"role": "user", "content": "continue"},
+                ],
+                "reasoning_effort": "high",
+            }
+        )
+
+        assert target["messages"][0]["reasoning_content"] == ""
+        assert "thinking" not in target
+        assert "reasoning_effort" not in target
+
     def test_responses_namespace_tools_are_flattened_for_chat_target(self):
         """Responses namespace tools become Chat functions for upstream models."""
         from llm_rosetta.pipeline import ConversionPipeline

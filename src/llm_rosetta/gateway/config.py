@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from llm_rosetta.auto_detect import ProviderType
+from llm_rosetta.reasoning_mapping import normalize_reasoning_mapping
 from llm_rosetta.routing import ResolvedRoute
 
 from .providers import build_provider_info
@@ -217,13 +218,15 @@ class GatewayConfig:
             self._parse_models(self._expanded_raw_models, self._raw_providers)
         )
 
-        # Per-model reasoning overrides from config.jsonc (admin UI edits).
+        # Per-model reasoning mappings from config.jsonc (admin UI edits).
         # Keyed by gateway model name (same as self.models keys).
-        self.model_reasoning_overrides: dict[str, dict[str, Any]] = {}
+        self.model_reasoning_mappings: dict[str, str] = {}
         self.model_tool_adaptations: dict[str, dict[str, Any]] = {}
         for model_name, value in self._expanded_raw_models.items():
-            if isinstance(value, dict) and value.get("reasoning_override"):
-                self.model_reasoning_overrides[model_name] = value["reasoning_override"]
+            if isinstance(value, dict) and "reasoning_mapping" in value:
+                self.model_reasoning_mappings[model_name] = normalize_reasoning_mapping(
+                    value.get("reasoning_mapping")
+                )
             if isinstance(value, dict) and value.get("tool_adaptation"):
                 self.model_tool_adaptations[model_name] = value["tool_adaptation"]
 
@@ -466,7 +469,7 @@ class GatewayConfig:
         shim_name = self.provider_shim_names.get(provider_name)
         upstream_model = self.model_upstream_names.get(model)
         caps = self.model_capabilities.get(model, list(self.DEFAULT_CAPABILITIES))
-        reasoning = self.model_reasoning_overrides.get(model)
+        reasoning_mapping = self.model_reasoning_mappings.get(model)
         tool_adaptation = self.model_tool_adaptations.get(model)
 
         route = ResolvedRoute(
@@ -476,7 +479,7 @@ class GatewayConfig:
             shim_name=shim_name,
             upstream_model=upstream_model,
             model_capabilities=caps,
-            reasoning_override=reasoning,
+            reasoning_mapping=reasoning_mapping,
             tool_adaptation=tool_adaptation,
         )
         return route, self.providers[provider_name]

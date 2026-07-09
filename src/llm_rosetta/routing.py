@@ -2,7 +2,7 @@
 
 Defines the :class:`ResolvedRoute` data contract and :class:`Router`
 protocol for resolving a model name into a target provider, shim config,
-capabilities, and reasoning overrides.
+capabilities, and reasoning mapping.
 
 This module lives in the core library (no network or gateway deps) so
 any consumer (gateway, argo-proxy, CLI tools) can depend on it.
@@ -41,8 +41,8 @@ class ResolvedRoute:
             when the gateway model name is used as-is.
         model_capabilities: Declared capabilities of the model
             (e.g. ``["text", "vision"]``).
-        reasoning_override: Per-model reasoning config override from
-            the admin UI / config, or ``None``.
+        reasoning_mapping: Per-model reasoning mapping from the admin UI /
+            config, or ``None`` for auto.
         tool_adaptation: Per-model tool adaptation config from
             the admin UI / config, or ``None``.
     """
@@ -53,7 +53,7 @@ class ResolvedRoute:
     shim_name: str | None = None
     upstream_model: str | None = None
     model_capabilities: list[str] = field(default_factory=lambda: ["text"])
-    reasoning_override: dict[str, Any] | None = None
+    reasoning_mapping: str | None = None
     tool_adaptation: dict[str, Any] | None = None
 
 
@@ -80,7 +80,7 @@ class Router(Protocol):
 
         Returns:
             A :class:`ResolvedRoute` with target provider, shim,
-            capabilities, and reasoning config.
+            capabilities, and reasoning mapping.
 
         Raises:
             KeyError: If the model is not in the routing table.

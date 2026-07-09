@@ -79,6 +79,7 @@ def test_proxy_handler_passes_codex_window_id_to_streaming_proxy(monkeypatch):
 
     class _Config:
         models = {"glm-5.2": "test-provider"}
+        web_search: dict[str, Any] = {}
 
         def resolve(self, source_provider: str, model: str):
             return (

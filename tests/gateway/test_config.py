@@ -225,7 +225,7 @@ class TestModelGroups:
         assert route.provider_name == "test"
         assert route.upstream_model == "gpt-upstream"
 
-    def test_group_dict_mapping_preserves_capabilities_and_model_overrides(self):
+    def test_group_dict_mapping_preserves_capabilities_and_model_settings(self):
         raw = _minimal_raw()
         raw["models"] = {}
         raw["model_groups"] = {
@@ -235,7 +235,7 @@ class TestModelGroups:
                     "gpt-tools": {
                         "upstream_model": "gpt-tools-upstream",
                         "capabilities": ["text", "tools", "reasoning"],
-                        "reasoning_override": {"thinking_type": "adaptive"},
+                        "reasoning_mapping": "qwen_3_7",
                         "tool_adaptation": {"remove_image_generation": True},
                     },
                 },
@@ -248,8 +248,25 @@ class TestModelGroups:
         assert cfg.models == {"gpt-tools": "test"}
         assert cfg.model_upstream_names == {"gpt-tools": "gpt-tools-upstream"}
         assert cfg.model_capabilities == {"gpt-tools": ["text", "tools", "reasoning"]}
-        assert route.reasoning_override == {"thinking_type": "adaptive"}
+        assert route.reasoning_mapping == "qwen_3_7"
         assert route.tool_adaptation == {"remove_image_generation": True}
+
+    def test_legacy_reasoning_override_is_ignored(self):
+        raw = _minimal_raw()
+        raw["models"] = {
+            "gpt-test": {
+                "provider": "test",
+                "capabilities": ["text", "reasoning"],
+                "reasoning_override": {"thinking_type": "adaptive"},
+            }
+        }
+
+        cfg = GatewayConfig(raw)
+        route, _provider = cfg.resolve("openai_responses", "gpt-test")
+
+        assert not hasattr(route, "reasoning_override")
+        assert route.reasoning_mapping is None
+        assert cfg.model_reasoning_mappings == {}
 
     def test_duplicate_model_names_across_flat_and_group_config_are_rejected(self):
         raw = _minimal_raw()

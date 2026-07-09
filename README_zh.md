@@ -38,6 +38,7 @@ llm-rosetta-gateway --host 127.0.0.1 -v
 - 不主动调用Plugin
 - 少数模型没有多模态图像理解
 - Computer use, Browser use异常
+- 模型推理深度无法匹配
 本项目会逐步解决，让Deepseek V4 Pro, GLM-5.x, Qwen3.7等优秀模型在Codex中能像GPT-5.5那样丝滑，享受低价的同时使用Codex的高级Agent能力。
 
 目前已解决（尚未大规模投入生产）：
@@ -45,7 +46,8 @@ llm-rosetta-gateway --host 127.0.0.1 -v
 - 代码编辑工具翻译：由于这些模型基本都会推荐Claude Code作为首选Coding Agent，本项目参考了Claude Code的工具定义，让模型生成它们熟悉的CC工具调用，Rosetta再转换为apply_patch为Codex提供原生工具调用体验。
 - 输入缓存能力保留：由于中途拦截了工具，服务商那里的缓存和Codex本地session记录的不一致，Rosetta会自动在请求里进行工具替换，确保输入缓存命中。
 - Goal, TODO, Plan, Subagent已测试正常。
-- 工作过程折叠（代价是失去流式传输）。
+- 工作过程折叠（代价是失去流式传输，可自由开关）。
+- 模型推理深度映射
 
 
 ## 支持的提供商

@@ -39,6 +39,7 @@ Using third-party models in Codex usually runs into several issues:
 - Models may not proactively call plugins.
 - Some models do not support multimodal image understanding.
 - Computer use and browser use may be unreliable.
+- Models may not match the intended reasoning depth.
 
 This project aims to improve those behaviors so strong models such as DeepSeek V4 Pro, GLM-5.x, and Qwen3.7 can run smoothly in Codex, with lower cost while still using Codex's advanced agent capabilities.
 
@@ -48,7 +49,8 @@ Currently solved, but not yet heavily production-tested:
 - Code editing tool translation: because these models often recommend Claude Code as their preferred coding agent, this project references Claude Code-style tool definitions. Models can emit familiar tool calls, and Rosetta converts them back to `apply_patch` or other Codex-native calls.
 - Input-cache preservation: because the gateway intercepts and rewrites tool calls, the provider-side cache and Codex's local session history can otherwise diverge. Rosetta rewrites historical tool calls in outgoing requests so provider input caches can still match.
 - Goal, TODO, Plan, and Subagent flows have been tested successfully.
-- Work-process folding, with the trade-off that converted Chat upstream streams are buffered instead of streamed token-by-token.
+- Work-process folding, with the trade-off that streaming is lost, but the behavior can now be toggled on or off.
+- Model reasoning-depth mapping.
 
 ## Supported Providers
 

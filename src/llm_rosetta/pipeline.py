@@ -24,10 +24,11 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from llm_rosetta.capabilities import enforce_reasoning, enforce_vision
 from llm_rosetta.converters.base.context import ConversionContext, StreamContext
+from llm_rosetta.reasoning_mapping import apply_reasoning_mapping_to_provider_request
 from llm_rosetta.shims.provider_shim import ProviderShim, resolve_shim
 from llm_rosetta.shims.transforms import (
     Transform,
@@ -186,7 +187,8 @@ class ConversionPipeline:
         shim: Provider shim instance, registered name, or ``None``.
         upstream_model: The upstream model ID (for shim pattern matching).
         model_capabilities: Model capability list (e.g. ``["text", "vision"]``).
-        reasoning_config_override: External reasoning override (e.g. admin UI).
+        reasoning_mapping: Optional gateway reasoning mapping.
+        provider_name: User-configured upstream provider name.
     """
 
     def __init__(
@@ -197,7 +199,8 @@ class ConversionPipeline:
         *,
         upstream_model: str | None = None,
         model_capabilities: list[str] | None = None,
-        reasoning_config_override: dict[str, Any] | None = None,
+        reasoning_mapping: str | None = None,
+        provider_name: str | None = None,
         conversion_options: dict[str, Any] | None = None,
     ) -> None:
         from llm_rosetta import get_converter_for_provider
@@ -207,7 +210,8 @@ class ConversionPipeline:
         self._shim = shim
         self._upstream_model = upstream_model
         self._model_capabilities = model_capabilities
-        self._reasoning_config_override = reasoning_config_override
+        self._reasoning_mapping = reasoning_mapping
+        self._provider_name = provider_name
         self._conversion_options = dict(conversion_options or {})
 
         self._source_converter = get_converter_for_provider(source_provider)
@@ -337,7 +341,6 @@ class ConversionPipeline:
             ctx,
             self._shim,
             model=self._upstream_model or body.get("model"),
-            config_override=self._reasoning_config_override,
         )
         self._ctx = ctx
 
@@ -390,6 +393,23 @@ class ConversionPipeline:
                 f"Conversion error: {exc}", phase="ir_to_target"
             ) from exc
         self._profile["ir_to_target_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+
+        target_body = apply_reasoning_mapping_to_provider_request(
+            target_body,
+            ir_request=ir_request,
+            target_provider=self._target_provider,
+            reasoning_mapping=self._reasoning_mapping,
+            provider_name=self._provider_name,
+            shim_name=(
+                self._shim.name
+                if isinstance(self._shim, ProviderShim)
+                else cast(str | None, self._shim)
+            ),
+            upstream_model=self._upstream_model,
+            model_name=body.get("model"),
+            model_capabilities=self._model_capabilities,
+            context=ctx,
+        )
 
         # Phase 2c: Body-level shim to_transforms
         t0 = time.perf_counter()

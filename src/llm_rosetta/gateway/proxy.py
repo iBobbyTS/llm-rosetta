@@ -1347,7 +1347,8 @@ async def handle_non_streaming(
         route.shim_name,
         upstream_model=model,
         model_capabilities=route.model_capabilities,
-        reasoning_config_override=route.reasoning_override,
+        reasoning_mapping=route.reasoning_mapping,
+        provider_name=route.provider_name,
         conversion_options={
             "enable_tool_description_optimization": (
                 enable_tool_description_optimization(route.tool_adaptation)
@@ -2179,7 +2180,8 @@ async def handle_streaming(
         route.shim_name,
         upstream_model=model,
         model_capabilities=route.model_capabilities,
-        reasoning_config_override=route.reasoning_override,
+        reasoning_mapping=route.reasoning_mapping,
+        provider_name=route.provider_name,
         conversion_options={
             "enable_tool_description_optimization": (
                 enable_tool_description_optimization(route.tool_adaptation)

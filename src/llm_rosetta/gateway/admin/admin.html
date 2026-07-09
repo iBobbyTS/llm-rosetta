@@ -835,15 +835,15 @@ body { padding-bottom: 26px; }
     <h3 id="modelModalTitle" data-i18n="modal.addModel">Add Model</h3>
     <div class="form-group">
       <label data-i18n="label.modelName">Model Name</label>
-      <input id="modelName" placeholder="e.g. gpt-4o, claude-sonnet-4-20250514">
+      <input id="modelName" placeholder="e.g. gpt-4o, claude-sonnet-4-20250514" oninput="updateReasoningAutoResult()">
     </div>
     <div class="form-group">
       <label data-i18n="label.provider">Provider</label>
-      <select id="modelProvider"></select>
+      <select id="modelProvider" onchange="updateReasoningAutoResult()"></select>
     </div>
     <div class="form-group">
       <label data-i18n="label.upstreamModel">Upstream Model <span style="font-weight:normal;color:var(--text-dim)">(optional)</span></label>
-      <input id="modelUpstream" placeholder="e.g. claudeopus45 (leave blank if same as model name)">
+      <input id="modelUpstream" placeholder="e.g. claudeopus45 (leave blank if same as model name)" oninput="updateReasoningAutoResult()">
     </div>
     <div class="form-group">
       <label data-i18n="label.modelType">Model Type</label>
@@ -858,35 +858,27 @@ body { padding-bottom: 26px; }
         <label><input type="checkbox" id="capText" checked> text</label>
         <label><input type="checkbox" id="capVision"> vision</label>
         <label><input type="checkbox" id="capTools" checked> tools</label>
-        <label><input type="checkbox" id="capReasoning" onchange="updateReasoningVisibility()"> reasoning</label>
       </div>
     </div>
-    <div class="form-group" id="modelReasoningGroup" style="display:none">
+    <div class="form-group" id="modelReasoningGroup">
       <label><span data-i18n="label.reasoningConfig">Reasoning Config</span>
         <span class="badge badge-sm" id="reasoningSourceBadge" style="margin-left:6px"></span>
       </label>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <label style="min-width:140px;margin:0;font-size:0.85em;color:var(--text-dim);text-transform:none;letter-spacing:0" data-i18n="label.thinkingType">Thinking Type</label>
-          <select id="reasoningThinkingType" style="flex:1">
-            <option value="" data-i18n="label.inheritProvider">(inherit from provider)</option>
-            <option value="enabled">enabled</option>
-            <option value="adaptive">adaptive</option>
-          </select>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <label style="min-width:140px;margin:0;font-size:0.85em;color:var(--text-dim);text-transform:none;letter-spacing:0" data-i18n="label.budgetRatio">Budget Tokens Ratio</label>
-          <input id="reasoningBudgetRatio" type="number" step="0.1" min="0" max="1" placeholder="(inherit)" style="flex:1">
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <label style="min-width:140px;margin:0;font-size:0.85em;color:var(--text-dim);text-transform:none;letter-spacing:0" data-i18n="label.disabledStrategy">Disabled Strategy</label>
-          <select id="reasoningDisabled" style="flex:1">
-            <option value="" data-i18n="label.inheritProvider">(inherit from provider)</option>
-            <option value="omit">omit</option>
-            <option value="thinking_disabled">thinking_disabled</option>
-            <option value="thinking_budget_zero">thinking_budget_zero</option>
-          </select>
-        </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="min-width:140px;margin:0;font-size:0.85em;color:var(--text-dim);text-transform:none;letter-spacing:0" data-i18n="label.reasoningMapping">Reasoning Mapping</label>
+        <select id="reasoningMapping" style="flex:1;min-width:220px" onchange="updateReasoningAutoResult()">
+          <option value="auto">auto</option>
+          <option value="openai_chat">openai_chat</option>
+          <option value="openai_responses">openai_responses</option>
+          <option value="anthropic">anthropic</option>
+          <option value="deepseek_v4">deepseek_v4</option>
+          <option value="glm_5_2">glm_5_2</option>
+          <option value="qwen_3_7">qwen_3_7</option>
+          <option value="kimi_k2_7_code">kimi_k2_7_code</option>
+          <option value="minimax_m3">minimax_m3</option>
+          <option value="mimo_v2_5">mimo_v2_5</option>
+        </select>
+        <span id="reasoningAutoResult" style="font-size:12px;color:var(--text-dim)"></span>
       </div>
     </div>
     <details class="config-details" id="modelToolAdaptationGroup">
@@ -968,7 +960,6 @@ body { padding-bottom: 26px; }
         <label><input type="checkbox" id="fetchCapText" checked> text</label>
         <label><input type="checkbox" id="fetchCapVision"> vision</label>
         <label><input type="checkbox" id="fetchCapTools" checked> tools</label>
-        <label><input type="checkbox" id="fetchCapReasoning"> reasoning</label>
       </div>
     </div>
     <div id="fetchModelsLoading" style="display:none;text-align:center;padding:20px;color:var(--text-dim)">
@@ -1125,7 +1116,7 @@ const I18N = {
     'label.apiKey':'API Key (or ${ENV_VAR} placeholder)', 'label.keyUnchangedHint':'Leave blank to keep current key',
     'label.proxyUrl':'Proxy URL (optional, overrides global)',
     'label.modelName':'Model Name', 'label.provider':'Provider', 'label.upstreamModel':'Upstream Model', 'label.capabilities':'Capabilities',
-    'label.reasoningConfig':'Reasoning Config', 'label.thinkingType':'Thinking Type', 'label.budgetRatio':'Budget Tokens Ratio', 'label.disabledStrategy':'Disabled Strategy', 'label.inheritProvider':'(inherit from provider)', 'label.inherited':'inherited',
+    'label.reasoningConfig':'Reasoning Config', 'label.reasoningMapping':'Reasoning Mapping', 'label.inherited':'inherited',
     'label.toolAdaptionCodex':'Tool Adaption for Codex', 'label.localizeCodeEditingTools':'Localize code editing tools', 'label.useApplyPatchForCodeEdits':'Use apply_patch instead of python for code edits', 'label.removeImageGeneration':'Remove `image_generation`', 'label.toolDescriptionOptimization':'Enable tool description optimization', 'label.phaseDetection':'Enable phase detection to collapse work before final answer', 'label.toolCallCacheTtl':'Tool call mapping cache TTL (hours)',
     'modal.addProvider':'Add Provider', 'modal.editProvider':'Edit Provider',
     'modal.addModel':'Add Model', 'modal.editModel':'Edit Model',
@@ -1276,7 +1267,7 @@ const I18N = {
     'label.apiKey':'API Key\uff08\u6216 ${ENV_VAR} \u5360\u4f4d\u7b26\uff09', 'label.keyUnchangedHint':'\u7559\u7a7a\u4ee5\u4fdd\u7559\u5f53\u524d\u5bc6\u94a5',
     'label.proxyUrl':'\u4ee3\u7406 URL\uff08\u53ef\u9009\uff0c\u8986\u76d6\u5168\u5c40\u8bbe\u7f6e\uff09',
     'label.modelName':'\u6a21\u578b\u540d\u79f0', 'label.provider':'\u670d\u52a1\u65b9', 'label.upstreamModel':'\u4e0a\u6e38\u6a21\u578b', 'label.capabilities':'\u80fd\u529b',
-    'label.reasoningConfig':'\u63a8\u7406\u914d\u7f6e', 'label.thinkingType':'\u601d\u8003\u7c7b\u578b', 'label.budgetRatio':'\u9884\u7b97 Token \u6bd4\u4f8b', 'label.disabledStrategy':'\u7981\u7528\u7b56\u7565', 'label.inheritProvider':'(\u7ee7\u627f\u81ea Provider)', 'label.inherited':'\u7ee7\u627f',
+    'label.reasoningConfig':'\u63a8\u7406\u914d\u7f6e', 'label.reasoningMapping':'\u63a8\u7406\u6620\u5c04', 'label.inherited':'\u7ee7\u627f',
     'label.toolAdaptionCodex':'Tool Adaption for Codex', 'label.localizeCodeEditingTools':'\u672c\u5730\u5316\u4ee3\u7801\u7f16\u8f91\u5de5\u5177', 'label.useApplyPatchForCodeEdits':'\u4ee3\u7801\u7f16\u8f91\u4f7f\u7528 apply_patch \u800c\u4e0d\u662f python', 'label.removeImageGeneration':'\u79fb\u9664 `image_generation`', 'label.toolDescriptionOptimization':'\u542f\u7528\u5de5\u5177\u63cf\u8ff0\u4f18\u5316', 'label.phaseDetection':'\u542f\u7528 phase detection \u4ee5\u6298\u53e0 final answer \u524d\u7684\u5de5\u4f5c\u8fc7\u7a0b', 'label.toolCallCacheTtl':'Tool call mapping cache TTL\uff08\u5c0f\u65f6\uff09',
     'modal.addProvider':'\u6dfb\u52a0\u670d\u52a1\u65b9', 'modal.editProvider':'\u7f16\u8f91\u670d\u52a1\u65b9',
     'modal.addModel':'\u6dfb\u52a0\u6a21\u578b', 'modal.editModel':'\u7f16\u8f91\u6a21\u578b',
@@ -2093,7 +2084,6 @@ function openModelModal(model, provider, capabilities, upstreamModel, sourceMode
   document.getElementById('capText').checked = caps.includes('text');
   document.getElementById('capVision').checked = caps.includes('vision');
   document.getElementById('capTools').checked = caps.includes('tools');
-  document.getElementById('capReasoning').checked = caps.includes('reasoning');
   onModelTypeChange();
 
   // Populate reasoning config section.
@@ -2101,22 +2091,8 @@ function openModelModal(model, provider, capabilities, upstreamModel, sourceMode
   const lookupName = model || sourceModel;
   const info = lookupName && configData ? configData.models[lookupName] : null;
   const reasoning = (info && info.reasoning) || {};
-  const configOverride = (info && info.reasoning_override) || {};
-  const srcBadge = document.getElementById('reasoningSourceBadge');
-  srcBadge.textContent = reasoning.source || 'none';
-  srcBadge.className = 'badge badge-sm' + (reasoning.source === 'config' ? ' badge-cap-tools' : reasoning.source === 'model_override' ? ' badge-cap-reasoning' : '');
-  // Update inherit option labels: show "value (inherited)" or just "(inherit)"
-  const inh = t('label.inherited');
-  const ttInherit = document.querySelector('#reasoningThinkingType option[value=""]');
-  ttInherit.textContent = reasoning.thinking_type ? reasoning.thinking_type + ' (' + inh + ')' : '(' + inh + ')';
-  const br = document.getElementById('reasoningBudgetRatio');
-  br.placeholder = reasoning.budget_tokens_default_ratio != null ? reasoning.budget_tokens_default_ratio + ' (' + inh + ')' : '(' + inh + ')';
-  const dsInherit = document.querySelector('#reasoningDisabled option[value=""]');
-  dsInherit.textContent = reasoning.disabled ? reasoning.disabled + ' (' + inh + ')' : '(' + inh + ')';
-  // Set values — config override if present, otherwise blank (inheriting)
-  document.getElementById('reasoningThinkingType').value = configOverride.thinking_type || '';
-  document.getElementById('reasoningBudgetRatio').value = configOverride.budget_tokens_default_ratio != null ? configOverride.budget_tokens_default_ratio : '';
-  document.getElementById('reasoningDisabled').value = configOverride.disabled || '';
+  document.getElementById('reasoningMapping').value = (info && info.reasoning_mapping) || reasoning.requested || 'auto';
+  updateReasoningAutoResult();
   const toolAdaptation = (info && info.tool_adaptation) || {};
   document.getElementById('toolLocalizeCodeEditing').checked = !!toolAdaptation.localize_code_editing_tools;
   document.getElementById('toolUseApplyPatchForCodeEdits').checked = toolAdaptation.use_apply_patch_for_code_edits !== false;
@@ -2136,12 +2112,54 @@ function onModelTypeChange() {
 }
 function updateReasoningVisibility() {
   const isLLM = document.querySelector('input[name="modelType"]:checked').value === 'llm';
-  const hasReasoning = isLLM && document.getElementById('capReasoning').checked;
-  document.getElementById('modelReasoningGroup').style.display = hasReasoning ? '' : 'none';
+  document.getElementById('modelReasoningGroup').style.display = isLLM ? '' : 'none';
+  updateReasoningAutoResult();
 }
 function updateToolAdaptationVisibility() {
   const localize = document.getElementById('toolLocalizeCodeEditing').checked;
   document.getElementById('toolUseApplyPatchRow').style.display = localize ? '' : 'none';
+}
+
+function _cleanReasoningModelKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/-/g, '_');
+}
+
+function _detectReasoningMappingByModelName(modelName) {
+  const key = _cleanReasoningModelKey(modelName);
+  if (/\bdeepseek[_ ]?v?4(?:[_ ]?(?:flash|pro))?\b/.test(key)) return 'deepseek_v4';
+  if (/\bglm[_ ]?5[._]?2\b/.test(key)) return 'glm_5_2';
+  if (/\bqwen[_ ]?3[._]?7(?:[_ ]?(?:plus|max))?\b/.test(key)) return 'qwen_3_7';
+  if (/\bkimi[_ ]?k2[._]?7(?:[_ ]?code)?\b/.test(key)) return 'kimi_k2_7_code';
+  if (/\bminimax[_ ]?m3\b/.test(key)) return 'minimax_m3';
+  if (/\bmimo[_ ]?v?2[._]?5\b/.test(key)) return 'mimo_v2_5';
+  return null;
+}
+
+function _reasoningTargetFallback(providerName) {
+  const cfg = (configData && configData.providers && configData.providers[providerName]) || {};
+  const raw = String(cfg.api_type || cfg.type || cfg.shim || '').toLowerCase();
+  if (raw.includes('responses')) return 'openai_responses';
+  if (raw.includes('anthropic')) return 'anthropic';
+  return 'openai_chat';
+}
+
+function _autoReasoningMappingForForm() {
+  const modelName = document.getElementById('modelUpstream').value.trim()
+    || document.getElementById('modelName').value.trim();
+  return _detectReasoningMappingByModelName(modelName)
+    || _reasoningTargetFallback(document.getElementById('modelProvider').value);
+}
+
+function updateReasoningAutoResult() {
+  const select = document.getElementById('reasoningMapping');
+  const output = document.getElementById('reasoningAutoResult');
+  const badge = document.getElementById('reasoningSourceBadge');
+  if (!select || !output || !badge) return;
+  const selected = select.value || 'auto';
+  const auto = _autoReasoningMappingForForm();
+  output.textContent = selected === 'auto' ? `auto -> ${auto}` : `override -> ${selected}`;
+  badge.textContent = selected === 'auto' ? 'auto' : 'config';
+  badge.className = 'badge badge-sm' + (selected === 'auto' ? ' badge-cap-reasoning' : ' badge-cap-tools');
 }
 
 function _populateProviderSelect(selectId, selectedProvider) {
@@ -2195,7 +2213,7 @@ function addModelGroupRow(modelName, info) {
   const rowType = _modelGroupRowType(caps);
   const typeName = `modelGroupType-${++_modelGroupRowSeq}`;
   row._modelExtra = {
-    reasoning_override: info && info.reasoning_override ? info.reasoning_override : null,
+    reasoning_mapping: info && info.reasoning_mapping ? info.reasoning_mapping : null,
     tool_adaptation: info && info.tool_adaptation ? info.tool_adaptation : null,
   };
   const checked = cap => caps.includes(cap) ? ' checked' : '';
@@ -2212,7 +2230,6 @@ function addModelGroupRow(modelName, info) {
         <label><input type="checkbox" class="group-cap" value="text"${checked('text')}> text</label>
         <label><input type="checkbox" class="group-cap" value="vision"${checked('vision')}> vision</label>
         <label><input type="checkbox" class="group-cap" value="tools"${checked('tools')}> tools</label>
-        <label><input type="checkbox" class="group-cap" value="reasoning"${checked('reasoning')}> reasoning</label>
       </div>
       <div class="model-group-row-actions">
         <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.model-group-row').remove()">${t('btn.delete')}</button>
@@ -2237,10 +2254,12 @@ async function saveModelGroup() {
     const caps = modelType === 'embedding'
       ? ['embedding']
       : [...row.querySelectorAll('.group-cap:checked')].map(cb => cb.value);
+    if (modelType !== 'embedding' && caps.length === 0) caps.push('text');
+    if (modelType !== 'embedding' && !caps.includes('reasoning')) caps.push('reasoning');
     const upstream = row.querySelector('.group-upstream-model').value.trim();
     const entry = {capabilities: caps.length ? caps : ['text']};
     if (upstream) entry.upstream_model = upstream;
-    if (row._modelExtra && row._modelExtra.reasoning_override) entry.reasoning_override = row._modelExtra.reasoning_override;
+    if (row._modelExtra && row._modelExtra.reasoning_mapping) entry.reasoning_mapping = row._modelExtra.reasoning_mapping;
     if (row._modelExtra && row._modelExtra.tool_adaptation) entry.tool_adaptation = row._modelExtra.tool_adaptation;
     models[modelName] = entry;
   }
@@ -2938,8 +2957,8 @@ async function saveModel() {
     if (document.getElementById('capText').checked) capabilities.push('text');
     if (document.getElementById('capVision').checked) capabilities.push('vision');
     if (document.getElementById('capTools').checked) capabilities.push('tools');
-    if (document.getElementById('capReasoning').checked) capabilities.push('reasoning');
     if (capabilities.length === 0) capabilities.push('text');
+    capabilities.push('reasoning');
   }
   const body = {provider, capabilities};
   const upstreamModel = document.getElementById('modelUpstream').value.trim();
@@ -2960,16 +2979,8 @@ async function saveModel() {
       toolAdaptation.tool_call_cache_ttl_hours !== 24) {
     body.tool_adaptation = toolAdaptation;
   }
-  // Collect reasoning override if reasoning capability is enabled
-  if (capabilities.includes('reasoning')) {
-    const thinkingType = document.getElementById('reasoningThinkingType').value || null;
-    const budgetRatioStr = document.getElementById('reasoningBudgetRatio').value;
-    const disabledStrategy = document.getElementById('reasoningDisabled').value || null;
-    const override = {};
-    if (thinkingType) override.thinking_type = thinkingType;
-    if (budgetRatioStr !== '') override.budget_tokens_default_ratio = parseFloat(budgetRatioStr);
-    if (disabledStrategy) override.disabled = disabledStrategy;
-    if (Object.keys(override).length > 0) body.reasoning_override = override;
+  if (modelType !== 'embedding') {
+    body.reasoning_mapping = document.getElementById('reasoningMapping').value || 'auto';
   }
   const originalName = document.getElementById('modelName').dataset.originalName;
   if (originalName && originalName !== name) {
@@ -3038,7 +3049,6 @@ function openFetchModelsModal() {
   document.getElementById('fetchCapText').checked = true;
   document.getElementById('fetchCapVision').checked = false;
   document.getElementById('fetchCapTools').checked = true;
-  document.getElementById('fetchCapReasoning').checked = false;
   document.getElementById('fetchCapsRow').style.display = '';
   document.getElementById('fetchModelsModal').classList.add('open');
 }
@@ -3055,8 +3065,9 @@ function _getFetchCapabilities() {
   if (document.getElementById('fetchCapText').checked) caps.push('text');
   if (document.getElementById('fetchCapVision').checked) caps.push('vision');
   if (document.getElementById('fetchCapTools').checked) caps.push('tools');
-  if (document.getElementById('fetchCapReasoning').checked) caps.push('reasoning');
-  return caps.length > 0 ? caps : ['text'];
+  if (caps.length === 0) caps.push('text');
+  caps.push('reasoning');
+  return caps;
 }
 
 async function doFetchModels() {

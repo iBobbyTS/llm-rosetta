@@ -300,6 +300,77 @@ def test_put_model_omits_default_tool_adaptation(tmp_path):
     assert response.status_code == 200
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     assert "tool_adaptation" not in saved["models"]["gpt-test"]
+    assert saved["models"]["gpt-test"]["capabilities"] == [
+        "text",
+        "tools",
+        "reasoning",
+    ]
+
+
+def test_put_model_persists_reasoning_mapping_and_drops_legacy_override(tmp_path):
+    """Model saves the new reasoning mapping and discards old reasoning fields."""
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(_config_data()), encoding="utf-8")
+
+    initial_config = GatewayConfig(_config_data())
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app, path_params={"name": "gpt-test"})
+    request.json = lambda: {
+        "provider": "openai",
+        "capabilities": ["text"],
+        "reasoning_mapping": "qwen_3_7",
+        "reasoning_override": {"thinking_type": "adaptive"},
+    }
+
+    response = _run(put_model(request))
+
+    assert response.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["models"]["gpt-test"]["reasoning_mapping"] == "qwen_3_7"
+    assert saved["models"]["gpt-test"]["capabilities"] == ["text", "reasoning"]
+    assert "reasoning_override" not in saved["models"]["gpt-test"]
+    route, _provider = app.gateway_config.resolve("openai_responses", "gpt-test")
+    assert route.reasoning_mapping == "qwen_3_7"
+
+
+def test_get_config_returns_reasoning_mapping_metadata_and_drops_legacy(tmp_path):
+    """Admin config response exposes mapping metadata without legacy override."""
+    config = _config_data()
+    config["models"] = {
+        "qwen-public": {
+            "provider": "openai",
+            "upstream_model": "qwen3.7-plus",
+            "capabilities": ["text", "reasoning"],
+            "reasoning_override": {"thinking_type": "adaptive"},
+        }
+    }
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=GatewayConfig(config),
+    )
+    request = SimpleNamespace(app=app)
+
+    response = _run(get_config(request))
+
+    assert response.status_code == 200
+    body = json.loads(response.body.decode("utf-8"))
+    model = body["models"]["qwen-public"]
+    assert "reasoning_override" not in model
+    assert "reasoning_mapping" not in model
+    assert model["reasoning"] == {
+        "source": "model",
+        "requested": "auto",
+        "effective": "qwen_3_7",
+        "target_provider": "openai_chat",
+    }
 
 
 def test_get_config_returns_model_groups_and_effective_models(tmp_path):
@@ -370,7 +441,7 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
         "provider": "openai",
         "models": {
             "gpt-grouped": {
-                "capabilities": ["text", "tools"],
+                "capabilities": ["text", "tools", "reasoning"],
                 "upstream_model": "gpt-upstream",
             }
         },
@@ -378,7 +449,44 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
     route, _provider = app.gateway_config.resolve("openai_responses", "gpt-grouped")
     assert route.provider_name == "openai"
     assert route.upstream_model == "gpt-upstream"
-    assert route.model_capabilities == ["text", "tools"]
+    assert route.model_capabilities == ["text", "tools", "reasoning"]
+
+
+def test_put_model_group_persists_reasoning_mapping_and_drops_legacy(tmp_path):
+    """Grouped model entries save reasoning_mapping and discard legacy override."""
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(_config_data()), encoding="utf-8")
+
+    initial_config = GatewayConfig(_config_data())
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app, path_params={"name": "OpenAI"})
+    request.json = lambda: {
+        "provider": "openai",
+        "models": {
+            "qwen-public": {
+                "upstream_model": "qwen3.7-plus",
+                "capabilities": ["text"],
+                "reasoning_mapping": "auto",
+                "reasoning_override": {"thinking_type": "adaptive"},
+            }
+        },
+    }
+
+    response = _run(put_model_group(request))
+
+    assert response.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    entry = saved["model_groups"]["OpenAI"]["models"]["qwen-public"]
+    assert entry["reasoning_mapping"] == "auto"
+    assert entry["capabilities"] == ["text", "reasoning"]
+    assert "reasoning_override" not in entry
+    route, _provider = app.gateway_config.resolve("openai_responses", "qwen-public")
+    assert route.reasoning_mapping == "auto"
 
 
 def test_put_model_group_rejects_duplicate_flat_model_name(tmp_path):
@@ -455,6 +563,32 @@ def test_admin_html_exposes_tool_adaptation_switches():
     assert "toolAdaptation.enable_tool_description_optimization !== false" in html
     assert "toolAdaptation.enable_phase_detection !== false" in html
     assert "toolFlattenNestedNamespaceTools" not in html
+
+
+def test_admin_html_exposes_reasoning_mapping_controls():
+    """Model modal uses reasoning_mapping instead of legacy reasoning controls."""
+    html_path = (
+        Path(__file__).parents[2]
+        / "src"
+        / "llm_rosetta"
+        / "gateway"
+        / "admin"
+        / "admin.html"
+    )
+    html = html_path.read_text(encoding="utf-8")
+
+    assert 'id="reasoningMapping"' in html
+    assert 'id="reasoningAutoResult"' in html
+    assert 'id="modelReasoningGroup" style="display:none' not in html
+    assert "function _detectReasoningMappingByModelName(modelName)" in html
+    assert "body.reasoning_mapping" in html
+    assert 'id="capReasoning"' not in html
+    assert 'id="fetchCapReasoning"' not in html
+    assert 'value="reasoning"' not in html
+    assert "reasoning_override" not in html
+    assert "reasoningThinkingType" not in html
+    assert "reasoningBudgetRatio" not in html
+    assert "reasoningDisabled" not in html
 
 
 def test_admin_html_exposes_provider_preset_protocol_controls():

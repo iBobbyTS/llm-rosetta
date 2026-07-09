@@ -6,7 +6,11 @@ from typing import Any
 
 from llm_rosetta._vendor.httpclient import AsyncClient, Response as HttpResponse
 from llm_rosetta._vendor.httpserver import JSONResponse, Response
-from llm_rosetta.shims import get_shim, list_shims
+from llm_rosetta.reasoning_mapping import (
+    normalize_reasoning_mapping,
+    resolve_reasoning_mapping,
+)
+from llm_rosetta.shims import list_shims
 
 from ...config import (
     GatewayConfig,
@@ -157,54 +161,54 @@ def _clean_tool_adaptation(value: Any) -> dict[str, Any] | None:
     )
 
 
-def _resolve_model_reasoning(
+def _normalize_admin_capabilities(value: Any) -> list[str]:
+    """Normalize admin-submitted model capabilities.
+
+    LLM entries managed by the admin UI always enable reasoning mapping; embedding
+    entries stay embedding-only.
+    """
+    if not isinstance(value, list) or not value:
+        value = ["text"]
+    capabilities = [str(c) for c in value]
+    if "embedding" not in capabilities and "reasoning" not in capabilities:
+        capabilities.append("reasoning")
+    return capabilities
+
+
+def _resolve_model_reasoning_mapping(
     model_name: str,
     entry: dict[str, Any],
     raw_models: dict[str, Any],
     providers: dict[str, Any],
 ) -> dict[str, Any]:
-    """Resolve the effective reasoning config for a model.
-
-    Resolution priority:
-    1. config.jsonc model-level ``reasoning_override``
-    2. Shim ``model_reasoning[upstream_id]``
-    3. Shim provider-level ``reasoning``
-
-    Returns a dict with ``source`` indicating where the config came from,
-    plus the effective field values.
-    """
+    """Resolve the effective reasoning mapping for admin display."""
     provider_name = entry.get("provider", "")
     provider_cfg = providers.get(provider_name, {})
-    _provider_type, shim_name = resolve_provider_config_type_and_shim(
+    provider_type, shim_name = resolve_provider_config_type_and_shim(
         provider_name, provider_cfg
     )
     upstream = entry.get("upstream_model") or model_name
 
-    shim = get_shim(shim_name)
-    if not shim or not shim.reasoning:
-        return {"source": "none"}
-
-    cap = shim.reasoning
-    source = "provider"
-    if shim.model_reasoning and upstream in shim.model_reasoning:
-        cap = shim.model_reasoning[upstream]
-        source = "model_override"
-
-    # Check config-level override
     raw_model = raw_models.get(model_name, {})
-    config_override = (
-        raw_model.get("reasoning_override") if isinstance(raw_model, dict) else None
+    explicit = (
+        raw_model.get("reasoning_mapping")
+        if isinstance(raw_model, dict)
+        else entry.get("reasoning_mapping")
     )
-    if config_override:
-        source = "config"
-
+    resolution = resolve_reasoning_mapping(
+        explicit=explicit,
+        target_provider=provider_type,
+        provider_name=provider_name,
+        shim_name=shim_name,
+        upstream_model=upstream,
+        model_name=model_name,
+        provider_config=provider_cfg,
+    )
     return {
-        "source": source,
-        "thinking_type": cap.thinking_type,
-        "disabled": cap.disabled,
-        "effort_field": cap.effort_field,
-        "budget_tokens_default_ratio": cap.budget_tokens_default_ratio,
-        "config_override": config_override,
+        "source": resolution.source,
+        "requested": resolution.requested,
+        "effective": resolution.effective,
+        "target_provider": provider_type,
     }
 
 
@@ -242,8 +246,10 @@ def _normalize_model_entry(
         return {}
 
     if isinstance(value, dict):
-        if value.get("reasoning_override"):
-            entry["reasoning_override"] = value["reasoning_override"]
+        if "reasoning_mapping" in value:
+            entry["reasoning_mapping"] = normalize_reasoning_mapping(
+                value.get("reasoning_mapping")
+            )
         if value.get("tool_adaptation"):
             entry["tool_adaptation"] = value["tool_adaptation"]
     return entry
@@ -261,7 +267,7 @@ def _normalize_models_for_admin(
         entry = _normalize_model_entry(name, value)
         if not entry:
             continue
-        entry["reasoning"] = _resolve_model_reasoning(
+        entry["reasoning"] = _resolve_model_reasoning_mapping(
             name, entry, reasoning_raw_models, providers
         )
         normalized[name] = entry
@@ -292,7 +298,7 @@ def _normalize_model_groups_for_admin(
                 entry.pop("provider", None)
                 reasoning_entry = dict(entry)
                 reasoning_entry["provider"] = provider
-                entry["reasoning"] = _resolve_model_reasoning(
+                entry["reasoning"] = _resolve_model_reasoning_mapping(
                     model_name,
                     reasoning_entry,
                     expanded_raw_models,
@@ -310,20 +316,18 @@ def _clean_group_model_entry(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("model entries must be objects or strings")
 
-    capabilities = value.get("capabilities", ["text"])
-    if not isinstance(capabilities, list) or not capabilities:
-        capabilities = ["text"]
-    entry: dict[str, Any] = {"capabilities": [str(c) for c in capabilities]}
+    entry: dict[str, Any] = {
+        "capabilities": _normalize_admin_capabilities(value.get("capabilities"))
+    }
 
     upstream_model = str(value.get("upstream_model") or "").strip()
     if upstream_model:
         entry["upstream_model"] = upstream_model
 
-    reasoning_override = value.get("reasoning_override")
-    if isinstance(reasoning_override, dict):
-        cleaned = {k: v for k, v in reasoning_override.items() if v is not None}
-        if cleaned:
-            entry["reasoning_override"] = cleaned
+    if "reasoning_mapping" in value:
+        entry["reasoning_mapping"] = normalize_reasoning_mapping(
+            value.get("reasoning_mapping")
+        )
 
     cleaned_tool_adaptation = _clean_tool_adaptation(value.get("tool_adaptation"))
     if cleaned_tool_adaptation:
@@ -748,7 +752,7 @@ async def put_model(request: Any, **kwargs: Any) -> Response:
             {"error": f"Provider '{provider}' not found in config"}, status_code=400
         )
 
-    capabilities = body.get("capabilities", ["text"])
+    capabilities = _normalize_admin_capabilities(body.get("capabilities"))
 
     # Handle rename: remove old entry
     rename_from = body.get("rename_from")
@@ -771,12 +775,13 @@ async def put_model(request: Any, **kwargs: Any) -> Response:
     if upstream_model:
         model_entry["upstream_model"] = upstream_model
 
-    # Persist per-model reasoning override (if provided)
-    reasoning_override = body.get("reasoning_override")
-    if isinstance(reasoning_override, dict):
-        cleaned = {k: v for k, v in reasoning_override.items() if v is not None}
-        if cleaned:
-            model_entry["reasoning_override"] = cleaned
+    if "reasoning_mapping" in body and "embedding" not in capabilities:
+        try:
+            model_entry["reasoning_mapping"] = normalize_reasoning_mapping(
+                body.get("reasoning_mapping")
+            )
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
 
     cleaned_tool_adaptation = _clean_tool_adaptation(body.get("tool_adaptation"))
     if cleaned_tool_adaptation:
