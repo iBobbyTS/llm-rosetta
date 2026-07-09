@@ -1577,6 +1577,71 @@ class TestCustomToolCallStreaming:
         # Context should have registered the custom type
         assert ctx.get_tool_type("call_custom_1") == "custom"
 
+    def test_tool_call_start_restores_custom_type_from_request_context(self):
+        """A bridged Chat call restores Code Mode ``exec`` to custom format."""
+        ctx = OpenAIResponsesStreamContext()
+        ctx.store_responses_native_tool_type_map({"exec": "custom"})
+        event = cast(
+            ToolCallStartEvent,
+            {
+                "type": "tool_call_start",
+                "tool_call_id": "call_exec",
+                "tool_name": "exec",
+                "tool_type": "function",
+                "tool_call_index": 0,
+            },
+        )
+
+        added = cast(
+            dict[str, Any],
+            self.converter.stream_response_to_provider(event, context=ctx),
+        )
+        assert added["item"]["type"] == "custom_tool_call"
+        assert added["item"]["input"] == ""
+        assert ctx.get_tool_type("call_exec") == "custom"
+
+        delta = cast(
+            dict[str, Any],
+            self.converter.stream_response_to_provider(
+                cast(
+                    ToolCallDeltaEvent,
+                    {
+                        "type": "tool_call_delta",
+                        "tool_call_id": "call_exec",
+                        "arguments_delta": '{"cmd":"head -n 1 README.md"}',
+                        "tool_call_index": 0,
+                    },
+                ),
+                context=ctx,
+            ),
+        )
+        assert delta["type"] == "response.custom_tool_call_input.delta"
+
+        completed = cast(
+            list[dict[str, Any]],
+            self.converter.stream_response_to_provider(
+                cast(
+                    FinishEvent,
+                    {
+                        "type": "finish",
+                        "finish_reason": {"reason": "tool_calls"},
+                    },
+                ),
+                context=ctx,
+            ),
+        )
+        custom_done = next(
+            item
+            for item in completed
+            if item["type"] == "response.custom_tool_call_input.done"
+        )
+        assert custom_done["input"] == '{"cmd":"head -n 1 README.md"}'
+        output_done = next(
+            item for item in completed if item["type"] == "response.output_item.done"
+        )
+        assert output_done["item"]["type"] == "custom_tool_call"
+        assert output_done["item"]["input"] == '{"cmd":"head -n 1 README.md"}'
+
     def test_tool_call_delta_custom_to_p(self):
         """ToolCallDeltaEvent for custom tool → custom_tool_call_input.delta."""
         ctx = OpenAIResponsesStreamContext()

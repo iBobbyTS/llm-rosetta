@@ -100,6 +100,7 @@ class ResponseError(TypedDict, total=False):
         "empty_image_file",
         "failed_to_download_image",
         "image_file_not_found",
+        "bio_policy",
     ]
     """Error code."""
 

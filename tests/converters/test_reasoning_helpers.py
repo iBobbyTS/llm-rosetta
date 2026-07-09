@@ -19,6 +19,7 @@ from codex_rosetta.converters.base.helpers.reasoning import (
     apply_reasoning_config,
     normalize_reasoning_input,
 )
+from codex_rosetta.shims import get_shim
 from codex_rosetta.shims.provider_shim import ReasoningCapability
 from codex_rosetta.types.ir.configs import ReasoningConfig
 
@@ -40,6 +41,12 @@ class TestNormalizeReasoningInput:
         for level in ("minimal", "low", "medium", "high", "xhigh", "max"):
             result = normalize_reasoning_input(cast(ReasoningConfig, {"effort": level}))
             assert result["effort"] == level
+
+    def test_ultra_becomes_canonical_max(self):
+        """Codex ultra is represented as max at the provider boundary."""
+        result = normalize_reasoning_input(cast(ReasoningConfig, {"effort": "ultra"}))
+
+        assert result == {"effort": "max"}
 
     def test_none_preserves_other_fields(self):
         """none → disabled preserves budget_tokens."""
@@ -288,6 +295,20 @@ class TestDeepSeekShim:
             converter_type="openai_chat",
         )
         assert result["thinking"]["type"] == "disabled"
+
+    def test_ultra_uses_provider_max_mapping(self):
+        shim = get_shim("deepseek")
+        assert shim is not None
+        assert shim.reasoning is not None
+
+        result = apply_reasoning_config(
+            cast(ReasoningConfig, {"effort": "ultra"}),
+            shim.reasoning,
+            converter_type="openai_chat",
+        )
+
+        assert shim.reasoning.effort_map["max"] == "max"
+        assert result["reasoning_effort"] == "max"
 
 
 # ── Custom shim override ──────────────────────────────────────────────────

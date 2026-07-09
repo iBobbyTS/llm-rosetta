@@ -22,29 +22,37 @@
 
 不能只凭版本号相同就声明兼容。
 
+## 包版本命名
+
+Codex-Rosetta 使用 `{codex_version}.r{patch_number}`：前三段与目标 Codex CLI
+release 对齐，`rN` 表示该 Codex release 下的 Rosetta 补丁序号。每次采用新的 Codex
+release 时从 `r0` 开始；只有 Rosetta 自身发生后续修复时才递增 `rN`。源码保留
+`rN` 字面量，Python 包元数据会将其规范化为等价的 PEP 440 `.postN`。
+
 ## 当前检查基线
 
 检查日期：2026-07-09
 
 | 项目 | 当前值 | 说明 |
 | --- | --- | --- |
-| 本机 Codex CLI | `codex-cli 0.142.5` | 来自 `codex --version` |
+| 本机 Codex CLI | `codex-cli 0.144.0` | 来自 `codex --version` |
 | Codex 源码分支 | `main` | `../openai-codex-src` |
-| Codex 源码 commit | `cca16a10878202cb2f6e9666b6b4330329ea7e65` | `feat(core): emit canonical command execution items (#31297)` |
-| Codex 源码时间 | `2026-07-06T21:22:51-07:00` | 源码 checkout 的最新 commit 时间 |
+| Codex 源码 commit | `2e8c3756f95789c215d9ea9a5ade6ec377934b3f` | `build: ratchet direct reqwest dependencies (#31431)` |
+| Codex 源码时间 | `2026-07-09T11:53:18-07:00` | 源码 checkout 的最新 commit 时间 |
+| Codex-Rosetta 包版本 | `0.144.0.r0` | Codex `0.144.0` 的首个 Rosetta patch |
 
-这个表只表示本次审查使用的快照，不表示所有集成测试已经通过，也不证明该源码
-commit 与发布版 `0.142.5` 一一对应。
+这个表记录本次发布审查使用的精确源码快照；Codex CLI 发布版本和源码 commit 仍是
+两个独立的兼容性标识。
 
 ## 本次验证结果
 
 | 检查 | 结果 |
 | --- | --- |
-| Codex 源码契约检查 | 通过；匹配 `cca16a108782…` 基线 |
-| 兼容性新增定向 pytest | `21 passed`（包含三类结果分类测试） |
-| `make lint` | 通过；260 个 Python 文件通过 ruff check 和 format check |
-| `make test` | `2299 passed, 4 skipped` |
-| agentabi / 真实上游 / UI 验收 | 本次未运行，仍是发布兼容声明前的必需门禁 |
+| Codex 源码契约检查 | 更新基线后通过；匹配 `2e8c3756f957…` |
+| Codex 专项与定向回归 | `404 passed`；扩展回归 `425 passed, 6 warnings`；Responses converter `356 passed` |
+| `make lint` | 通过；ruff check 与 format check 均通过 |
+| `make test` | `2326 passed, 4 skipped, 27 warnings` |
+| 真实 Codex/API | `deepseek-v4-flash` 经隔离 gateway 完成 Lite/code-mode、读取和多轮工具测试；GPT 原请求观测仍需真实 GPT route |
 
 此前文档审查的完整测试第一次运行时，
 `TestPipelineProfile::test_profile_populated_after_convert_request` 出现一次临时失败；该
@@ -100,8 +108,8 @@ make check-codex-compat
   `compatibility-points.md` 中每一个兼容点逐条给出“高置信度没有变化”“可能没有变化”
   或“有变化”，不能遗漏未被提取器覆盖的兼容点。
 - 所有自动化测试必须执行；分类为“可能没有变化”或“有变化”的兼容点必须连接真实
-  Codex/API 测试。修复和门禁全部通过后，才把 Codex-Rosetta 包版本提升到目标 Codex
-  发布版本，并同时记录精确源码 commit。
+  Codex/API 测试。修复和门禁全部通过后，才把 Codex-Rosetta 包版本提升为
+  `{codex_version}.r{patch_number}`，并同时记录精确源码 commit。
 - 新增、修改或删除 Codex 专用适配时，必须在同一任务更新兼容点清单。
 - 直接 Responses 透传和 Responses→Chat 转换要分开判断：前者可以自然保留未知
   字段，后者经过 IR 和网关适配，新增 wire shape 必须显式审查。

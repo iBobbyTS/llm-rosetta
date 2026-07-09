@@ -24,6 +24,7 @@ _TOOL_ITEM_TYPES = {
     "computer_call",
     "tool_search_call",
     "web_search_call",
+    "image_generation_call",
 }
 _TOOL_EVENT_TYPES = {
     ResponsesEventType.FUNCTION_CALL_ARGS_DELTA,

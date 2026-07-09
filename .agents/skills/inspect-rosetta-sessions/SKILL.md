@@ -22,8 +22,10 @@ paths:
   `/Users/ibobby/Projects/codex-rosetta/rosetta-test-config`
 - Gateway trace logs and captured test stdout/stderr:
   `/Volumes/RAM Disk`
-- Default model for new tests: `deepseek-v4-flash`, unless the user explicitly
-  names another model.
+- Model selection depends on the evidence needed: use `gpt-5.6-terra` when
+  observing Codex/GPT's native request shape, and use `deepseek-v4-flash` for
+  low-cost third-party conversion debugging. Confirm the actual upstream model
+  in the Rosetta log; the Codex-facing alias alone is not evidence.
 
 ## Workflow
 

@@ -12,7 +12,10 @@ SCRIPT_PATH = REPO_ROOT / "scripts" / "check_codex_compatibility.py"
 SCRIPT = runpy.run_path(str(SCRIPT_PATH))
 
 _enum_variants = SCRIPT["_enum_variants"]
+_enum_variant_field_contracts = SCRIPT["_enum_variant_field_contracts"]
+_responses_lite_model_capabilities = SCRIPT["_responses_lite_model_capabilities"]
 _serde_enum_wire_types = SCRIPT["_serde_enum_wire_types"]
+_struct_field_contracts = SCRIPT["_struct_field_contracts"]
 _struct_fields = SCRIPT["_struct_fields"]
 compare_snapshots = SCRIPT["compare_snapshots"]
 classify_snapshots = SCRIPT["classify_snapshots"]
@@ -63,6 +66,94 @@ pub enum ToolSpec {
         "function": "Function",
         "tool_search": "ToolSearch",
     }
+
+
+def test_field_contracts_capture_types_and_attributes():
+    source = """
+pub struct ModelMessages {
+    pub instructions_template: Option<String>,
+    pub approvals: Option<ApprovalMessages>,
+}
+
+pub enum ResponseItem {
+    AdditionalTools {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        role: String,
+        tools: Vec<serde_json::Value>,
+    },
+}
+"""
+
+    assert _struct_field_contracts(source, "ModelMessages") == {
+        "approvals": {"attributes": [], "type": "Option<ApprovalMessages>"},
+        "instructions_template": {"attributes": [], "type": "Option<String>"},
+    }
+    assert _enum_variant_field_contracts(source, "ResponseItem", "AdditionalTools") == {
+        "id": {
+            "attributes": [
+                '#[serde(default, skip_serializing_if = "Option::is_none")]'
+            ],
+            "type": "Option<String>",
+        },
+        "role": {"attributes": [], "type": "String"},
+        "tools": {"attributes": [], "type": "Vec<serde_json::Value>"},
+    }
+
+
+def test_responses_lite_snapshot_keeps_stable_capability_subset():
+    models_json = json.dumps(
+        {
+            "models": [
+                {
+                    "slug": "regular",
+                    "use_responses_lite": False,
+                },
+                {
+                    "slug": "lite-z",
+                    "tool_mode": "code_mode_only",
+                    "multi_agent_version": "v2",
+                    "use_responses_lite": True,
+                    "input_modalities": ["text", "image"],
+                    "supports_parallel_tool_calls": True,
+                    "supports_search_tool": True,
+                    "supported_reasoning_levels": [
+                        {"effort": "medium", "description": "ignored text"},
+                        {"effort": "ultra", "description": "also ignored"},
+                    ],
+                    "default_reasoning_level": "medium",
+                    "supports_reasoning_summaries": True,
+                    "default_reasoning_summary": "none",
+                    "web_search_tool_type": "text_and_image",
+                    "apply_patch_tool_type": "freeform",
+                    "base_instructions": "volatile and intentionally omitted",
+                },
+                {
+                    "slug": "lite-a",
+                    "tool_mode": "direct",
+                    "multi_agent_version": "v1",
+                    "use_responses_lite": True,
+                    "input_modalities": ["text"],
+                    "supports_parallel_tool_calls": False,
+                    "supports_search_tool": False,
+                    "supported_reasoning_levels": [{"effort": "low"}],
+                    "default_reasoning_level": "low",
+                    "supports_reasoning_summaries": False,
+                    "default_reasoning_summary": "none",
+                    "web_search_tool_type": "text",
+                    "apply_patch_tool_type": None,
+                },
+            ]
+        }
+    )
+
+    snapshot = _responses_lite_model_capabilities(models_json)
+
+    assert [model["slug"] for model in snapshot] == ["lite-a", "lite-z"]
+    assert snapshot[1]["supported_reasoning_levels"] == ["medium", "ultra"]
+    assert snapshot[1]["tool_mode"] == "code_mode_only"
+    assert snapshot[1]["multi_agent_version"] == "v2"
+    assert "base_instructions" not in snapshot[1]
 
 
 def test_snapshot_comparison_can_separate_contract_drift_from_commit_change():
@@ -122,6 +213,41 @@ def test_snapshot_classification_always_uses_three_result_categories():
     assert "高置信度没有变化的：" in rendered
     assert "可能没有变化的：" in rendered
     assert "有变化的：\n  - 无" in rendered
+
+
+def test_new_complete_value_contracts_are_high_confidence():
+    complete_value_contracts = {
+        "approval_messages_fields": {"on_request": {"type": "Option<String>"}},
+        "model_messages_fields": {"approvals": {"type": "Option<ApprovalMessages>"}},
+        "response_item_additional_tools_fields": {
+            "tools": {"type": "Vec<serde_json::Value>"}
+        },
+        "responses_lite_model_capabilities": [
+            {
+                "slug": "gpt-test",
+                "tool_mode": "code_mode_only",
+                "multi_agent_version": "v2",
+                "supported_reasoning_levels": ["low", "ultra"],
+            }
+        ],
+        "tool_spec_web_search_fields": {
+            "external_web_access": {"type": "Option<bool>"},
+            "indexed_web_access": {"type": "Option<bool>"},
+        },
+    }
+    snapshot = {
+        "schema_version": 1,
+        "codex_source_commit": "same",
+        "contract": complete_value_contracts,
+    }
+
+    classification = classify_snapshots(snapshot, snapshot)
+
+    classified_paths = "\n".join(classification["high_confidence_unchanged"])
+    for key in complete_value_contracts:
+        assert f"contract.{key}" in classified_paths
+    assert classification["possibly_unchanged"] == []
+    assert classification["changed"] == []
 
 
 def test_snapshot_classification_reports_commit_and_contract_changes():

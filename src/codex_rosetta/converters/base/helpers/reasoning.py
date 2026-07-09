@@ -12,6 +12,7 @@ External input values are normalised to the IR effort ladder before they
 reach the converters:
 
 - ``none`` → ``mode: disabled`` (NOT ``effort: none``)
+- ``ultra`` → ``max`` (the highest canonical provider effort)
 - Effort values pass through if they are part of the canonical set
   ``{minimal, low, medium, high, xhigh, max}``.
 """
@@ -98,6 +99,7 @@ def normalize_reasoning_input(
     """Normalise external effort values into the canonical IR ladder.
 
     - ``none`` → ``mode: disabled``, effort removed.
+    - ``ultra`` → ``max``.
 
     Returns a **new** dict; the original is not mutated.
     """
@@ -108,6 +110,9 @@ def normalize_reasoning_input(
         # ``none`` means disabled, not an effort level.
         result["mode"] = "disabled"
         del result["effort"]
+    elif effort == "ultra":
+        # Codex exposes ultra as a mode but sends max to the provider API.
+        result["effort"] = "max"
 
     return cast(ReasoningConfig, result)
 
@@ -337,6 +342,9 @@ def _apply_openai_responses_extras(
             "OpenAI Responses API does not support reasoning budget_tokens, ignored",
             stacklevel=2,
         )
+    context = ir.get("context")
+    if context is not None:
+        result.setdefault("reasoning", {})["context"] = context
 
 
 def _apply_anthropic_extras(

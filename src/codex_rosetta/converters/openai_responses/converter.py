@@ -230,9 +230,10 @@ class OpenAIResponsesConverter(BaseConverter):
             ir_messages = self.message_ops.p_messages_to_ir(input_items)
             ir_request["messages"] = ir_messages
 
-        # 3. Tools (with process-level cache)
+        # 3. Tools (with process-level cache). Responses Lite embeds tool
+        # definitions in input items instead of the top-level tools field.
         # Filter out disabled tools before caching (external_web_access=False)
-        tools = provider_request.get("tools")
+        tools = self._collect_request_tools(provider_request, input_items)
         if tools:
             active_tools = [
                 t
@@ -240,7 +241,9 @@ class OpenAIResponsesConverter(BaseConverter):
                 if not (isinstance(t, dict) and t.get("external_web_access") is False)
             ]
             if active_tools:
-                ir_tools = self._get_cached_tools_from_p(active_tools)
+                ir_tools = self._deduplicate_ir_tools(
+                    self._get_cached_tools_from_p(active_tools), ctx
+                )
                 if ir_tools:
                     ir_request["tools"] = ir_tools
                     self._store_namespace_tool_map(ir_tools, ctx)
@@ -299,6 +302,56 @@ class OpenAIResponsesConverter(BaseConverter):
                 ctx.store_request_echo(echo)
 
         return self._validate_ir_request(ir_request)
+
+    @classmethod
+    def _collect_request_tools(
+        cls,
+        provider_request: dict[str, Any],
+        input_items: Any,
+    ) -> list[Any]:
+        """Collect top-level and Responses Lite embedded tool definitions.
+
+        Top-level definitions are collected first so they win when the final
+        Chat-visible tool names are de-duplicated after namespace expansion.
+        Responses Lite normally omits the top-level field entirely, so its
+        ``additional_tools`` items supply the full set.
+        """
+        tool_groups: list[Any] = [provider_request.get("tools")]
+        if isinstance(input_items, list):
+            tool_groups.extend(
+                item.get("tools")
+                for item in input_items
+                if isinstance(item, dict) and item.get("type") == "additional_tools"
+            )
+
+        merged: list[Any] = []
+        for tools in tool_groups:
+            if not isinstance(tools, list):
+                continue
+            merged.extend(tools)
+        return merged
+
+    @staticmethod
+    def _deduplicate_ir_tools(ir_tools: list[Any], ctx: ConversionContext) -> list[Any]:
+        """Keep the first IR tool for each final Chat-visible name."""
+        deduplicated: list[Any] = []
+        by_name: dict[str, Any] = {}
+        for tool in ir_tools:
+            name = tool.get("name") if isinstance(tool, dict) else None
+            if not isinstance(name, str) or not name:
+                deduplicated.append(tool)
+                continue
+            existing = by_name.get(name)
+            if existing is None:
+                by_name[name] = tool
+                deduplicated.append(tool)
+                continue
+            if existing != tool:
+                ctx.warnings.append(
+                    f"Conflicting Responses tool definitions resolve to {name!r}; "
+                    "keeping the first definition"
+                )
+        return deduplicated
 
     def response_from_provider(
         self,
@@ -614,7 +667,13 @@ class OpenAIResponsesConverter(BaseConverter):
         ir_tools: list[Any],
         ctx: ConversionContext,
     ) -> None:
-        """Record Chat-visible names for native Responses tool definitions."""
+        """Record Chat-visible names for Responses-native tool definitions.
+
+        Cross-format targets represent every tool call as a Chat function
+        call.  The mapping lets the Responses output leg restore tool kinds
+        whose wire format is not a ``function_call``, including freeform
+        ``custom`` tools such as Code Mode's ``exec``.
+        """
         mapping: dict[str, str] = {}
         for tool in ir_tools:
             if not isinstance(tool, dict):
@@ -622,7 +681,7 @@ class OpenAIResponsesConverter(BaseConverter):
             metadata = tool.get("metadata") or {}
             provider_type = metadata.get("provider_type")
             tool_name = tool.get("name")
-            if provider_type in ("tool_search", "web_search") and isinstance(
+            if provider_type in ("custom", "tool_search", "web_search") and isinstance(
                 tool_name, str
             ):
                 mapping[tool_name] = provider_type
@@ -647,6 +706,8 @@ class OpenAIResponsesConverter(BaseConverter):
                 provider_metadata = dict(patched.get("provider_metadata") or {})
                 provider_metadata.setdefault("responses_tool_type", native_tool_type)
                 patched["provider_metadata"] = provider_metadata
+                if native_tool_type == "custom":
+                    patched["tool_type"] = "custom"
                 return self.tool_ops.ir_tool_call_to_p(patched)
 
         namespace = (
@@ -1579,6 +1640,8 @@ class OpenAIResponsesConverter(BaseConverter):
             native_tool_type = context.get_responses_native_tool_type(tool_name)
             if native_tool_type:
                 provider_metadata["responses_tool_type"] = native_tool_type
+        if provider_metadata.get("responses_tool_type") == "custom":
+            tool_type = "custom"
         if context is not None and isinstance(tool_name, str):
             child_name = context.get_responses_child_name_for_tool(tool_name)
             if child_name:

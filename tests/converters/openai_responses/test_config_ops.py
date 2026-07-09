@@ -345,6 +345,34 @@ class TestOpenAIResponsesConfigOps:
         result = OpenAIResponsesConfigOps.p_reasoning_config_to_ir({"effort": "low"})
         assert result["effort"] == "low"
 
+    def test_p_reasoning_config_ultra_normalizes_to_max(self):
+        """Codex ultra input enters IR as the canonical max effort."""
+        result = OpenAIResponsesConfigOps.p_reasoning_config_to_ir(
+            {"reasoning": {"effort": "ultra"}}
+        )
+
+        assert result["effort"] == "max"
+
+    @pytest.mark.parametrize("context", ["auto", "current_turn", "all_turns"])
+    def test_reasoning_context_round_trip(self, context: str):
+        """Responses reasoning context survives IR conversion."""
+        ir = OpenAIResponsesConfigOps.p_reasoning_config_to_ir(
+            {"reasoning": {"effort": "medium", "context": context}}
+        )
+
+        assert ir["context"] == context
+        assert OpenAIResponsesConfigOps.ir_reasoning_config_to_p(ir) == {
+            "reasoning": {"effort": "medium", "context": context}
+        }
+
+    def test_invalid_reasoning_context_is_ignored(self):
+        """Unknown Responses reasoning context does not enter the IR."""
+        result = OpenAIResponsesConfigOps.p_reasoning_config_to_ir(
+            {"reasoning": {"context": "future_turns"}}
+        )
+
+        assert result == {}
+
     def test_p_reasoning_config_to_ir_ignores_top_level_reasoning_effort(self):
         """Responses API does not support top-level reasoning_effort."""
         result = OpenAIResponsesConfigOps.p_reasoning_config_to_ir(

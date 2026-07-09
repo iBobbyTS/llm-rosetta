@@ -200,12 +200,40 @@ def _completed_with_native_search(item_type: str) -> dict[str, Any]:
     return event
 
 
+def _image_generation_item() -> dict[str, Any]:
+    return {
+        "id": "ig_1",
+        "type": "image_generation_call",
+        "status": "completed",
+        "revised_prompt": "A concise architecture diagram",
+        "result": "aW1hZ2U=",
+    }
+
+
+def _image_generation_event(event_type: str) -> dict[str, Any]:
+    return {
+        "type": event_type,
+        "output_index": 1,
+        "item": _image_generation_item(),
+    }
+
+
+def _completed_with_image_generation() -> dict[str, Any]:
+    event = _completed(with_tool=False)
+    event["response"]["output"].append(_image_generation_item())
+    return event
+
+
 def _failed() -> dict[str, Any]:
     return {
         "type": ResponsesEventType.RESPONSE_FAILED,
         "response": {
             "id": "resp_1",
             "status": "failed",
+            "error": {
+                "code": "bio_policy",
+                "message": "Request blocked by biological safety policy",
+            },
             "output": [
                 {
                     "id": "msg_1",
@@ -405,6 +433,41 @@ def test_completed_native_search_marks_buffered_message_as_commentary(item_type:
     assert emitted[-1]["response"]["output"][1]["type"] == item_type
 
 
+def test_text_before_image_generation_is_commentary():
+    emitted = _collect(
+        _buffer(),
+        [
+            _created(),
+            _message_added(),
+            _content_added(),
+            _text_delta(),
+            _image_generation_event(ResponsesEventType.OUTPUT_ITEM_DONE),
+            _completed_with_image_generation(),
+        ],
+    )
+
+    assert _message_item(emitted[1])["phase"] == COMMENTARY_PHASE
+    assert emitted[4]["item"]["type"] == "image_generation_call"
+    assert _completed_message(emitted[-1])["phase"] == COMMENTARY_PHASE
+
+
+def test_completed_only_image_generation_marks_buffered_message_as_commentary():
+    emitted = _collect(
+        _buffer(),
+        [
+            _created(),
+            _message_added(),
+            _content_added(),
+            _text_delta(),
+            _completed_with_image_generation(),
+        ],
+    )
+
+    assert _message_item(emitted[1])["phase"] == COMMENTARY_PHASE
+    assert _completed_message(emitted[-1])["phase"] == COMMENTARY_PHASE
+    assert emitted[-1]["response"]["output"][1]["type"] == "image_generation_call"
+
+
 def test_normal_eof_flushes_buffered_text_without_phase():
     buffer = _buffer()
 
@@ -445,6 +508,7 @@ def test_failed_terminal_flushes_buffered_text_without_final_answer_phase():
     ]
     assert "phase" not in _message_item(emitted[1])
     assert "phase" not in _completed_message(emitted[-1])
+    assert emitted[-1]["response"]["error"]["code"] == "bio_policy"
 
 
 class _FakeStream:

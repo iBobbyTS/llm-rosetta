@@ -7,6 +7,7 @@ from typing import Any, cast
 import pytest
 
 from codex_rosetta.converters.openai_responses import OpenAIResponsesConverter
+from codex_rosetta.converters.base.context import ConversionContext
 from codex_rosetta.types.ir import (
     IRRequest,
     IRResponse,
@@ -180,6 +181,139 @@ class TestOpenAIResponsesConverter:
         assert len(tools) == 1
         assert result["tool_choice"]["mode"] == "any"
         assert result["tool_config"]["disable_parallel"] is True
+
+    def test_request_from_provider_responses_lite_extracts_embedded_tools(self):
+        """Responses Lite tools and developer instructions reach the IR."""
+        provider_request = {
+            "model": "gpt-5.6-sol",
+            "input": [
+                {
+                    "type": "additional_tools",
+                    "role": "developer",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "name": "exec_command",
+                            "description": "Run a command.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {"cmd": {"type": "string"}},
+                                "required": ["cmd"],
+                            },
+                        }
+                    ],
+                },
+                {
+                    "type": "message",
+                    "role": "developer",
+                    "content": [
+                        {"type": "input_text", "text": "Follow project rules."}
+                    ],
+                },
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "Inspect README."}],
+                },
+            ],
+            "parallel_tool_calls": False,
+        }
+
+        result = self.converter.request_from_provider(provider_request)
+
+        assert [tool["name"] for tool in result["tools"]] == ["exec_command"]
+        assert [message["role"] for message in result["messages"]] == [
+            "system",
+            "user",
+        ]
+        assert result["messages"][0]["content"][0]["text"] == "Follow project rules."
+        assert result["tool_config"]["disable_parallel"] is True
+
+    def test_request_from_provider_mixed_tools_prefers_top_level_definition(self):
+        """Mixed Lite requests de-duplicate tools with top-level precedence."""
+        provider_request = {
+            "model": "gpt-test",
+            "input": [
+                {
+                    "type": "additional_tools",
+                    "role": "developer",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "name": "shared",
+                            "description": "embedded",
+                            "parameters": {},
+                        },
+                        {
+                            "type": "function",
+                            "name": "embedded_only",
+                            "parameters": {},
+                        },
+                    ],
+                }
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "shared",
+                    "description": "top-level",
+                    "parameters": {},
+                }
+            ],
+        }
+
+        result = self.converter.request_from_provider(provider_request)
+
+        assert [tool["name"] for tool in result["tools"]] == [
+            "shared",
+            "embedded_only",
+        ]
+        assert result["tools"][0]["description"] == "top-level"
+
+    def test_request_from_provider_deduplicates_after_namespace_expansion(self):
+        """Final Chat-visible names determine Responses tool precedence."""
+        context = ConversionContext()
+        provider_request = {
+            "model": "gpt-test",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "multi_agent_v1__spawn_agent",
+                    "description": "top-level wins",
+                    "parameters": {},
+                }
+            ],
+            "input": [
+                {
+                    "type": "additional_tools",
+                    "tools": [
+                        {
+                            "type": "namespace",
+                            "name": "multi_agent_v1",
+                            "tools": [
+                                {
+                                    "type": "function",
+                                    "name": "spawn_agent",
+                                    "description": "namespace child loses",
+                                    "parameters": {},
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        result = self.converter.request_from_provider(provider_request, context=context)
+
+        assert [tool["name"] for tool in result["tools"]] == [
+            "multi_agent_v1__spawn_agent"
+        ]
+        assert result["tools"][0]["description"] == "top-level wins"
+        assert context.warnings == [
+            "Conflicting Responses tool definitions resolve to "
+            "'multi_agent_v1__spawn_agent'; keeping the first definition"
+        ]
 
     def test_request_from_provider_with_text_format(self):
         """Test text field -> response_format."""
@@ -364,6 +498,65 @@ class TestOpenAIResponsesConverter:
         assert tc["tool_input"] == {
             "input": "--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n-old\n+new"
         }
+
+    def test_response_to_provider_restores_custom_tool_from_chat_shape(self):
+        """A Chat bridge restores Code Mode ``exec`` as a custom tool call.
+
+        Chat-only upstreams report every call as a function call.  The source
+        Responses request identifies ``exec`` as a freeform custom tool, so
+        the return path must restore ``custom_tool_call`` rather than send a
+        function payload that Codex Code Mode rejects.
+        """
+        context = ConversionContext()
+        self.converter.request_from_provider(
+            {
+                "model": "gpt-5.6-terra",
+                "input": "Read README.md",
+                "tools": [
+                    {
+                        "type": "custom",
+                        "name": "exec",
+                        "description": "Run raw JavaScript source.",
+                        "format": {
+                            "type": "grammar",
+                            "syntax": "lark",
+                            "definition": "start: SOURCE\nSOURCE: /[\\s\\S]+/",
+                        },
+                    }
+                ],
+            },
+            context=context,
+        )
+
+        response = self.converter.response_to_provider(
+            {
+                "id": "chatcmpl_exec",
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_call",
+                                    "tool_call_id": "call_exec",
+                                    "tool_name": "exec",
+                                    "tool_type": "function",
+                                    "tool_input": {"cmd": "head -n 1 README.md"},
+                                }
+                            ],
+                        },
+                        "finish_reason": {"reason": "tool_calls"},
+                    }
+                ],
+            },
+            context=context,
+        )
+
+        tool_call = response["output"][0]
+        assert tool_call["type"] == "custom_tool_call"
+        assert tool_call["name"] == "exec"
+        assert tool_call["input"] == '{"cmd": "head -n 1 README.md"}'
 
     def test_response_from_provider_with_reasoning(self):
         """Test response with reasoning content."""

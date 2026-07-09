@@ -24,10 +24,15 @@ DEFAULT_BASELINE = (
 
 HIGH_CONFIDENCE_CONTRACT_KEYS = {
     "apply_patch",
+    "approval_messages_fields",
     "codex_header_constants",
     "endpoints",
+    "model_messages_fields",
+    "response_item_additional_tools_fields",
+    "responses_lite_model_capabilities",
     "responses_metadata_keys",
     "sse_event_names",
+    "tool_spec_web_search_fields",
     "tool_spec_wire_types",
     "transport_constants",
     "websocket_client_metadata_keys",
@@ -35,14 +40,39 @@ HIGH_CONFIDENCE_CONTRACT_KEYS = {
 
 HIGH_CONFIDENCE_DESCRIPTIONS = {
     "apply_patch": "tool 名称、format、syntax 与 grammar SHA-256 一致",
+    "approval_messages_fields": "ApprovalMessages 字段名、Rust 类型与属性一致",
     "codex_header_constants": "已提取的 Codex HTTP header 名称和值一致",
     "endpoints": "已提取的 endpoint 常量一致",
+    "model_messages_fields": "ModelMessages 字段名、Rust 类型与属性一致",
+    "response_item_additional_tools_fields": (
+        "ResponseItem::AdditionalTools 字段名、Rust 类型与属性一致"
+    ),
+    "responses_lite_model_capabilities": (
+        "use_responses_lite 模型列表与关键协议能力快照一致"
+    ),
     "responses_metadata_keys": "已提取的 turn metadata key 名称和值一致",
     "sse_event_names": "SSE parser 处理的 event 名称集合一致",
+    "tool_spec_web_search_fields": ("ToolSpec::WebSearch 字段名、Rust 类型与属性一致"),
     "tool_spec_wire_types": "tool spec 的 serde wire type 映射一致",
     "transport_constants": "已提取的 transport 常量一致",
     "websocket_client_metadata_keys": "WebSocket client metadata key 一致",
 }
+
+RESPONSES_LITE_MODEL_CAPABILITY_KEYS = (
+    "apply_patch_tool_type",
+    "default_reasoning_level",
+    "default_reasoning_summary",
+    "input_modalities",
+    "multi_agent_version",
+    "slug",
+    "supported_reasoning_levels",
+    "supports_parallel_tool_calls",
+    "supports_reasoning_summaries",
+    "supports_search_tool",
+    "tool_mode",
+    "use_responses_lite",
+    "web_search_tool_type",
+)
 
 
 class ContractExtractionError(RuntimeError):
@@ -191,6 +221,75 @@ def _struct_fields(text: str, name: str) -> list[str]:
     return sorted(set(fields))
 
 
+def _field_contracts(block: str, description: str) -> dict[str, dict[str, Any]]:
+    fields: dict[str, dict[str, Any]] = {}
+    pending_attributes: list[str] = []
+    attribute_lines: list[str] | None = None
+
+    for line in block.splitlines():
+        stripped = line.strip()
+        if attribute_lines is not None:
+            attribute_lines.append(stripped)
+            if stripped.endswith("]"):
+                pending_attributes.append(" ".join(" ".join(attribute_lines).split()))
+                attribute_lines = None
+            continue
+        if stripped.startswith("#["):
+            attribute_lines = [stripped]
+            if stripped.endswith("]"):
+                pending_attributes.append(" ".join(stripped.split()))
+                attribute_lines = None
+            continue
+
+        match = re.match(
+            r"^(?:pub(?:\(crate\))?\s+)?(?:r#)?([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.+),$",
+            stripped,
+        )
+        if match is not None:
+            field_name, field_type = match.groups()
+            fields[field_name] = {
+                "attributes": pending_attributes,
+                "type": " ".join(field_type.split()),
+            }
+            pending_attributes = []
+            continue
+
+        if stripped and not stripped.startswith("//"):
+            pending_attributes = []
+
+    if attribute_lines is not None:
+        raise ContractExtractionError(f"unterminated field attribute in {description}")
+    if not fields:
+        raise ContractExtractionError(f"no named fields extracted from {description}")
+    return dict(sorted(fields.items()))
+
+
+def _struct_field_contracts(text: str, name: str) -> dict[str, dict[str, Any]]:
+    block = _braced_block(text, _find_declaration(text, "struct", name))
+    return _field_contracts(block, f"struct: {name}")
+
+
+def _enum_variant_field_contracts(
+    text: str, enum_name: str, variant_name: str
+) -> dict[str, dict[str, Any]]:
+    enum_block = _braced_block(text, _find_declaration(text, "enum", enum_name))
+    match = re.search(
+        rf"^    {re.escape(variant_name)}\s*\{{",
+        enum_block,
+        flags=re.MULTILINE,
+    )
+    if match is None:
+        raise ContractExtractionError(
+            f"missing struct variant declaration: {enum_name}::{variant_name}"
+        )
+    open_index = enum_block.find("{", match.start())
+    close_index = _matching_brace(enum_block, open_index)
+    return _field_contracts(
+        enum_block[open_index + 1 : close_index],
+        f"enum variant: {enum_name}::{variant_name}",
+    )
+
+
 def _enum_variants(text: str, name: str) -> list[str]:
     block = _braced_block(text, _find_declaration(text, "enum", name))
     variants = re.findall(r"^    ([A-Z][a-zA-Z0-9_]*)\b", block, flags=re.MULTILINE)
@@ -235,6 +334,66 @@ def _required_string(text: str, pattern: str, description: str) -> str:
     return match.group(1)
 
 
+def _responses_lite_model_capabilities(models_json: str) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(models_json)
+    except json.JSONDecodeError as exc:
+        raise ContractExtractionError("invalid models.json") from exc
+    models = payload.get("models") if isinstance(payload, dict) else None
+    if not isinstance(models, list):
+        raise ContractExtractionError("models.json does not contain a models array")
+
+    capabilities: list[dict[str, Any]] = []
+    seen_slugs: set[str] = set()
+    for index, model in enumerate(models):
+        if not isinstance(model, dict):
+            raise ContractExtractionError(f"models.json entry {index} is not an object")
+        if model.get("use_responses_lite") is not True:
+            continue
+
+        missing = [
+            key for key in RESPONSES_LITE_MODEL_CAPABILITY_KEYS if key not in model
+        ]
+        if missing:
+            raise ContractExtractionError(
+                "Responses Lite model is missing capability fields: "
+                f"{model.get('slug', f'<entry {index}>')}: {', '.join(missing)}"
+            )
+        slug = model["slug"]
+        if not isinstance(slug, str) or not slug:
+            raise ContractExtractionError(
+                f"Responses Lite model entry {index} has an invalid slug"
+            )
+        if slug in seen_slugs:
+            raise ContractExtractionError(
+                f"duplicate Responses Lite model slug: {slug}"
+            )
+        seen_slugs.add(slug)
+
+        reasoning_levels = model["supported_reasoning_levels"]
+        if not isinstance(reasoning_levels, list) or not all(
+            isinstance(level, dict) and isinstance(level.get("effort"), str)
+            for level in reasoning_levels
+        ):
+            raise ContractExtractionError(
+                f"Responses Lite model has invalid reasoning levels: {slug}"
+            )
+
+        capability = {
+            key: model[key]
+            for key in RESPONSES_LITE_MODEL_CAPABILITY_KEYS
+            if key != "supported_reasoning_levels"
+        }
+        capability["supported_reasoning_levels"] = [
+            level["effort"] for level in reasoning_levels
+        ]
+        capabilities.append(capability)
+
+    if not capabilities:
+        raise ContractExtractionError("models.json contains no Responses Lite models")
+    return sorted(capabilities, key=lambda capability: capability["slug"])
+
+
 def _git_commit(source_root: Path) -> str:
     completed = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -259,6 +418,7 @@ def extract_contract(source_root: Path) -> dict[str, Any]:
     config_types = _read(source_root, "codex-rs/protocol/src/config_types.rs")
     protocol = _read(source_root, "codex-rs/protocol/src/protocol.rs")
     tool_spec = _read(source_root, "codex-rs/tools/src/tool_spec.rs")
+    model_catalog = _read(source_root, "codex-rs/models-manager/models.json")
     client = _read(source_root, "codex-rs/core/src/client.rs")
     responses_metadata = _read(source_root, "codex-rs/core/src/responses_metadata.rs")
     apply_patch_spec = _read(
@@ -306,6 +466,9 @@ def extract_contract(source_root: Path) -> dict[str, Any]:
                 "apply_patch grammar syntax",
             ),
         },
+        "approval_messages_fields": _struct_field_contracts(
+            openai_models, "ApprovalMessages"
+        ),
         "codex_header_constants": header_constants,
         "compaction_input_fields": _struct_fields(common, "CompactionInput"),
         "content_item_variants": _enum_variants(models, "ContentItem"),
@@ -325,19 +488,31 @@ def extract_contract(source_root: Path) -> dict[str, Any]:
             "WebSearchToolType": _enum_variants(openai_models, "WebSearchToolType"),
         },
         "model_info_fields": _struct_fields(openai_models, "ModelInfo"),
+        "model_messages_fields": _struct_field_contracts(
+            openai_models, "ModelMessages"
+        ),
         "reasoning_fields": _struct_fields(common, "Reasoning"),
         "response_create_ws_request_fields": _struct_fields(
             common, "ResponseCreateWsRequest"
         ),
         "response_event_variants": _enum_variants(common, "ResponseEvent"),
         "response_input_item_variants": _enum_variants(models, "ResponseInputItem"),
+        "response_item_additional_tools_fields": _enum_variant_field_contracts(
+            models, "ResponseItem", "AdditionalTools"
+        ),
         "response_item_variants": _enum_variants(models, "ResponseItem"),
         "responses_api_request_fields": _struct_fields(common, "ResponsesApiRequest"),
+        "responses_lite_model_capabilities": _responses_lite_model_capabilities(
+            model_catalog
+        ),
         "responses_metadata_keys": _string_constants(
             responses_metadata, r"[A-Z0-9_]+_KEY"
         ),
         "sse_event_names": _sse_event_names(sse),
         "stream_options_fields": _struct_fields(common, "StreamOptions"),
+        "tool_spec_web_search_fields": _enum_variant_field_contracts(
+            tool_spec, "ToolSpec", "WebSearch"
+        ),
         "tool_spec_wire_types": _serde_enum_wire_types(tool_spec, "ToolSpec"),
         "transport_constants": _string_constants(
             client, r"RESPONSES_WEBSOCKETS_[A-Z0-9_]+_HEADER_VALUE"

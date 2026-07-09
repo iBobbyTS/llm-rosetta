@@ -312,40 +312,74 @@ def _minimal_responses_tool_search_definition() -> dict[str, Any]:
     }
 
 
+def _responses_tool_containers(
+    body: dict[str, Any],
+) -> list[tuple[dict[str, Any], list[Any]]]:
+    """Return top-level and Responses Lite embedded tool containers."""
+    containers: list[tuple[dict[str, Any], list[Any]]] = []
+    tools = body.get("tools")
+    if isinstance(tools, list):
+        containers.append((body, tools))
+
+    input_items = body.get("input")
+    if not isinstance(input_items, list):
+        return containers
+    for item in input_items:
+        if not isinstance(item, dict) or item.get("type") != "additional_tools":
+            continue
+        embedded_tools = item.get("tools")
+        if isinstance(embedded_tools, list):
+            containers.append((item, embedded_tools))
+    return containers
+
+
+def _flatten_responses_tools(body: dict[str, Any]) -> list[Any]:
+    """Flatten all Responses tool containers without modifying the request."""
+    return [
+        tool for _container, tools in _responses_tool_containers(body) for tool in tools
+    ]
+
+
 def _defer_responses_namespace_tools_for_chat(
     body: dict[str, Any],
     *,
     optimize_tool_descriptions: bool = True,
 ) -> list[dict[str, Any]]:
     """Hide deferred Responses namespaces from Chat until tool_search loads them."""
-    tools = body.get("tools")
-    if not isinstance(tools, list):
+    containers = _responses_tool_containers(body)
+    if not containers:
         return []
 
-    filtered_tools: list[Any] = []
     deferred_tools: list[dict[str, Any]] = []
     has_tool_search = False
-    for tool in tools:
-        if _is_responses_tool_search_definition(tool):
-            has_tool_search = True
-            filtered_tools.append(tool)
-        elif _should_defer_responses_namespace_tool(tool):
-            deferred_tools.append(tool)
-        else:
-            filtered_tools.append(tool)
+    filtered_containers: list[tuple[dict[str, Any], list[Any]]] = []
+    for container, tools in containers:
+        filtered_tools: list[Any] = []
+        for tool in tools:
+            if _is_responses_tool_search_definition(tool):
+                has_tool_search = True
+                filtered_tools.append(tool)
+            elif _should_defer_responses_namespace_tool(tool):
+                deferred_tools.append(tool)
+            else:
+                filtered_tools.append(tool)
+        filtered_containers.append((container, filtered_tools))
 
     if not deferred_tools:
         return []
 
     if not has_tool_search:
         if optimize_tool_descriptions:
-            filtered_tools.append(
+            filtered_containers[0][1].append(
                 _synthetic_responses_tool_search_definition(deferred_tools)
             )
         else:
-            filtered_tools.append(_minimal_responses_tool_search_definition())
+            filtered_containers[0][1].append(
+                _minimal_responses_tool_search_definition()
+            )
 
-    body["tools"] = filtered_tools
+    for container, filtered_tools in filtered_containers:
+        container["tools"] = filtered_tools
     return deferred_tools
 
 
@@ -386,26 +420,66 @@ def _tool_choice_identifier(tool_choice: Any) -> str | None:
     return None
 
 
-def _remove_tool_definition(body: dict[str, Any], tool_name: str) -> dict[str, Any]:
-    """Remove one named tool definition from a provider request body."""
-    tools = body.get("tools")
-    if not isinstance(tools, list):
-        return body
-
-    filtered_tools = [tool for tool in tools if _tool_identifier(tool) != tool_name]
-    if len(filtered_tools) == len(tools):
-        return body
-
+def _remove_tool_definition(
+    body: dict[str, Any],
+    tool_name: str,
+    *,
+    aliases: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
+    """Remove named tools from top-level and Responses Lite containers."""
+    removed_names = {tool_name, *aliases}
+    changed = False
     adapted = dict(body)
-    if filtered_tools:
-        adapted["tools"] = filtered_tools
-    else:
-        adapted.pop("tools", None)
+
+    tools = body.get("tools")
+    if isinstance(tools, list):
+        filtered_tools = [
+            tool for tool in tools if _tool_identifier(tool) not in removed_names
+        ]
+        if len(filtered_tools) != len(tools):
+            changed = True
+            if filtered_tools:
+                adapted["tools"] = filtered_tools
+            else:
+                adapted.pop("tools", None)
+
+    input_items = body.get("input")
+    if isinstance(input_items, list):
+        filtered_input: list[Any] = []
+        for item in input_items:
+            if not isinstance(item, dict) or item.get("type") != "additional_tools":
+                filtered_input.append(item)
+                continue
+            embedded_tools = item.get("tools")
+            if not isinstance(embedded_tools, list):
+                filtered_input.append(item)
+                continue
+            filtered_embedded = [
+                tool
+                for tool in embedded_tools
+                if _tool_identifier(tool) not in removed_names
+            ]
+            if len(filtered_embedded) == len(embedded_tools):
+                filtered_input.append(item)
+                continue
+            changed = True
+            if filtered_embedded:
+                filtered_item = dict(item)
+                filtered_item["tools"] = filtered_embedded
+                filtered_input.append(filtered_item)
+        if changed:
+            adapted["input"] = filtered_input
+
+    if not changed:
+        return body
+
+    remaining_tools = bool(_flatten_responses_tools(adapted))
+    if not remaining_tools:
         adapted.pop("tool_config", None)
 
     if (
-        _tool_choice_identifier(adapted.get("tool_choice")) == tool_name
-        or not filtered_tools
+        _tool_choice_identifier(adapted.get("tool_choice")) in removed_names
+        or not remaining_tools
     ):
         adapted.pop("tool_choice", None)
     return adapted
@@ -417,7 +491,11 @@ def _apply_tool_adaptation(
     """Apply per-model tool adaptation before passthrough or conversion."""
     tool_adaptation = route.tool_adaptation or {}
     if tool_adaptation.get("remove_image_generation"):
-        return _remove_tool_definition(body, "image_generation")
+        return _remove_tool_definition(
+            body,
+            "image_generation",
+            aliases=frozenset({"image_gen", "imagegen", "image_gen__imagegen"}),
+        )
     return body
 
 
@@ -1272,7 +1350,9 @@ async def handle_non_streaming(
     # model was already injected into body by app.py
     model = body.get("model", "")
     body = _apply_tool_adaptation(body, route)
-    source_tool_capabilities = NativeToolCapabilities.from_chat_tools(body.get("tools"))
+    source_tool_capabilities = NativeToolCapabilities.from_chat_tools(
+        _flatten_responses_tools(body)
+    )
     use_window_tool_search = _prepare_window_tool_search_request(
         route=route,
         codex_window_id=codex_window_id,
@@ -2152,7 +2232,9 @@ async def handle_streaming(
         web_search_config=web_search_config,
         web_search_client=web_search_client,
     )
-    source_tool_capabilities = NativeToolCapabilities.from_chat_tools(body.get("tools"))
+    source_tool_capabilities = NativeToolCapabilities.from_chat_tools(
+        _flatten_responses_tools(body)
+    )
     use_window_tool_search = _prepare_window_tool_search_request(
         route=route,
         codex_window_id=codex_window_id,

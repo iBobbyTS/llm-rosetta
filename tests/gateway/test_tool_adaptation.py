@@ -10,9 +10,12 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from codex_rosetta.gateway.proxy import (
     ProviderMetadataStore,
     WindowToolSearchStore,
+    _defer_responses_namespace_tools_for_chat,
     handle_non_streaming,
     handle_streaming,
 )
@@ -81,6 +84,50 @@ def _plain_route() -> ResolvedRoute:
         provider_name="test-provider",
         upstream_model="glm-5.2",
     )
+
+
+def test_defer_responses_lite_namespaces_adds_one_tool_search():
+    """All Lite tool containers share one synthetic tool-search definition."""
+    body = {
+        "input": [
+            {
+                "type": "additional_tools",
+                "tools": [
+                    {"type": "function", "name": "exec_command"},
+                    {
+                        "type": "namespace",
+                        "name": "mcp__codex_apps__github",
+                        "description": "GitHub connector.",
+                        "tools": [],
+                    },
+                ],
+            },
+            {
+                "type": "additional_tools",
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "mcp__codex_apps__gmail",
+                        "description": "Gmail connector.",
+                        "tools": [],
+                    }
+                ],
+            },
+        ]
+    }
+
+    deferred = _defer_responses_namespace_tools_for_chat(body)
+
+    assert [tool["name"] for tool in deferred] == [
+        "mcp__codex_apps__github",
+        "mcp__codex_apps__gmail",
+    ]
+    remaining = [tool for item in body["input"] for tool in item["tools"]]
+    assert [tool.get("type") for tool in remaining].count("tool_search") == 1
+    assert {tool.get("name") for tool in remaining} == {"exec_command", None}
+    tool_search = next(tool for tool in remaining if tool.get("type") == "tool_search")
+    assert "mcp__codex_apps__github" in tool_search["description"]
+    assert "mcp__codex_apps__gmail" in tool_search["description"]
 
 
 def test_localize_code_editing_chat_request_replaces_native_tools():
@@ -663,7 +710,10 @@ def test_gateway_non_streaming_localizes_request_and_returns_native_tool_call():
     assert json.loads(restored["arguments"])["old_string"] == "old"
 
 
-def test_gateway_non_streaming_translates_edit_to_exec_when_apply_patch_absent():
+@pytest.mark.parametrize("lite_tools", [False, True])
+def test_gateway_non_streaming_translates_edit_to_exec_when_apply_patch_absent(
+    lite_tools: bool,
+):
     captured_body: dict[str, Any] = {}
     upstream_body = {
         "id": "chatcmpl-test",
@@ -709,17 +759,21 @@ def test_gateway_non_streaming_translates_edit_to_exec_when_apply_patch_absent()
 
     transport = MagicMock()
     transport.send_request = AsyncMock(side_effect=send_request)
-    body = {
+    native_tools = [
+        {
+            "type": "function",
+            "name": "exec_command",
+            "parameters": {"type": "object", "properties": {}},
+        }
+    ]
+    body: dict[str, Any] = {
         "model": "glm-5.2",
         "input": [{"role": "user", "content": "edit example.txt"}],
-        "tools": [
-            {
-                "type": "function",
-                "name": "exec_command",
-                "parameters": {"type": "object", "properties": {}},
-            }
-        ],
     }
+    if lite_tools:
+        body["input"].insert(0, {"type": "additional_tools", "tools": native_tools})
+    else:
+        body["tools"] = native_tools
 
     async def run():
         return await handle_non_streaming(

@@ -9,6 +9,8 @@ Reference: tests/test_types/openai/chat/test_type_compatibility.py
 Reference: tests/test_types/google_genai/test_type_compatibility.py
 """
 
+from typing import get_args, get_type_hints
+
 import pytest
 
 from codex_rosetta.types.openai.responses import (
@@ -150,6 +152,18 @@ class TestConfigTypes:
         reasoning: Reasoning = {"enabled": True, "max_tokens": 1000}
         assert reasoning["enabled"] is True
         assert reasoning["max_tokens"] == 1000
+
+    def test_reasoning_accepts_ultra_effort(self):
+        """Codex 0.144 may expose ultra before canonicalizing it to max."""
+        reasoning: Reasoning = {"effort": "ultra"}
+
+        assert reasoning["effort"] in get_args(get_type_hints(Reasoning)["effort"])
+
+    def test_reasoning_accepts_all_turns_context(self):
+        """Codex Responses Lite reasoning context is represented in request types."""
+        reasoning: Reasoning = {"context": "all_turns"}
+
+        assert reasoning["context"] in get_args(get_type_hints(Reasoning)["context"])
 
 
 class TestToolTypes:
@@ -300,6 +314,15 @@ class TestStatusAndErrorTypes:
         }
         assert error["code"] == "server_error"
         assert error["message"] == "Invalid input"
+
+    def test_response_error_accepts_bio_policy_code(self):
+        """Codex 0.144 treats bio_policy as a terminal invalid request."""
+        error: ResponseError = {
+            "code": "bio_policy",
+            "message": "Request blocked by biological safety policy",
+        }
+
+        assert error["code"] in get_args(get_type_hints(ResponseError)["code"])
 
     def test_incomplete_details(self):
         """Test creating IncompleteDetails."""

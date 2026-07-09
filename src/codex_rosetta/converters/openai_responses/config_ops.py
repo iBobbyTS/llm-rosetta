@@ -22,7 +22,11 @@ from ...types.ir.configs import (
     StreamConfig,
 )
 from ..base import BaseConfigOps
-from ..base.helpers.reasoning import DEFAULT_REASONING_CAPS, apply_reasoning_config
+from ..base.helpers.reasoning import (
+    DEFAULT_REASONING_CAPS,
+    apply_reasoning_config,
+    normalize_reasoning_input,
+)
 
 
 class OpenAIResponsesConfigOps(BaseConfigOps):
@@ -290,7 +294,11 @@ class OpenAIResponsesConfigOps(BaseConfigOps):
             else:
                 result["effort"] = effort
 
-        return cast(ReasoningConfig, result)
+        context = reasoning.get("context")
+        if context in ("auto", "current_turn", "all_turns"):
+            result["context"] = context
+
+        return normalize_reasoning_input(cast(ReasoningConfig, result))
 
     # ==================== Cache Config ====================
 

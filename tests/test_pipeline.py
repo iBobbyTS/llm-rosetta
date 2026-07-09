@@ -600,6 +600,82 @@ class TestConversionPipeline:
         assert tool_names == ["multi_agent_v1__spawn_agent"]
         assert "multi_agent_v1" not in tool_names
 
+    def test_responses_lite_tools_are_flattened_for_chat_target(self):
+        """Responses Lite embedded tools reach Chat with developer context."""
+        from codex_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline("openai_responses", "openai_chat")
+        target = pipeline.convert_request(
+            {
+                "model": "deepseek-v4-flash",
+                "input": [
+                    {
+                        "type": "additional_tools",
+                        "role": "developer",
+                        "tools": [
+                            {
+                                "type": "namespace",
+                                "name": "multi_agent_v1",
+                                "tools": [
+                                    {
+                                        "type": "function",
+                                        "name": "spawn_agent",
+                                        "description": "Spawn a sub-agent.",
+                                        "parameters": {
+                                            "type": "object",
+                                            "properties": {
+                                                "prompt": {"type": "string"}
+                                            },
+                                            "required": ["prompt"],
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": [
+                            {"type": "input_text", "text": "Use tools carefully."}
+                        ],
+                    },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "Delegate."}],
+                    },
+                ],
+                "parallel_tool_calls": False,
+            }
+        )
+
+        assert target["messages"][0] == {
+            "role": "system",
+            "content": "Use tools carefully.",
+        }
+        assert [tool["function"]["name"] for tool in target["tools"]] == [
+            "multi_agent_v1__spawn_agent"
+        ]
+        assert target["parallel_tool_calls"] is False
+
+    def test_responses_reasoning_context_is_omitted_for_chat_target(self):
+        """Responses-only reasoning context does not leak into Chat requests."""
+        from codex_rosetta.pipeline import ConversionPipeline
+
+        pipeline = ConversionPipeline("openai_responses", "openai_chat")
+        target = pipeline.convert_request(
+            {
+                "model": "deepseek-v4-flash",
+                "input": "hello",
+                "reasoning": {"effort": "medium", "context": "all_turns"},
+            }
+        )
+
+        assert target["reasoning_effort"] == "medium"
+        assert "context" not in target
+        assert "reasoning" not in target
+
     def test_responses_namespace_duplicate_child_names_are_unique_for_chat_target(self):
         """Namespace child names are disambiguated when flattened for Chat."""
         from codex_rosetta.pipeline import ConversionPipeline

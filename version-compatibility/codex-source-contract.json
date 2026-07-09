@@ -1,11 +1,21 @@
 {
-  "codex_source_commit": "cca16a10878202cb2f6e9666b6b4330329ea7e65",
+  "codex_source_commit": "2e8c3756f95789c215d9ea9a5ade6ec377934b3f",
   "contract": {
     "apply_patch": {
       "format_type": "grammar",
       "grammar_sha256": "d6367f4826ed608c424b0a308f3d6163527df63c22513d089b91863552f8bfeb",
       "name": "apply_patch",
       "syntax": "lark"
+    },
+    "approval_messages_fields": {
+      "on_request": {
+        "attributes": [],
+        "type": "Option<String>"
+      },
+      "on_request_auto_review": {
+        "attributes": [],
+        "type": "Option<String>"
+      }
     },
     "codex_header_constants": {
       "OPENAI_BETA_HEADER": "OpenAI-Beta",
@@ -37,6 +47,7 @@
     ],
     "endpoints": {
       "MEMORIES_SUMMARIZE_ENDPOINT": "/memories/trace_summarize",
+      "REALTIME_CALLS_ENDPOINT": "/realtime/calls",
       "RESPONSES_COMPACT_ENDPOINT": "/responses/compact",
       "RESPONSES_ENDPOINT": "/responses"
     },
@@ -146,6 +157,20 @@
       "visibility",
       "web_search_tool_type"
     ],
+    "model_messages_fields": {
+      "approvals": {
+        "attributes": [],
+        "type": "Option<ApprovalMessages>"
+      },
+      "instructions_template": {
+        "attributes": [],
+        "type": "Option<String>"
+      },
+      "instructions_variables": {
+        "attributes": [],
+        "type": "Option<ModelInstructionsVariables>"
+      }
+    },
     "reasoning_fields": [
       "context",
       "effort",
@@ -196,6 +221,22 @@
       "Message",
       "ToolSearchOutput"
     ],
+    "response_item_additional_tools_fields": {
+      "id": {
+        "attributes": [
+          "#[serde(default, skip_serializing_if = \"Option::is_none\")]"
+        ],
+        "type": "Option<String>"
+      },
+      "role": {
+        "attributes": [],
+        "type": "String"
+      },
+      "tools": {
+        "attributes": [],
+        "type": "Vec<serde_json::Value>"
+      }
+    },
     "response_item_variants": [
       "AdditionalTools",
       "AgentMessage",
@@ -232,6 +273,82 @@
       "tool_choice",
       "tools"
     ],
+    "responses_lite_model_capabilities": [
+      {
+        "apply_patch_tool_type": "freeform",
+        "default_reasoning_level": "medium",
+        "default_reasoning_summary": "none",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "multi_agent_version": "v1",
+        "slug": "gpt-5.6-luna",
+        "supported_reasoning_levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning_summaries": true,
+        "supports_search_tool": true,
+        "tool_mode": "code_mode_only",
+        "use_responses_lite": true,
+        "web_search_tool_type": "text_and_image"
+      },
+      {
+        "apply_patch_tool_type": "freeform",
+        "default_reasoning_level": "low",
+        "default_reasoning_summary": "none",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "multi_agent_version": "v2",
+        "slug": "gpt-5.6-sol",
+        "supported_reasoning_levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ],
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning_summaries": true,
+        "supports_search_tool": true,
+        "tool_mode": "code_mode_only",
+        "use_responses_lite": true,
+        "web_search_tool_type": "text_and_image"
+      },
+      {
+        "apply_patch_tool_type": "freeform",
+        "default_reasoning_level": "medium",
+        "default_reasoning_summary": "none",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "multi_agent_version": "v2",
+        "slug": "gpt-5.6-terra",
+        "supported_reasoning_levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ],
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning_summaries": true,
+        "supports_search_tool": true,
+        "tool_mode": "code_mode_only",
+        "use_responses_lite": true,
+        "web_search_tool_type": "text_and_image"
+      }
+    ],
     "responses_metadata_keys": {
       "COMPACTION_KEY": "compaction",
       "FORKED_FROM_THREAD_ID_KEY": "forked_from_thread_id",
@@ -265,10 +382,47 @@
     "stream_options_fields": [
       "reasoning_summary_delivery"
     ],
+    "tool_spec_web_search_fields": {
+      "external_web_access": {
+        "attributes": [
+          "#[serde(skip_serializing_if = \"Option::is_none\")]"
+        ],
+        "type": "Option<bool>"
+      },
+      "filters": {
+        "attributes": [
+          "#[serde(skip_serializing_if = \"Option::is_none\")]"
+        ],
+        "type": "Option<ResponsesApiWebSearchFilters>"
+      },
+      "indexed_web_access": {
+        "attributes": [
+          "#[serde(skip_serializing_if = \"Option::is_none\")]"
+        ],
+        "type": "Option<bool>"
+      },
+      "search_content_types": {
+        "attributes": [
+          "#[serde(skip_serializing_if = \"Option::is_none\")]"
+        ],
+        "type": "Option<Vec<String>>"
+      },
+      "search_context_size": {
+        "attributes": [
+          "#[serde(skip_serializing_if = \"Option::is_none\")]"
+        ],
+        "type": "Option<WebSearchContextSize>"
+      },
+      "user_location": {
+        "attributes": [
+          "#[serde(skip_serializing_if = \"Option::is_none\")]"
+        ],
+        "type": "Option<ResponsesApiWebSearchUserLocation>"
+      }
+    },
     "tool_spec_wire_types": {
       "custom": "Freeform",
       "function": "Function",
-      "image_generation": "ImageGeneration",
       "namespace": "Namespace",
       "tool_search": "ToolSearch",
       "web_search": "WebSearch"

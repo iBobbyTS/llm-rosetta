@@ -211,28 +211,41 @@ result = run_sync(
 
 Releases are triggered manually via GitHub Actions, not by tag push.
 
+### Version naming
+
+Codex-Rosetta release versions use `{codex_version}.r{patch_number}`. The
+three-part Codex version identifies the supported Codex release, while `rN`
+is the Rosetta patch number for that same Codex version. Start a newly adopted
+Codex release at `r0` and increment only `rN` for subsequent Rosetta-only
+patches. For example, the first compatibility release for Codex `0.144.0` is
+`0.144.0.r0`.
+
+The source version intentionally keeps the `rN` spelling. Python packaging
+tools normalize it to the PEP 440 equivalent `.postN` in distribution
+metadata; do not rewrite the source string merely to match normalized metadata.
+
 ### Steps
 
 1. **Bump version** in `src/codex_rosetta/__init__.py`
 2. **Update changelogs** — move `[Unreleased]` entries into a versioned section
-   (`## vX.Y.Z — YYYY-MM-DD`) in both `docs_en/docs/changelog.md` and
+   (`## vX.Y.Z.rN — YYYY-MM-DD`) in both `docs_en/docs/changelog.md` and
    `docs_zh/docs/changelog.md`. Commit and push both doc worktrees.
 3. **Commit and tag**:
    ```bash
    git add src/codex_rosetta/__init__.py
-   git commit -m "release: vX.Y.Z"
-   git tag vX.Y.Z
-   git push origin master vX.Y.Z
+   git commit -m "release: vX.Y.Z.rN"
+   git tag vX.Y.Z.rN
+   git push origin master vX.Y.Z.rN
    ```
 4. **Trigger the Release workflow** (builds wheel → publishes to PyPI →
    triggers Docker build automatically):
    ```bash
-   gh workflow run "Release" --repo Oaklight/codex-rosetta -f version=X.Y.Z
+   gh workflow run "Release" --repo Oaklight/codex-rosetta -f version=X.Y.Z.rN
    ```
 5. **Create GitHub Release** (optional — the Release workflow also creates one,
    but you can create it manually first for custom release notes):
    ```bash
-   gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."
+   gh release create vX.Y.Z.rN --title "vX.Y.Z.rN" --notes "..."
    ```
 
 ### Dev deployment (pre-release testing)

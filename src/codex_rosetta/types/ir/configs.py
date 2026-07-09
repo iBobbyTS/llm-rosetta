@@ -129,10 +129,14 @@ class ReasoningConfig(TypedDict, total=False):
     Provider mappings for ``budget_tokens``:
     - Anthropic: ``thinking.budget_tokens``
     - Google: ``thinking_config.thinking_budget``
+
+    ``context`` is specific to OpenAI Responses and is omitted by converters
+    for providers that do not support it.
     """
 
     mode: Literal["auto", "enabled", "disabled"]
     effort: ReasoningEffortLevel  # Reasoning effort level (normalised)
+    context: Literal["auto", "current_turn", "all_turns"]
     budget_tokens: int  # Max tokens for reasoning — Anthropic/Google: budget_tokens
 
 

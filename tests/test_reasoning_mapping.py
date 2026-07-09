@@ -35,6 +35,7 @@ def _apply(mapping: str, effort: str, target_provider: str = "openai_chat") -> d
         ("high", None, "high"),
         ("xhigh", None, "xhigh"),
         ("max", None, "max"),
+        ("ultra", None, "max"),
         (None, None, "high"),
         ("none", None, "light"),
         ("disabled", None, "light"),
@@ -153,6 +154,7 @@ def test_anthropic_mapping_efforts(effort):
         ("high", "high"),
         ("xhigh", "max"),
         ("max", "max"),
+        ("ultra", "max"),
     ],
 )
 def test_deepseek_v4_mapping_efforts(effort, expected):

@@ -153,6 +153,87 @@ def test_tool_adaptation_removes_image_generation_before_passthrough():
     assert body["tools"][1] == {"type": "image_generation"}
 
 
+def test_tool_adaptation_removes_responses_lite_image_generation():
+    """Image generation is removed from Responses Lite embedded tools."""
+    captured_body: dict[str, Any] = {}
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        response_body = {"id": "resp_123", "status": "completed", "output": []}
+        return UpstreamResponse(
+            status_code=200,
+            body=response_body,
+            raw_content=json.dumps(response_body).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    body = {
+        "model": "gpt-test",
+        "input": [
+            {
+                "type": "additional_tools",
+                "role": "developer",
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "image_gen",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "imagegen",
+                                "parameters": {},
+                            }
+                        ],
+                    },
+                    {
+                        "type": "function",
+                        "name": "exec_command",
+                        "parameters": {},
+                    },
+                    {
+                        "type": "function",
+                        "name": "image_gen__imagegen",
+                        "parameters": {},
+                    },
+                ],
+            },
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "hello"}],
+            },
+        ],
+        "tool_choice": {"type": "image_gen"},
+        "tool_config": {"disable_parallel": True},
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _responses_route(
+                tool_adaptation={
+                    "localize_code_editing_tools": False,
+                    "remove_image_generation": True,
+                }
+            ),
+            _provider_info(),
+            body,
+            transport=transport,
+        )
+
+    response, _ = asyncio.run(run())
+
+    assert response.status_code == 200
+    assert captured_body["input"][0]["tools"] == [
+        {"type": "function", "name": "exec_command", "parameters": {}}
+    ]
+    assert "tool_choice" not in captured_body
+    assert captured_body["tool_config"] == {"disable_parallel": True}
+    assert body["input"][0]["tools"][0]["name"] == "image_gen"
+
+
 class _RawStream(UpstreamStream):
     def __init__(self, chunks: list[bytes], *, status_code: int = 200) -> None:
         self.status_code = status_code
@@ -195,10 +276,15 @@ def test_openai_responses_streaming_direct_raw_passthrough():
     transport.send_streaming = AsyncMock(side_effect=send_streaming)
     body = {
         "model": "gpt-test",
-        "input": [{"type": "message", "role": "user", "content": "hello"}],
-        "tools": [
-            {"type": "image_generation"},
-            {"type": "web_search_preview"},
+        "input": [
+            {
+                "type": "additional_tools",
+                "tools": [
+                    {"type": "image_generation"},
+                    {"type": "web_search_preview"},
+                ],
+            },
+            {"type": "message", "role": "user", "content": "hello"},
         ],
         "stream": True,
     }
@@ -227,10 +313,15 @@ def test_openai_responses_streaming_direct_raw_passthrough():
     assert chunks == raw_chunks
     assert captured_body == {
         "model": "gpt-test",
-        "input": [{"type": "message", "role": "user", "content": "hello"}],
-        "tools": [{"type": "web_search_preview"}],
+        "input": [
+            {
+                "type": "additional_tools",
+                "tools": [{"type": "web_search_preview"}],
+            },
+            {"type": "message", "role": "user", "content": "hello"},
+        ],
         "stream": True,
     }
-    assert body["tools"][0] == {"type": "image_generation"}
+    assert body["input"][0]["tools"][0] == {"type": "image_generation"}
     assert profile["passthrough"] is True
     assert "request_conversion_ms" not in profile

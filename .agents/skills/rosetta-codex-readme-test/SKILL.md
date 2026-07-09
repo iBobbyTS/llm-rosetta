@@ -14,12 +14,16 @@ and revert the repository after inspection.
 
 ## Defaults
 
-- Default model: `deepseek-v4-flash`, unless the user explicitly specifies a
-  different model.
+- Choose the model by debugging goal:
+  - To observe Codex/GPT's native request shape, use `gpt-5.6-terra`. The
+    gateway trace must confirm the request actually reached the GPT route; a
+    local alias that forwards this name to a third-party model does not count.
+  - To debug third-party model conversion or agent behavior, use
+    `deepseek-v4-flash` by default because it is the low-cost test model.
 - Default real-provider smoke matrix: `deepseek-v4-flash` and
-  `gpt-5.3-codex`. In the current test config, `gpt-5.3-codex` is expected to
-  route to upstream `glm-5.2`; verify this in the Rosetta trace rather than
-  assuming it.
+  `gpt-5.6-terra`. Keep third-party aliases as separate matrix entries and
+  verify every upstream route in the Rosetta trace rather than assuming it
+  from the Codex-facing model name.
 - Temporary Rosetta gateway configs live under
   `/Users/ibobby/Projects/codex-rosetta/rosetta-test-config`.
 - The isolated Codex home lives at
@@ -51,9 +55,9 @@ and revert the repository after inspection.
 
    - log path: an explicit path under `/Volumes/RAM Disk`, for example
      `/Volumes/RAM Disk/<model>-readme-test-<timestamp>.jsonl`
-   - model filter: the model being tested. Use `deepseek-v4-flash` by default,
-     unless the user explicitly specifies another model such as `glm-5.2` or
-     `gpt-5.5`
+   - model filter: the model being tested. Use `gpt-5.6-terra` for native GPT
+     request observation and `deepseek-v4-flash` for third-party conversion
+     debugging, unless the user explicitly specifies another model
 
    If the exact admin API is uncertain, inspect existing gateway config/routes
    before changing anything. Do not leave broad logging enabled after the test.

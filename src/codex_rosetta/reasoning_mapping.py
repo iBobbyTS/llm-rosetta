@@ -14,6 +14,8 @@ import re
 from typing import Any, Literal, cast
 
 from codex_rosetta.converters.base.context import ConversionContext
+from codex_rosetta.converters.base.helpers.reasoning import normalize_reasoning_input
+from codex_rosetta.types.ir.configs import ReasoningConfig
 
 ReasoningMapping = Literal[
     "auto",
@@ -153,6 +155,11 @@ def normalize_reasoning_effort(
 
     if effort_key in {"minimal", "low", "light"}:
         return "light"
+    if effort_key == "ultra":
+        normalized = normalize_reasoning_input(
+            cast(ReasoningConfig, {"effort": effort_key})
+        )
+        return cast(ReasoningEffort, normalized["effort"])
     if effort_key in {"medium", "high", "xhigh", "max"}:
         return cast(ReasoningEffort, effort_key)
 
