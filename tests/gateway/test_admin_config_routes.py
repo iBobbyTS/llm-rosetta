@@ -520,10 +520,20 @@ def test_admin_html_exposes_model_group_controls():
     assert 'id="modelGroupList"' in html
     assert 'id="modelGroupModal"' in html
     assert 'id="modelGroupRows"' in html
+    assert "max-height: 90vh; overflow-y: auto;" in html
     assert "function openModelGroupModal(groupName)" in html
+    assert "function toggleModelGroup(groupName)" in html
+    assert "function onModelGroupRowTypeChange(input)" in html
     assert "function saveModelGroup()" in html
     assert "/admin/api/config/model-groups/" in html
     assert "configData.standalone_models || models" in html
+    assert "_collapsedModelGroups" in html
+    assert "model-group-card${collapsed ? ' collapsed' : ''}" in html
+    assert 'class="model-group-body"' in html
+    assert 'class="group-model-type-input"' in html
+    assert 'class="checkbox-group group-cap-wrap"' in html
+    assert 'class="group-cap" value="embedding"' not in html
+    assert "modelType === 'embedding'" in html
     assert "'btn.addModelGroup':'+ Add Model Group'" in html
     assert "'btn.addModelGroup':'+ \\u6dfb\\u52a0\\u6a21\\u578b\\u7ec4'" in html
 

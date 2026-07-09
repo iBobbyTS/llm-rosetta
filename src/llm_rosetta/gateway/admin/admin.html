@@ -213,6 +213,7 @@ code.copyable:hover { background: var(--bg-hover); }
 .modal {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 12px; padding: 24px; width: 440px; max-width: 90vw;
+  max-height: 90vh; overflow-y: auto;
 }
 .modal h3 { margin-bottom: 16px; font-size: 16px; }
 .form-group { margin-bottom: 14px; }
@@ -289,11 +290,15 @@ canvas { width: 100%; height: 160px; }
 .model-group-title code { font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .model-group-meta { font-size:12px;color:var(--text-dim);white-space:nowrap; }
 .model-group-actions { display:flex;gap:6px;flex-shrink:0; }
+.model-group-toggle { font-size:12px;min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center; }
+.model-group-body { display:block; }
+.model-group-card.collapsed .model-group-body { display:none; }
 .model-group-row { display:grid;grid-template-columns:minmax(160px,1fr) minmax(160px,1fr) auto;gap:8px;align-items:start;padding:8px 0;border-bottom:1px solid var(--border); }
 .model-group-row:last-child { border-bottom:none; }
 .model-group-row input { padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:var(--mono); }
 .model-group-row .checkbox-group { gap:8px; }
 .model-group-row .checkbox-group label { font-size:12px; }
+.model-group-row .fetch-type-radios { margin:0 0 6px; }
 .model-group-row-actions { display:flex;align-items:center;justify-content:flex-end; }
 .config-details { margin: 0 0 14px; }
 .config-details summary {
@@ -2059,25 +2064,41 @@ function openModelGroupModal(groupName) {
   document.getElementById('modelGroupModal').classList.add('open');
 }
 
+function _modelGroupRowType(caps) {
+  return caps.includes('embedding') && !caps.includes('text') ? 'embedding' : 'llm';
+}
+
+function onModelGroupRowTypeChange(input) {
+  const row = input.closest('.model-group-row');
+  const capsWrap = row.querySelector('.group-cap-wrap');
+  capsWrap.style.display = input.value === 'llm' ? '' : 'none';
+}
+
 function addModelGroupRow(modelName, info) {
   const row = document.createElement('div');
   row.className = 'model-group-row';
   const caps = _modelCaps(info || {});
+  const rowType = _modelGroupRowType(caps);
+  const typeName = `modelGroupType-${++_modelGroupRowSeq}`;
   row._modelExtra = {
     reasoning_override: info && info.reasoning_override ? info.reasoning_override : null,
     tool_adaptation: info && info.tool_adaptation ? info.tool_adaptation : null,
   };
   const checked = cap => caps.includes(cap) ? ' checked' : '';
+  const typeChecked = type => rowType === type ? ' checked' : '';
   row.innerHTML = `
     <input class="group-model-name" value="${esc(modelName || '')}" placeholder="exposed model name">
     <input class="group-upstream-model" value="${esc(_modelUpstream(info || {}))}" placeholder="upstream model (optional)">
     <div>
-      <div class="checkbox-group">
+      <div class="fetch-type-radios group-model-type">
+        <label><input type="radio" class="group-model-type-input" name="${typeName}" value="llm"${typeChecked('llm')} onchange="onModelGroupRowTypeChange(this)"> <span>${t('label.llm')}</span></label>
+        <label><input type="radio" class="group-model-type-input" name="${typeName}" value="embedding"${typeChecked('embedding')} onchange="onModelGroupRowTypeChange(this)"> <span>${t('label.embedding')}</span></label>
+      </div>
+      <div class="checkbox-group group-cap-wrap" style="${rowType === 'embedding' ? 'display:none' : ''}">
         <label><input type="checkbox" class="group-cap" value="text"${checked('text')}> text</label>
         <label><input type="checkbox" class="group-cap" value="vision"${checked('vision')}> vision</label>
         <label><input type="checkbox" class="group-cap" value="tools"${checked('tools')}> tools</label>
         <label><input type="checkbox" class="group-cap" value="reasoning"${checked('reasoning')}> reasoning</label>
-        <label><input type="checkbox" class="group-cap" value="embedding"${checked('embedding')}> embedding</label>
       </div>
       <div class="model-group-row-actions">
         <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.model-group-row').remove()">${t('btn.delete')}</button>
@@ -2098,7 +2119,10 @@ async function saveModelGroup() {
       showToast(`Duplicate model: ${modelName}`, 'error');
       return;
     }
-    const caps = [...row.querySelectorAll('.group-cap:checked')].map(cb => cb.value);
+    const modelType = row.querySelector('.group-model-type-input:checked')?.value || 'llm';
+    const caps = modelType === 'embedding'
+      ? ['embedding']
+      : [...row.querySelectorAll('.group-cap:checked')].map(cb => cb.value);
     const upstream = row.querySelector('.group-upstream-model').value.trim();
     const entry = {capabilities: caps.length ? caps : ['text']};
     if (upstream) entry.upstream_model = upstream;
@@ -2356,6 +2380,8 @@ function _updateViewToggle() {
 let _modelSortKey = 'name';
 let _modelSortDir = 'asc';
 let _editingModelGroupName = null;
+let _modelGroupRowSeq = 0;
+const _collapsedModelGroups = new Set();
 
 function sortModels(key) {
   if (_modelSortKey === key) {
@@ -2364,6 +2390,12 @@ function sortModels(key) {
     _modelSortKey = key;
     _modelSortDir = 'asc';
   }
+  renderModels();
+}
+
+function toggleModelGroup(groupName) {
+  if (_collapsedModelGroups.has(groupName)) _collapsedModelGroups.delete(groupName);
+  else _collapsedModelGroups.add(groupName);
   renderModels();
 }
 
@@ -2486,6 +2518,7 @@ function renderModels() {
     if (!query && modelEntries.length === 0) return '';
     groupShownCount += modelEntries.length;
     const providerDisabled = disabledProviders.has(provider);
+    const collapsed = _collapsedModelGroups.has(groupName);
     const rows = modelEntries.map(([modelName, info]) => {
       const caps = _modelCaps(info);
       const upstream = _modelUpstream(info);
@@ -2496,15 +2529,18 @@ function renderModels() {
         <td style="text-align:right;white-space:nowrap">${_modelTestControls(modelName, caps)}</td>
       </tr>`;
     }).join('');
-    return `<div class="model-group-card">
+    return `<div class="model-group-card${collapsed ? ' collapsed' : ''}">
       <div class="model-group-head">
-        <div class="model-group-title"><code>${esc(groupName)}</code><span class="model-group-meta">${esc(provider)} · ${modelEntries.length}</span></div>
+        <div class="model-group-title">
+          <button type="button" class="key-btn model-group-toggle" onclick="toggleModelGroup('${esc(groupName)}')" aria-expanded="${collapsed ? 'false' : 'true'}">${collapsed ? '&#9656;' : '&#9662;'}</button>
+          <code>${esc(groupName)}</code><span class="model-group-meta">${esc(provider)} · ${modelEntries.length}</span>
+        </div>
         <div class="model-group-actions">
           <button class="btn btn-sm" onclick="openModelGroupModal('${esc(groupName)}')">${t('btn.edit')}</button>
           <button class="btn btn-sm btn-danger" onclick="deleteModelGroup('${esc(groupName)}', this)">${t('btn.delete')}</button>
         </div>
       </div>
-      <div class="table-scroll"><table><tbody>${rows}</tbody></table></div>
+      <div class="model-group-body"><div class="table-scroll"><table><tbody>${rows}</tbody></table></div></div>
     </div>`;
   }).filter(Boolean);
   document.getElementById('modelGroupList').innerHTML = groupCards.length
