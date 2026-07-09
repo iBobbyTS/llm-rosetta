@@ -470,11 +470,19 @@ def test_admin_html_exposes_provider_preset_protocol_controls():
     html = html_path.read_text(encoding="utf-8")
 
     assert 'id="provProvider"' in html
+    assert 'id="provProviderVariant"' in html
     assert 'id="provApiType"' in html
     assert "const PROVIDER_PRESETS" in html
+    assert "const PROVIDER_VENDOR_PRESETS" in html
     assert "PROTOCOL_DIVIDER_VALUE" in html
     assert "divider.disabled = true" in html
     assert "opt.dataset.unsupported = 'true'" in html
+    assert "'provider.kimi':'Kimi'" in html
+    assert "'provider.minimax':'MiniMax'" in html
+    assert "'providerVariant.official':'Official'" in html
+    assert "'providerVariant.china':'China'" in html
+    assert "'providerVariant.international':'International'" in html
+    assert "'providerVariant.custom':'Custom'" in html
     assert "'provider.qwen':'Qwen'" in html
     assert "'provider.qwen':'\\u901a\\u4e49\\u5343\\u95ee'" in html
     assert "'provider.zhipu':'Zhipu (GLM)'" in html
@@ -484,23 +492,25 @@ def test_admin_html_exposes_provider_preset_protocol_controls():
         "const body = {provider, api_type: apiType, base_url: baseUrl, proxy}" in html
     )
     assert 'id="provType"' not in html
+    assert "variantSel.value = 'custom'" in html
+    assert "document.getElementById('provProvider').value = 'custom'" not in html
+    assert "const provider = _providerResolvedProviderId(providerId, variantId)" in html
 
     provider_order = [
-        "id: 'deepseek'",
-        "id: 'zhipu'",
-        "id: 'moonshot_china'",
-        "id: 'moonshot_international'",
-        "id: 'minimax_china'",
-        "id: 'minimax_international'",
-        "id: 'qwen'",
-        "id: 'openai'",
-        "id: 'google'",
-        "id: 'anthropic'",
-        "id: 'openrouter'",
-        "id: 'opencode_go'",
-        "id: 'custom'",
+        "{id: 'deepseek', label:",
+        "{id: 'zhipu', label:",
+        "{id: 'moonshot', label:",
+        "{id: 'minimax', label:",
+        "{id: 'qwen', label:",
+        "{id: 'openai', label:",
+        "{id: 'google', label:",
+        "{id: 'anthropic', label:",
+        "{id: 'openrouter', label:",
+        "{id: 'opencode_go', label:",
+        "{id: 'custom', label:",
     ]
-    positions = [html.index(item) for item in provider_order]
+    vendor_section = html[html.index("const PROVIDER_VENDOR_PRESETS") :]
+    positions = [vendor_section.index(item) for item in provider_order]
     assert positions == sorted(positions)
 
 

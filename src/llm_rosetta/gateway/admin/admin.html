@@ -187,6 +187,10 @@ tr:hover td { background: var(--bg-hover); }
 .type-logo-wrapper { display: flex; align-items: center; gap: 8px; }
 .type-logo-wrapper select { flex: 1; }
 .type-logo-wrapper .type-logo-preview { width: 20px; height: 20px; flex-shrink: 0; }
+.provider-preset-row { display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:8px;align-items:center; }
+.provider-preset-row .type-logo-wrapper { min-width:0; }
+.provider-preset-row select { min-width:0; }
+@media (max-width: 520px) { .provider-preset-row { grid-template-columns:1fr; } }
 .toggle { position:relative;display:inline-block;width:36px;height:20px; }
 .toggle input { opacity:0;width:0;height:0; }
 .toggle .slider { position:absolute;cursor:pointer;inset:0;background:var(--border);border-radius:20px;transition:.2s; }
@@ -786,9 +790,12 @@ body { padding-bottom: 26px; }
     </div>
     <div class="form-group">
       <label data-i18n="label.providerVendor">Provider</label>
-      <div class="type-logo-wrapper">
-        <img id="provProviderLogo" class="type-logo-preview" src="" alt="" style="display:none">
-        <select id="provProvider" onchange="onProviderPresetChange()"></select>
+      <div class="provider-preset-row">
+        <div class="type-logo-wrapper">
+          <img id="provProviderLogo" class="type-logo-preview" src="" alt="" style="display:none">
+          <select id="provProvider" onchange="onProviderPresetChange()"></select>
+        </div>
+        <select id="provProviderVariant" onchange="onProviderVariantChange()"></select>
       </div>
     </div>
     <div class="form-group">
@@ -1150,10 +1157,12 @@ const I18N = {
     'toast.providerDeleted':"Provider '{name}' deleted",
     'provider.enabled':'Enabled', 'provider.disabled':'Disabled',
     'provider.anthropic':'Anthropic', 'provider.custom':'Custom', 'provider.deepseek':'DeepSeek', 'provider.google':'Google',
+    'provider.kimi':'Kimi', 'provider.minimax':'MiniMax',
     'provider.minimaxChina':'MiniMax (China)', 'provider.minimaxInternational':'MiniMax (International)',
     'provider.moonshotChina':'Moonshot (Kimi, China)', 'provider.moonshotInternational':'Moonshot (Kimi, International)',
     'provider.openai':'OpenAI', 'provider.openrouter':'Open Router', 'provider.opencodeGo':'Opencode Go',
     'provider.qwen':'Qwen', 'provider.zhipu':'Zhipu (GLM)',
+    'providerVariant.official':'Official', 'providerVariant.china':'China', 'providerVariant.international':'International', 'providerVariant.custom':'Custom',
     'protocol.responses':'OpenAI Responses', 'protocol.chat':'OpenAI Chat Completions',
     'protocol.anthropic':'Anthropic', 'protocol.google':'Google',
     'protocol.unsupportedSuffix':'May not compatible',
@@ -1299,10 +1308,12 @@ const I18N = {
     'toast.providerDeleted':"\u670d\u52a1\u65b9 '{name}' \u5df2\u5220\u9664",
     'provider.enabled':'\u5df2\u542f\u7528', 'provider.disabled':'\u5df2\u7981\u7528',
     'provider.anthropic':'Anthropic', 'provider.custom':'Custom', 'provider.deepseek':'DeepSeek', 'provider.google':'Google',
+    'provider.kimi':'Kimi', 'provider.minimax':'MiniMax',
     'provider.minimaxChina':'MiniMax\uff08\u4e2d\u56fd\uff09', 'provider.minimaxInternational':'MiniMax\uff08\u56fd\u9645\uff09',
     'provider.moonshotChina':'Moonshot\uff08Kimi\uff0c\u4e2d\u56fd\uff09', 'provider.moonshotInternational':'Moonshot\uff08Kimi\uff0c\u56fd\u9645\uff09',
     'provider.openai':'OpenAI', 'provider.openrouter':'Open Router', 'provider.opencodeGo':'Opencode Go',
     'provider.qwen':'\u901a\u4e49\u5343\u95ee', 'provider.zhipu':'\u667a\u8c31 GLM',
+    'providerVariant.official':'\u5b98\u65b9', 'providerVariant.china':'\u4e2d\u56fd\u7ad9', 'providerVariant.international':'\u56fd\u9645\u7ad9', 'providerVariant.custom':'\u81ea\u5b9a\u4e49',
     'protocol.responses':'OpenAI Responses', 'protocol.chat':'OpenAI Chat Completions',
     'protocol.anthropic':'Anthropic', 'protocol.google':'Google',
     'protocol.unsupportedSuffix':'May not compatible',
@@ -1420,12 +1431,55 @@ const PROVIDER_PRESETS = [
   {id: 'opencode_go', label: 'Opencode Go', labelKey: 'provider.opencodeGo', protocols: {chat: 'https://opencode.ai/zen/go/v1'}},
   {id: 'custom', label: 'Custom', labelKey: 'provider.custom', protocols: {responses: '', chat: '', anthropic: '', google: ''}},
 ];
+const PROVIDER_VENDOR_PRESETS = [
+  {id: 'deepseek', label: 'DeepSeek', labelKey: 'provider.deepseek', logoShim: 'deepseek', variants: [{id: 'official', labelKey: 'providerVariant.official', providerId: 'deepseek'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'deepseek'}]},
+  {id: 'zhipu', label: 'Zhipu (GLM)', labelKey: 'provider.zhipu', logoShim: 'zhipu', variants: [{id: 'official', labelKey: 'providerVariant.official', providerId: 'zhipu'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'zhipu'}]},
+  {id: 'moonshot', label: 'Kimi', labelKey: 'provider.kimi', logoShim: 'moonshot', variants: [{id: 'china', labelKey: 'providerVariant.china', providerId: 'moonshot_china'}, {id: 'international', labelKey: 'providerVariant.international', providerId: 'moonshot_international'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'moonshot_china'}]},
+  {id: 'minimax', label: 'MiniMax', labelKey: 'provider.minimax', logoShim: 'minimax--openai_chat', variants: [{id: 'china', labelKey: 'providerVariant.china', providerId: 'minimax_china'}, {id: 'international', labelKey: 'providerVariant.international', providerId: 'minimax_international'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'minimax_china'}]},
+  {id: 'qwen', label: 'Qwen', labelKey: 'provider.qwen', logoShim: 'qwen', variants: [{id: 'official', labelKey: 'providerVariant.official', providerId: 'qwen'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'qwen'}]},
+  {id: 'openai', label: 'OpenAI', labelKey: 'provider.openai', logoShim: 'openai', variants: [{id: 'official', labelKey: 'providerVariant.official', providerId: 'openai'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'openai'}]},
+  {id: 'google', label: 'Google', labelKey: 'provider.google', logoShim: 'google', variants: [{id: 'official', labelKey: 'providerVariant.official', providerId: 'google'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'google'}]},
+  {id: 'anthropic', label: 'Anthropic', labelKey: 'provider.anthropic', logoShim: 'anthropic', variants: [{id: 'official', labelKey: 'providerVariant.official', providerId: 'anthropic'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'anthropic'}]},
+  {id: 'openrouter', label: 'Open Router', labelKey: 'provider.openrouter', logoShim: 'openrouter--openai_chat', variants: [{id: 'official', labelKey: 'providerVariant.official', providerId: 'openrouter'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'openrouter'}]},
+  {id: 'opencode_go', label: 'Opencode Go', labelKey: 'provider.opencodeGo', variants: [{id: 'official', labelKey: 'providerVariant.official', providerId: 'opencode_go'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'opencode_go'}]},
+  {id: 'custom', label: 'Custom', labelKey: 'provider.custom', variants: [{id: 'custom', labelKey: 'providerVariant.custom', providerId: 'custom'}]},
+];
 
 let _providerPresetUrl = '';
 let _providerUrlProgrammatic = false;
+let _providerCustomVariantProviderId = '';
 
 function _providerPresetsById() {
   return Object.fromEntries(PROVIDER_PRESETS.map(p => [p.id, p]));
+}
+
+function _providerVendorsById() {
+  return Object.fromEntries(PROVIDER_VENDOR_PRESETS.map(p => [p.id, p]));
+}
+
+function _providerVendorForResolvedProvider(providerId) {
+  for (const vendor of PROVIDER_VENDOR_PRESETS) {
+    if ((vendor.variants || []).some(v => v.providerId === providerId)) return vendor;
+  }
+  return _providerVendorsById().custom;
+}
+
+function _providerDefaultVariant(providerId) {
+  const vendor = _providerVendorsById()[providerId] || _providerVendorsById().custom;
+  return (vendor.variants && vendor.variants[0]) || {id: 'custom', providerId: 'custom', labelKey: 'providerVariant.custom'};
+}
+
+function _providerVariant(providerId, variantId) {
+  const vendor = _providerVendorsById()[providerId] || _providerVendorsById().custom;
+  return (vendor.variants || []).find(v => v.id === variantId) || _providerDefaultVariant(providerId);
+}
+
+function _providerResolvedProviderId(providerId, variantId) {
+  const variant = _providerVariant(providerId, variantId);
+  if (variant.id === 'custom' && providerId !== 'custom') {
+    return _providerCustomVariantProviderId || variant.providerId;
+  }
+  return variant.providerId;
 }
 
 function _protocolLabelsByValue() {
@@ -1446,9 +1500,9 @@ function _providerLabel(preset) {
 }
 
 function _providerLogoUrl(providerId) {
-  const preset = _providerPresetsById()[providerId];
-  if (!preset || !preset.logoShim) return '';
-  const shim = ((configData && configData.registered_shims) || []).find(s => s.name === preset.logoShim);
+  const vendor = _providerVendorsById()[providerId] || _providerVendorsById().custom;
+  if (!vendor || !vendor.logoShim) return '';
+  const shim = ((configData && configData.registered_shims) || []).find(s => s.name === vendor.logoShim);
   return shim && shim.logo ? shim.logo : '';
 }
 
@@ -1457,6 +1511,18 @@ function _providerPresetUrlFor(providerId, apiType) {
   return (preset && preset.protocols && Object.prototype.hasOwnProperty.call(preset.protocols, apiType))
     ? preset.protocols[apiType]
     : '';
+}
+
+function _providerProtocolsFor(providerId, variantId) {
+  const resolvedProviderId = _providerResolvedProviderId(providerId, variantId);
+  const preset = _providerPresetsById()[resolvedProviderId] || _providerPresetsById().custom;
+  return preset.protocols || {};
+}
+
+function _providerSelectionUrlFor(providerId, variantId, apiType) {
+  const variant = _providerVariant(providerId, variantId);
+  if (variant.id === 'custom') return '';
+  return _providerPresetUrlFor(_providerResolvedProviderId(providerId, variantId), apiType);
 }
 
 function _providerPresetForUrl(apiType, baseUrl) {
@@ -1518,19 +1584,33 @@ function _inferProviderSelection(cfg) {
   const legacyType = cfg.type || cfg.shim || '';
   const apiType = cfg.api_type || apiTypeByLegacyType[legacyType] || apiTypeByBase[legacyType] || 'chat';
   const genericLegacyType = ['openai', 'openai_chat', 'openai_responses', 'open_responses'].includes(legacyType);
-  const providerId = cfg.provider || (genericLegacyType ? _providerPresetForUrl(apiType, cfg.base_url) : '') || providerByLegacyType[legacyType] || 'custom';
-  return {providerId, apiType};
+  const resolvedProviderId = cfg.provider || (genericLegacyType ? _providerPresetForUrl(apiType, cfg.base_url) : '') || providerByLegacyType[legacyType] || 'custom';
+  const vendor = _providerVendorForResolvedProvider(resolvedProviderId);
+  const exactVariant = (vendor.variants || []).find(v => v.providerId === resolvedProviderId && v.id !== 'custom');
+  const officialUrl = exactVariant ? _providerPresetUrlFor(resolvedProviderId, apiType) : '';
+  const isCustomUrl = !!cfg.base_url && cfg.base_url !== officialUrl;
+  const variantId = isCustomUrl ? 'custom' : (exactVariant ? exactVariant.id : _providerDefaultVariant(vendor.id).id);
+  return {providerId: vendor.id, variantId, apiType, resolvedProviderId};
+}
+
+function _providerVariantDisplayName(providerId, variantId) {
+  const variant = _providerVariant(providerId, variantId);
+  return t(variant.labelKey) || variant.id;
 }
 
 function _providerDisplayInfo(name, cfg) {
   const selection = _inferProviderSelection(cfg || {});
-  const preset = _providerPresetsById()[selection.providerId] || _providerPresetsById().custom;
+  const vendor = _providerVendorsById()[selection.providerId] || _providerVendorsById().custom;
   const protocolLabels = _protocolLabelsByValue();
   const legacyType = (cfg && (cfg.type || cfg.shim)) || '';
-  const providerName = _providerLabel(preset);
+  const variantName = _providerVariantDisplayName(selection.providerId, selection.variantId);
+  const providerName = selection.variantId === 'official' || selection.providerId === 'custom'
+    ? _providerLabel(vendor)
+    : `${_providerLabel(vendor)} (${variantName})`;
   const protocolName = protocolLabels[selection.apiType] || selection.apiType;
   return {
     providerId: selection.providerId,
+    variantId: selection.variantId,
     apiType: selection.apiType,
     providerName,
     protocolName,
@@ -1543,20 +1623,34 @@ function _providerDisplayInfo(name, cfg) {
 function _renderProviderPresetOptions(selectedProvider) {
   const providerSel = document.getElementById('provProvider');
   providerSel.innerHTML = '';
-  for (const preset of PROVIDER_PRESETS) {
+  for (const preset of PROVIDER_VENDOR_PRESETS) {
     const opt = document.createElement('option');
     opt.value = preset.id;
     opt.textContent = _providerLabel(preset);
     providerSel.appendChild(opt);
   }
-  providerSel.value = selectedProvider && _providerPresetsById()[selectedProvider] ? selectedProvider : 'custom';
+  providerSel.value = selectedProvider && _providerVendorsById()[selectedProvider] ? selectedProvider : 'custom';
 }
 
-function _renderProviderProtocolOptions(providerId, selectedApiType) {
+function _renderProviderVariantOptions(providerId, selectedVariantId) {
+  const variantSel = document.getElementById('provProviderVariant');
+  const vendor = _providerVendorsById()[providerId] || _providerVendorsById().custom;
+  variantSel.innerHTML = '';
+  for (const variant of vendor.variants || []) {
+    const opt = document.createElement('option');
+    opt.value = variant.id;
+    opt.textContent = _providerVariantDisplayName(providerId, variant.id);
+    variantSel.appendChild(opt);
+  }
+  const values = (vendor.variants || []).map(v => v.id);
+  variantSel.value = values.includes(selectedVariantId) ? selectedVariantId : _providerDefaultVariant(providerId).id;
+}
+
+function _renderProviderProtocolOptions(providerId, variantId, selectedApiType) {
   const protocolSel = document.getElementById('provApiType');
-  const preset = _providerPresetsById()[providerId] || _providerPresetsById().custom;
-  const supported = PROVIDER_PROTOCOLS.filter(p => Object.prototype.hasOwnProperty.call(preset.protocols, p.value));
-  const unsupported = PROVIDER_PROTOCOLS.filter(p => !Object.prototype.hasOwnProperty.call(preset.protocols, p.value));
+  const protocols = _providerProtocolsFor(providerId, variantId);
+  const supported = PROVIDER_PROTOCOLS.filter(p => Object.prototype.hasOwnProperty.call(protocols, p.value));
+  const unsupported = PROVIDER_PROTOCOLS.filter(p => !Object.prototype.hasOwnProperty.call(protocols, p.value));
   protocolSel.innerHTML = '';
 
   for (const protocol of supported) {
@@ -1594,8 +1688,9 @@ function _updateProviderLogo() {
 
 function _syncPresetBaseUrl(previousPresetUrl) {
   const providerId = document.getElementById('provProvider').value;
+  const variantId = document.getElementById('provProviderVariant').value;
   const apiType = document.getElementById('provApiType').value;
-  const nextPresetUrl = _providerPresetUrlFor(providerId, apiType);
+  const nextPresetUrl = _providerSelectionUrlFor(providerId, variantId, apiType);
   const urlInput = document.getElementById('provBaseUrl');
   const cur = urlInput.value.trim();
   if (nextPresetUrl && (!cur || cur === previousPresetUrl)) {
@@ -1610,8 +1705,23 @@ function onProviderPresetChange() {
   const providerId = document.getElementById('provProvider').value;
   const apiType = document.getElementById('provApiType').value;
   const previousPresetUrl = _providerPresetUrl;
-  _renderProviderProtocolOptions(providerId, apiType);
+  const variantId = _providerDefaultVariant(providerId).id;
+  _providerCustomVariantProviderId = _providerDefaultVariant(providerId).providerId;
+  _renderProviderVariantOptions(providerId, variantId);
+  _renderProviderProtocolOptions(providerId, variantId, apiType);
   _updateProviderLogo();
+  _syncPresetBaseUrl(previousPresetUrl);
+}
+
+function onProviderVariantChange() {
+  const providerId = document.getElementById('provProvider').value;
+  const variantId = document.getElementById('provProviderVariant').value;
+  const apiType = document.getElementById('provApiType').value;
+  const previousPresetUrl = _providerPresetUrl;
+  if (variantId !== 'custom') {
+    _providerCustomVariantProviderId = _providerVariant(providerId, variantId).providerId;
+  }
+  _renderProviderProtocolOptions(providerId, variantId, apiType);
   _syncPresetBaseUrl(previousPresetUrl);
 }
 
@@ -1628,14 +1738,16 @@ function onProviderProtocolChange() {
 function onProviderBaseUrlInput() {
   if (_providerUrlProgrammatic) return;
   const providerId = document.getElementById('provProvider').value;
+  const variantSel = document.getElementById('provProviderVariant');
+  const variantId = variantSel.value;
   const apiType = document.getElementById('provApiType').value;
-  const presetUrl = _providerPresetUrlFor(providerId, apiType);
+  const presetUrl = _providerSelectionUrlFor(providerId, variantId, apiType);
   const currentUrl = document.getElementById('provBaseUrl').value.trim();
-  if (providerId !== 'custom' && currentUrl !== presetUrl) {
-    document.getElementById('provProvider').value = 'custom';
-    _renderProviderProtocolOptions('custom', apiType);
-    _updateProviderLogo();
-    _providerPresetUrl = _providerPresetUrlFor('custom', apiType);
+  if (providerId !== 'custom' && variantId !== 'custom' && currentUrl !== presetUrl) {
+    _providerCustomVariantProviderId = _providerResolvedProviderId(providerId, variantId);
+    variantSel.value = 'custom';
+    _renderProviderProtocolOptions(providerId, 'custom', apiType);
+    _providerPresetUrl = '';
   }
 }
 
@@ -1919,10 +2031,12 @@ function openProviderModal(name, providerConfig) {
 
   const selection = _inferProviderSelection(cfg);
   _renderProviderPresetOptions(selection.providerId);
-  _renderProviderProtocolOptions(selection.providerId, selection.apiType);
+  _providerCustomVariantProviderId = selection.resolvedProviderId || _providerDefaultVariant(selection.providerId).providerId;
+  _renderProviderVariantOptions(selection.providerId, selection.variantId);
+  _renderProviderProtocolOptions(selection.providerId, selection.variantId, selection.apiType);
   document.getElementById('provApiType').dataset.previousValue = document.getElementById('provApiType').value;
   _updateProviderLogo();
-  _providerPresetUrl = _providerPresetUrlFor(document.getElementById('provProvider').value, document.getElementById('provApiType').value);
+  _providerPresetUrl = _providerSelectionUrlFor(document.getElementById('provProvider').value, document.getElementById('provProviderVariant').value, document.getElementById('provApiType').value);
   _setProviderBaseUrl(cfg.base_url || _providerPresetUrl || '');
   const keyInput = document.getElementById('provApiKey');
   keyInput.type = 'password';
@@ -2574,7 +2688,9 @@ function renderModels() {
 
 async function saveProvider() {
   const name = document.getElementById('provName').value.trim();
-  const provider = document.getElementById('provProvider').value;
+  const providerId = document.getElementById('provProvider').value;
+  const variantId = document.getElementById('provProviderVariant').value;
+  const provider = _providerResolvedProviderId(providerId, variantId);
   const apiType = document.getElementById('provApiType').value;
   const baseUrl = document.getElementById('provBaseUrl').value.trim();
   const apiKey = _getKeyFieldValue();
