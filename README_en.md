@@ -12,16 +12,25 @@ This project is forked from [Oaklight/llm-rosetta](https://github.com/Oaklight/l
 
 ## Installation
 
-Install the latest prerelease from PyPI:
+Clone the repository, enter it, and install the package:
 
 ```bash
-python -m pip install -U --pre "codex-rosetta"
+git clone https://github.com/iBobbyTS/codex-rosetta.git
+cd codex-rosetta
+python -m pip install -U .
 ```
 
-Start the local gateway:
+## Usage
+
+Initialize the gateway configuration once:
 
 ```bash
 codex-rosetta-gateway init
+```
+
+Start the local gateway each time you use it:
+
+```bash
 codex-rosetta-gateway --host 127.0.0.1 -v
 ```
 

@@ -12,16 +12,25 @@
 
 ## 安装
 
-从 PyPI 安装最新预发布版本：
+克隆仓库，进入目录并安装：
 
 ```bash
-python -m pip install -U --pre "codex-rosetta"
+git clone https://github.com/iBobbyTS/codex-rosetta.git
+cd codex-rosetta
+python -m pip install -U .
 ```
 
-启动本地网关：
+## 使用
+
+首次使用时初始化网关配置（仅需执行一次）：
 
 ```bash
 codex-rosetta-gateway init
+```
+
+每次使用时启动本地网关：
+
+```bash
 codex-rosetta-gateway --host 127.0.0.1 -v
 ```
 
