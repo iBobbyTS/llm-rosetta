@@ -88,3 +88,13 @@ class Router(Protocol):
             KeyError: If the model is not in the routing table.
         """
         ...
+
+
+def is_openai_responses_passthrough(route: ResolvedRoute) -> bool:
+    """Return whether *route* is a direct OpenAI Responses pass-through."""
+
+    return (
+        route.responses_processing == "passthrough"
+        and route.source_provider in ("openai_responses", "open_responses")
+        and route.target_provider in ("openai_responses", "open_responses")
+    )

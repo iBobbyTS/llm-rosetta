@@ -50,6 +50,8 @@ At least check the following files before and after the upgrade:
 ```text
 codex-rs/codex-api/src/common.rs
 codex-rs/codex-api/src/endpoint/responses.rs
+codex-rs/codex-api/src/endpoint/search.rs
+codex-rs/codex-api/src/endpoint/images.rs
 codex-rs/codex-api/src/sse/responses.rs
 codex-rs/core/src/client.rs
 codex-rs/core/src/responses_metadata.rs
@@ -68,6 +70,7 @@ codex-rs/models-manager/models.json
 Key points to confirm:
 
 - Whether the selection/fallback of HTTP `/responses`, SSE and WebSocket has changed;
+- Whether standalone Search and Images still use JSON `POST alpha/search`, `POST images/generations`, and `POST images/edits`, including their model field and required headers;
 - request body fields added, deleted or changed;
 - The source and life cycle of `client_metadata`, `x-codex-*`, session/thread/window/turn;
 - `response.output_item.*`, text/tool/reasoning delta and terminal event;
@@ -90,6 +93,7 @@ Key review:
 
 ```text
 src/codex_rosetta/gateway/app.py
+src/codex_rosetta/gateway/codex_auxiliary.py
 src/codex_rosetta/gateway/headers.py
 src/codex_rosetta/gateway/proxy.py
 src/codex_rosetta/gateway/stream_phase_buffer.py

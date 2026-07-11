@@ -25,6 +25,7 @@ from .auth import (
     create_auth_hook,
 )
 from .config import GatewayConfig
+from .codex_auxiliary import handle_codex_auxiliary as _handle_codex_auxiliary
 from .cors import apply_cors_headers, is_admin_origin_allowed, is_admin_path
 from .embeddings import handle_embeddings as _handle_embeddings
 from .headers import (
@@ -773,6 +774,21 @@ async def handle_embeddings(request: Any) -> Response:
     return await _handle_embeddings(request, config)
 
 
+async def handle_codex_search(request: Any) -> Response:
+    config: GatewayConfig = request.app.gateway_config
+    return await _handle_codex_auxiliary(request, config, "alpha/search")
+
+
+async def handle_image_generation(request: Any) -> Response:
+    config: GatewayConfig = request.app.gateway_config
+    return await _handle_codex_auxiliary(request, config, "images/generations")
+
+
+async def handle_image_edit(request: Any) -> Response:
+    config: GatewayConfig = request.app.gateway_config
+    return await _handle_codex_auxiliary(request, config, "images/edits")
+
+
 async def handle_anthropic(request: Any) -> Response | StreamingResponse:
     return await _proxy_handler(request, source_provider="anthropic")
 
@@ -963,6 +979,9 @@ def create_app(config: GatewayConfig, config_path: str | None = None) -> App:
     app.admin_cors_origins = tuple(config.admin_cors_origins)  # type: ignore
 
     # --- Routes ---
+    app.route("/v1/alpha/search", methods=["POST"])(handle_codex_search)
+    app.route("/v1/images/generations", methods=["POST"])(handle_image_generation)
+    app.route("/v1/images/edits", methods=["POST"])(handle_image_edit)
     app.route("/v1/embeddings", methods=["POST"])(handle_embeddings)
     app.route("/v1/responses", methods=["POST"])(handle_openai_responses)
     app.route("/v1/models", methods=["GET"])(handle_list_models)

@@ -52,11 +52,12 @@ def _request(
     app,
     path: str,
     *,
+    method: str = "POST",
     body: bytes = b"not json",
     headers: dict[str, str] | None = None,
 ) -> Request:
     return Request(
-        method="POST",
+        method=method,
         path=path,
         query_string="",
         headers={
@@ -78,7 +79,32 @@ def test_responses_endpoint_remains_agent_facing_generation_route():
     assert b"Invalid JSON body" in response.body
 
 
-@pytest.mark.parametrize("path", ["/v1/responses", "/v1/embeddings"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/alpha/search",
+        "/v1/images/generations",
+        "/v1/images/edits",
+    ],
+)
+def test_codex_auxiliary_endpoints_are_post_only(path: str):
+    app = _make_app()
+
+    response = asyncio.run(app._dispatch(_request(app, path, method="GET")))
+
+    assert response.status_code == 405
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/responses",
+        "/v1/embeddings",
+        "/v1/alpha/search",
+        "/v1/images/generations",
+        "/v1/images/edits",
+    ],
+)
 @pytest.mark.parametrize("value", [[], None, "text", 1, True, 1.25])
 def test_public_post_endpoints_reject_non_object_json(path: str, value: object):
     app = _make_app()
@@ -91,7 +117,16 @@ def test_public_post_endpoints_reject_non_object_json(path: str, value: object):
     assert b"JSON body must be an object" in response.body
 
 
-@pytest.mark.parametrize("path", ["/v1/responses", "/v1/embeddings"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/responses",
+        "/v1/embeddings",
+        "/v1/alpha/search",
+        "/v1/images/generations",
+        "/v1/images/edits",
+    ],
+)
 @pytest.mark.parametrize("model", [[], {}, 42, 0, True, False, "", " \t\n"])
 def test_public_post_endpoints_reject_invalid_model_types(path: str, model: object):
     app = _make_app()
@@ -112,7 +147,16 @@ def test_public_post_endpoints_reject_invalid_model_types(path: str, model: obje
     assert payload["error"]["message"] == "'model' must be a non-empty string"
 
 
-@pytest.mark.parametrize("path", ["/v1/responses", "/v1/embeddings"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/responses",
+        "/v1/embeddings",
+        "/v1/alpha/search",
+        "/v1/images/generations",
+        "/v1/images/edits",
+    ],
+)
 def test_public_post_endpoints_keep_missing_model_error(path: str):
     app = _make_app()
 
@@ -125,7 +169,16 @@ def test_public_post_endpoints_keep_missing_model_error(path: str):
     assert payload["error"]["message"] == "Missing 'model' in request body"
 
 
-@pytest.mark.parametrize("path", ["/v1/responses", "/v1/embeddings"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/responses",
+        "/v1/embeddings",
+        "/v1/alpha/search",
+        "/v1/images/generations",
+        "/v1/images/edits",
+    ],
+)
 @pytest.mark.parametrize(
     ("model", "expected_status"),
     [

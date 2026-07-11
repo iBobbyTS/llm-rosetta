@@ -32,6 +32,14 @@ This is important because Codex relies on fields that are not part of a minimal 
 
 Tool Profiles do not apply to Pass-through providers. The gateway forwards their tool definitions and choices without Profile filtering, modification, namespace expansion, or Rosetta tool injection. Tool Profiles remain selectable for **OpenAI Responses (Rosetta)**, Chat, Anthropic, and Google providers.
 
+Codex's standalone Search and Images clients use three additional JSON endpoints:
+
+- `POST /v1/alpha/search`
+- `POST /v1/images/generations`
+- `POST /v1/images/edits`
+
+The gateway forwards these endpoints only when the request model resolves to an **OpenAI Responses (Pass through)** provider. The configured upstream model alias is applied, but the payload and JSON response otherwise bypass IR conversion. Responses (Rosetta), Chat, Anthropic, and Google routes return `501 Not Implemented` for these endpoints.
+
 ## Responses To Chat Conversion
 
 For Chat-only providers, Codex-Rosetta converts the incoming Responses request into IR, then into a Chat Completions request. The converted Chat request keeps the conversation, tools, tool choice, reasoning configuration, and stream configuration as much as the target API allows.

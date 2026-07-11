@@ -35,7 +35,7 @@ from codex_rosetta.converters.google_genai.image_fetch import (
     ImageFetchTimeoutError,
 )
 from codex_rosetta.pipeline import ConversionError, ConversionPipeline
-from codex_rosetta.routing import ResolvedRoute
+from codex_rosetta.routing import ResolvedRoute, is_openai_responses_passthrough
 
 from codex_rosetta.observability.error_dump import dump_error
 
@@ -239,19 +239,6 @@ def normalize_codex_window_id(value: Any) -> str | None:
             f"{MAX_CODEX_WINDOW_ID_BYTES} UTF-8 bytes"
         )
     return value
-
-
-def _is_openai_responses_direct(route: ResolvedRoute) -> bool:
-    """Return true for same-protocol Responses requests that can pass through."""
-    return (
-        route.responses_processing == "passthrough"
-        and route.source_provider
-        in (
-            "openai_responses",
-            "open_responses",
-        )
-        and route.target_provider in ("openai_responses", "open_responses")
-    )
 
 
 def _uses_responses_chat_bridge(route: ResolvedRoute) -> bool:
@@ -2395,7 +2382,7 @@ async def handle_non_streaming(
         window_tools=window_tools,
     )
 
-    if _is_openai_responses_direct(route):
+    if is_openai_responses_passthrough(route):
         log_original_request(body, state=body_log_state)
         t_upstream = time.perf_counter()
         try:
@@ -3315,7 +3302,7 @@ async def handle_streaming(
         window_tools=window_tools,
     )
 
-    if _is_openai_responses_direct(route):
+    if is_openai_responses_passthrough(route):
         return await _handle_direct_responses_streaming(
             route,
             provider_info,

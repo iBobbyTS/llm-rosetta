@@ -9,13 +9,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from codex_rosetta._vendor.httpserver import StreamingResponse
-from codex_rosetta.gateway.proxy import (
-    _is_openai_responses_direct,
-    handle_non_streaming,
-    handle_streaming,
-)
+from codex_rosetta.gateway.proxy import handle_non_streaming, handle_streaming
 from codex_rosetta.gateway.transport._base import UpstreamResponse, UpstreamStream
-from codex_rosetta.routing import ResolvedRoute
+from codex_rosetta.routing import ResolvedRoute, is_openai_responses_passthrough
 
 
 def _responses_route() -> ResolvedRoute:
@@ -43,8 +39,8 @@ def test_responses_processing_mode_controls_same_protocol_passthrough():
         responses_processing="rosetta",
     )
 
-    assert _is_openai_responses_direct(passthrough) is True
-    assert _is_openai_responses_direct(rosetta) is False
+    assert is_openai_responses_passthrough(passthrough) is True
+    assert is_openai_responses_passthrough(rosetta) is False
 
 
 def test_openai_responses_non_streaming_direct_passthrough():
