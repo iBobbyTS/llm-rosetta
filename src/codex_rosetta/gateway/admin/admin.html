@@ -2197,13 +2197,8 @@ function renderToolItem(item, policies, nested=false) {
 
 function renderToolNamespace(namespaceItem, childIds, index) {
   const children = childIds.map(id => index.items.get(id)).filter(Boolean);
-  const visibleChildren = toolCatalogFilter === 'function'
-    ? children.filter(item => item.type === 'function')
-    : children;
-  if (toolCatalogFilter === 'function' && visibleChildren.length === 0) return '';
-
-  const isExpanded = toolCatalogFilter === 'function' || expandedToolNamespaces.has(namespaceItem.id);
-  const childrenHtml = visibleChildren.map(item => renderToolItem(item, index.policies, true)).join('');
+  const isExpanded = expandedToolNamespaces.has(namespaceItem.id);
+  const childrenHtml = children.map(item => renderToolItem(item, index.policies, true)).join('');
   return `<div class="tool-namespace" data-namespace-id="${escAttr(namespaceItem.id)}"><div class="tool-namespace-head"><button type="button" class="tool-namespace-toggle" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="tool-children-${escAttr(namespaceItem.id)}" onclick="toggleToolNamespace(${handlerArg(namespaceItem.id)})">${isExpanded ? '&#9662;' : '&#9656;'}</button><div class="tool-name">${esc(namespaceItem.name)}</div><div class="tool-badges">${renderToolKindBadge(namespaceItem)}</div><div class="tool-policy">${renderToolStateSelect(namespaceItem)}</div></div><div class="tool-namespace-children" id="tool-children-${escAttr(namespaceItem.id)}"${isExpanded ? '' : ' hidden'}>${childrenHtml}</div></div>`;
 }
 
@@ -2268,7 +2263,7 @@ function renderToolCatalog() {
     const group = index.groups.get('function');
     if (group) sections.push(renderToolGroup('function', group.item_ids, index));
   }
-  if (toolCatalogFilter === 'all' || toolCatalogFilter === 'namespace' || toolCatalogFilter === 'function') {
+  if (toolCatalogFilter === 'all' || toolCatalogFilter === 'namespace') {
     sections.push(renderNamespaceGroup(index));
   }
   for (const groupId of ['hosted', 'custom']) {

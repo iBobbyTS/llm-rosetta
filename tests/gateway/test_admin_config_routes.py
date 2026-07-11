@@ -954,6 +954,33 @@ def test_admin_html_renders_tools_as_compact_cards():
     assert "${esc(t('tools.default'))}:" not in render_item
 
 
+def test_admin_html_function_filter_excludes_namespace_group():
+    """The Function filter renders only the standalone Function group."""
+    html_path = (
+        Path(__file__).parents[2]
+        / "src"
+        / "codex_rosetta"
+        / "gateway"
+        / "admin"
+        / "admin.html"
+    )
+    html = html_path.read_text(encoding="utf-8")
+    render_catalog = html[
+        html.index("function renderToolCatalog()") : html.index("function doLogout()")
+    ]
+    render_namespace = html[
+        html.index(
+            "function renderToolNamespace(namespaceItem, childIds, index)"
+        ) : html.index("function renderToolGroup(groupId, itemIds, index)")
+    ]
+
+    assert (
+        "toolCatalogFilter === 'all' || toolCatalogFilter === 'namespace'"
+        in render_catalog
+    )
+    assert "toolCatalogFilter === 'function'" not in render_namespace
+
+
 def test_admin_html_splits_responses_internal_handling_options():
     html_path = (
         Path(__file__).parents[2]
