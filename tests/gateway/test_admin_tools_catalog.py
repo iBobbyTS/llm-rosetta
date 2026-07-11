@@ -214,9 +214,6 @@ def test_catalog_defaults_and_shared_image_policy():
         assert policies[namespace["policy_id"]]["default"] == "expanded"
 
     modified = {
-        "function.exec_command",
-        "function.write_stdin",
-        "function.shell_command",
         "function.request_user_input",
         "function.create_goal",
         "function.update_goal",
@@ -228,6 +225,21 @@ def test_catalog_defaults_and_shared_image_policy():
         if item.get("policy_id")
         and policies[item["policy_id"]]["default"] == "modified"
     } == modified
+
+    builtin = tool_profile_contract()["builtin"]
+    assert builtin["function.exec_command"] == "passthrough"
+    assert builtin["function.write_stdin"] == "passthrough"
+    assert builtin["function.shell_command"] == "disabled"
+    for item_id in (
+        "function.exec_command",
+        "function.write_stdin",
+        "function.shell_command",
+    ):
+        assert policies[items[item_id]["policy_id"]]["supported"] == [
+            "disabled",
+            "passthrough",
+            "modified",
+        ]
 
     web_search_policy = policies[items["hosted.web_search"]["policy_id"]]
     assert web_search_policy["route_defaults"] == [
@@ -250,7 +262,6 @@ def test_catalog_defaults_and_shared_image_policy():
         "Write",
         "Glob",
         "Grep",
-        "Bash",
     ]
 
 
@@ -297,7 +308,7 @@ def test_admin_tools_view_has_profile_editor_and_all_filters():
     assert "updateToolProfileState" in html
     assert 'type="checkbox"' not in page
     assert "tools.disabledHint" in page
-    assert "toolCatalogFilter === 'function' ||" in html
+    assert "toolCatalogFilter === 'all' || toolCatalogFilter === 'namespace'" in html
     assert "api.get('/admin/api/tools/profiles')" in html
 
 

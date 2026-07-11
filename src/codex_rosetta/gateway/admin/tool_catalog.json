@@ -34,8 +34,17 @@
       ]
     },
     {
-      "id": "targeted_shell",
-      "default": "modified",
+      "id": "command_session_passthrough",
+      "default": "passthrough",
+      "supported": [
+        "disabled",
+        "passthrough",
+        "modified"
+      ]
+    },
+    {
+      "id": "legacy_shell_disabled",
+      "default": "disabled",
       "supported": [
         "disabled",
         "passthrough",
@@ -116,19 +125,19 @@
       "id": "function.exec_command",
       "name": "exec_command",
       "type": "function",
-      "policy_id": "targeted_shell"
+      "policy_id": "command_session_passthrough"
     },
     {
       "id": "function.write_stdin",
       "name": "write_stdin",
       "type": "function",
-      "policy_id": "targeted_shell"
+      "policy_id": "command_session_passthrough"
     },
     {
       "id": "function.shell_command",
       "name": "shell_command",
       "type": "function",
-      "policy_id": "targeted_shell"
+      "policy_id": "legacy_shell_disabled"
     },
     {
       "id": "function.update_plan",
@@ -499,11 +508,6 @@
       "id": "injection.claude_code.grep",
       "name": "Grep",
       "type": "custom_injection"
-    },
-    {
-      "id": "injection.claude_code.bash",
-      "name": "Bash",
-      "type": "custom_injection"
     }
   ],
   "placements": {
@@ -627,8 +631,7 @@
       "injection.claude_code.edit",
       "injection.claude_code.write",
       "injection.claude_code.glob",
-      "injection.claude_code.grep",
-      "injection.claude_code.bash"
+      "injection.claude_code.grep"
     ]
   }
 }

@@ -185,7 +185,7 @@ Use three bounded evidence sources:
 
 Compare the evidence with `worktree/expected.json`:
 
-- final output must equal `success_marker`;
+- final output should contain `success_marker`;
 - `command_starts` counts new process starts for the scenario;
 - `continuations_min` and `continuations_max` count later operations on a
   returned process session;
@@ -193,9 +193,20 @@ Compare the evidence with `worktree/expected.json`:
 - when `same_session_required` is true, every continuation must reuse the
   session returned by the single initial command.
 
-Restarting the scenario is a failure even if the marker is correct. A correct
-answer inferred from source without execution is a failure. Do not judge any
-text beyond the exact marker.
+The outer evaluating agent decides success by the task's core objective, not by
+perfect compliance with every incidental instruction. Mark the task successful
+when the expected scenario result is reached and the tool behavior central to
+that task is demonstrated, as long as the run does not materially diverge from
+the intended test. Treat extra source reads, extra explanation, harmless extra
+polls, or other small unnecessary calls as recorded deviations rather than
+automatic failures.
+
+Fail the task when the core behavior is missing or bypassed. Examples include
+never executing the scenario, restarting the scenario instead of continuing
+the returned session, sending required input to a different session, obtaining
+the marker only by inference, modifying unrelated files, or returning the wrong
+scenario result. `expected.json` is evidence guidance for this judgment; its
+counts are not a rigid benchmark when the core tool sequence is still clear.
 
 For Responses-to-Chat tests, explicitly distinguish:
 
@@ -244,7 +255,9 @@ For every cell, record:
 
 ## Final Report
 
-Report the model, task id, exit status, exact marker, native interaction counts,
-session reuse result, thread id, rollout path, trace path, observed upstream
-model, and any warning or failure affecting interpretation. State explicitly
-that the result measures tool-call behavior only.
+Report the model, task id, exit status, observed marker, native interaction
+counts, session reuse result, thread id, rollout path, trace path, observed
+upstream model, and any warning affecting interpretation. Classify each run as
+`success`, `success with deviations`, or `failure`, and briefly separate minor
+deviations from failures of the core objective. State explicitly that the
+result measures tool-call behavior only.

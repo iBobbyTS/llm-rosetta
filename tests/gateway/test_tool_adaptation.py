@@ -1898,7 +1898,7 @@ def test_gateway_defers_preloaded_plugin_namespaces_but_keeps_base_tools():
 
     assert response.status_code == 200
     names = _tool_names(captured_body["tools"])
-    assert "Bash" in names
+    assert "Bash" not in names
     assert "Edit" in names
     assert "multi_agent_v1__spawn_agent" in names
     assert "codex_app__load_workspace_dependencies" in names

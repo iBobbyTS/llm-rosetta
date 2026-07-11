@@ -25,7 +25,8 @@ MAX_TOOL_CALL_CACHE_TTL_HOURS = 720.0
 DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS = True
 DEFAULT_ENABLE_TOOL_DESCRIPTION_OPTIMIZATION = True
 DEFAULT_ENABLE_PHASE_DETECTION = True
-LOCALIZED_CODE_TOOL_NAMES = frozenset({"Read", "Edit", "Write", "Glob", "Grep", "Bash"})
+LOCALIZED_CODE_TOOL_NAMES = frozenset({"Read", "Edit", "Write", "Glob", "Grep"})
+RECOGNIZED_LOCALIZED_CODE_TOOL_NAMES = LOCALIZED_CODE_TOOL_NAMES | {"Bash"}
 NATIVE_CODE_TOOL_NAMES = frozenset(
     {"apply_patch", "exec_command", "write_stdin", "shell_command"}
 )
@@ -498,7 +499,7 @@ def translate_localized_tool_call_part(
 ) -> TranslatedToolCall | None:
     """Translate one localized IR tool_call part to a Codex-native tool call."""
     localized_name = part.get("tool_name", "")
-    if localized_name not in LOCALIZED_CODE_TOOL_NAMES:
+    if localized_name not in RECOGNIZED_LOCALIZED_CODE_TOOL_NAMES:
         return None
 
     call_id = part.get("tool_call_id", "")
@@ -572,7 +573,7 @@ class LocalizedToolCallStreamTransformer:
 
         if (
             event_type == "tool_call_start"
-            and event.get("tool_name") in LOCALIZED_CODE_TOOL_NAMES
+            and event.get("tool_name") in RECOGNIZED_LOCALIZED_CODE_TOOL_NAMES
         ):
             call_id = event.get("tool_call_id", "")
             if call_id:
@@ -1099,21 +1100,6 @@ def _localized_chat_tool_definitions() -> list[dict[str, Any]]:
                     "multiline": {"type": "boolean"},
                 },
                 "required": ["pattern"],
-                "additionalProperties": False,
-            },
-        ),
-        _function_tool(
-            "Bash",
-            "Run a shell command in the current workspace.",
-            {
-                "type": "object",
-                "properties": {
-                    "command": {"type": "string"},
-                    "timeout": {"type": "integer"},
-                    "description": {"type": "string"},
-                    "run_in_background": {"type": "boolean"},
-                },
-                "required": ["command"],
                 "additionalProperties": False,
             },
         ),

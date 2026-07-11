@@ -196,7 +196,7 @@ def test_profile_limits_localized_native_and_injected_tools():
     for item_id in copy.copy(profile):
         if item_id.startswith("injection."):
             profile[item_id] = "disabled"
-    profile["injection.claude_code.bash"] = "injected"
+    profile["injection.claude_code.read"] = "injected"
     profile["function.exec_command"] = "modified"
     profile["function.shell_command"] = "passthrough"
     body = {
@@ -217,8 +217,8 @@ def test_profile_limits_localized_native_and_injected_tools():
 
     assert "exec_command" not in names
     assert "shell_command" in names
-    assert "Bash" in names
-    assert "Read" not in names
+    assert "Read" in names
+    assert "Edit" not in names
 
 
 def test_injected_state_adds_selected_alias_without_modifying_native_tool():
@@ -226,7 +226,7 @@ def test_injected_state_adds_selected_alias_without_modifying_native_tool():
     for item_id in copy.copy(profile):
         if item_id.startswith("injection."):
             profile[item_id] = "disabled"
-    profile["injection.claude_code.bash"] = "injected"
+    profile["injection.claude_code.read"] = "injected"
     profile["function.exec_command"] = "passthrough"
     profile["function.write_stdin"] = "passthrough"
     profile["function.shell_command"] = "passthrough"
@@ -243,7 +243,7 @@ def test_injected_state_adds_selected_alias_without_modifying_native_tool():
     adapted = _apply_converted_request_tool_adaptation(body, _route(profile))
     names = [tool["function"]["name"] for tool in adapted["tools"]]
 
-    assert names == ["exec_command", "Bash"]
+    assert names == ["exec_command", "Read"]
 
 
 def test_resolve_builtin_profile_returns_independent_copy():
