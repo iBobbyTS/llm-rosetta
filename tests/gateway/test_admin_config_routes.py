@@ -13,6 +13,7 @@ import pytest
 
 from codex_rosetta.gateway.admin.routes import _shared
 from codex_rosetta.gateway.admin.routes.config import (
+    bulk_add_models,
     delete_model_group,
     get_config,
     put_model,
@@ -770,7 +771,7 @@ def test_put_model_persists_tool_adaptation_and_reloads_runtime_config(tmp_path)
     )
     request.json = lambda: {
         "provider": "openai",
-        "capabilities": ["text", "tools"],
+        "capabilities": ["text"],
         "tool_adaptation": {
             "localize_code_editing_tools": False,
             "use_apply_patch_for_code_edits": False,
@@ -822,7 +823,7 @@ def test_put_model_omits_default_tool_adaptation(tmp_path):
     )
     request.json = lambda: {
         "provider": "openai",
-        "capabilities": ["text", "tools"],
+        "capabilities": ["text"],
         "tool_adaptation": {
             "localize_code_editing_tools": False,
             "use_apply_patch_for_code_edits": True,
@@ -838,11 +839,7 @@ def test_put_model_omits_default_tool_adaptation(tmp_path):
     assert response.status_code == 200
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     assert "tool_adaptation" not in saved["models"]["gpt-test"]
-    assert saved["models"]["gpt-test"]["capabilities"] == [
-        "text",
-        "tools",
-        "reasoning",
-    ]
+    assert saved["models"]["gpt-test"]["capabilities"] == ["text"]
 
 
 @pytest.mark.parametrize("ttl", [True, "nan", "inf", "1e999", 720.01])
@@ -923,7 +920,7 @@ def test_put_model_persists_reasoning_mapping_and_drops_legacy_override(tmp_path
     assert response.status_code == 200
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     assert saved["models"]["gpt-test"]["reasoning_mapping"] == "qwen_3_7"
-    assert saved["models"]["gpt-test"]["capabilities"] == ["text", "reasoning"]
+    assert saved["models"]["gpt-test"]["capabilities"] == ["text"]
     assert "reasoning_override" not in saved["models"]["gpt-test"]
     route, _provider = app.gateway_config.resolve("openai_responses", "gpt-test")
     assert route.reasoning_mapping == "qwen_3_7"
@@ -936,7 +933,7 @@ def test_get_config_returns_reasoning_mapping_metadata_and_drops_legacy(tmp_path
         "qwen-public": {
             "provider": "openai",
             "upstream_model": "qwen3.7-plus",
-            "capabilities": ["text", "reasoning"],
+            "capabilities": ["text"],
             "reasoning_override": {"thinking_type": "adaptive"},
         }
     }
@@ -974,7 +971,7 @@ def test_get_config_returns_model_groups_and_effective_models(tmp_path):
             "models": {
                 "grouped": {
                     "upstream_model": "grouped-upstream",
-                    "capabilities": ["text", "tools"],
+                    "capabilities": ["text"],
                 }
             },
         }
@@ -1019,7 +1016,7 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
         "models": {
             "gpt-grouped": {
                 "upstream_model": "gpt-upstream",
-                "capabilities": ["text", "tools"],
+                "capabilities": ["text"],
             }
         },
     }
@@ -1032,7 +1029,7 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
         "provider": "openai",
         "models": {
             "gpt-grouped": {
-                "capabilities": ["text", "tools", "reasoning"],
+                "capabilities": ["text"],
                 "upstream_model": "gpt-upstream",
             }
         },
@@ -1040,7 +1037,7 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
     route, _provider = app.gateway_config.resolve("openai_responses", "gpt-grouped")
     assert route.provider_name == "openai"
     assert route.upstream_model == "gpt-upstream"
-    assert route.model_capabilities == ["text", "tools", "reasoning"]
+    assert route.model_capabilities == ["text"]
 
 
 def test_put_model_group_persists_reasoning_mapping_and_drops_legacy(tmp_path):
@@ -1074,10 +1071,34 @@ def test_put_model_group_persists_reasoning_mapping_and_drops_legacy(tmp_path):
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     entry = saved["model_groups"]["OpenAI"]["models"]["qwen-public"]
     assert entry["reasoning_mapping"] == "auto"
-    assert entry["capabilities"] == ["text", "reasoning"]
+    assert entry["capabilities"] == ["text"]
     assert "reasoning_override" not in entry
     route, _provider = app.gateway_config.resolve("openai_responses", "qwen-public")
     assert route.reasoning_mapping == "auto"
+
+
+def test_bulk_add_models_persists_explicit_llm_capabilities(tmp_path):
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(_config_data()), encoding="utf-8")
+    initial_config = GatewayConfig(_config_data())
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app)
+    request.json = lambda: {
+        "provider": "openai",
+        "models": ["gpt-bulk"],
+        "capabilities": ["text"],
+    }
+
+    response = _run(bulk_add_models(request))
+
+    assert response.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["models"]["gpt-bulk"]["capabilities"] == ["text"]
 
 
 def test_put_model_group_rejects_duplicate_flat_model_name(tmp_path):
@@ -1198,6 +1219,26 @@ def test_admin_html_exposes_reasoning_mapping_controls():
     assert "reasoningThinkingType" not in html
     assert "reasoningBudgetRatio" not in html
     assert "reasoningDisabled" not in html
+
+
+def test_admin_html_assumes_all_llm_models_support_tools():
+    html_path = (
+        Path(__file__).parents[2]
+        / "src"
+        / "codex_rosetta"
+        / "gateway"
+        / "admin"
+        / "admin.html"
+    )
+    html = html_path.read_text(encoding="utf-8")
+
+    assert 'id="capTools"' not in html
+    assert 'id="fetchCapTools"' not in html
+    assert 'class="group-cap" value="tools"' not in html
+    assert "capabilities.push('tools');" not in html
+    assert "capabilities.push('reasoning');" not in html
+    assert "caps.push('tools');" not in html
+    assert "caps.push('reasoning');" not in html
 
 
 def test_admin_html_exposes_provider_preset_protocol_controls():

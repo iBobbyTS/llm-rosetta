@@ -932,7 +932,6 @@ body { padding-bottom: 26px; }
       <div class="checkbox-group">
         <label><input type="checkbox" id="capText" checked> text</label>
         <label><input type="checkbox" id="capVision"> vision</label>
-        <label><input type="checkbox" id="capTools" checked> tools</label>
       </div>
     </div>
     <div class="form-group" id="modelReasoningGroup">
@@ -1034,7 +1033,6 @@ body { padding-bottom: 26px; }
         <label data-i18n="label.capabilities">Capabilities</label>
         <label><input type="checkbox" id="fetchCapText" checked> text</label>
         <label><input type="checkbox" id="fetchCapVision"> vision</label>
-        <label><input type="checkbox" id="fetchCapTools" checked> tools</label>
       </div>
     </div>
     <div id="fetchModelsLoading" style="display:none;text-align:center;padding:20px;color:var(--text-dim)">
@@ -2370,12 +2368,11 @@ function openModelModal(model, provider, capabilities, upstreamModel, sourceMode
     }
   }
   // Set model type and capability checkboxes
-  const caps = capabilities || ['text', 'tools'];
+  const caps = capabilities || ['text'];
   const isEmbedding = caps.includes('embedding') && !caps.includes('text');
   document.querySelector('input[name="modelType"][value="' + (isEmbedding ? 'embedding' : 'llm') + '"]').checked = true;
   document.getElementById('capText').checked = caps.includes('text');
   document.getElementById('capVision').checked = caps.includes('vision');
-  document.getElementById('capTools').checked = caps.includes('tools');
   onModelTypeChange();
 
   // Populate reasoning config section.
@@ -2521,7 +2518,6 @@ function addModelGroupRow(modelName, info) {
       <div class="checkbox-group group-cap-wrap" style="${rowType === 'embedding' ? 'display:none' : ''}">
         <label><input type="checkbox" class="group-cap" value="text"${checked('text')}> text</label>
         <label><input type="checkbox" class="group-cap" value="vision"${checked('vision')}> vision</label>
-        <label><input type="checkbox" class="group-cap" value="tools"${checked('tools')}> tools</label>
       </div>
       <div class="model-group-row-actions">
         <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.model-group-row').remove()">${t('btn.delete')}</button>
@@ -2547,7 +2543,6 @@ async function saveModelGroup() {
       ? ['embedding']
       : [...row.querySelectorAll('.group-cap:checked')].map(cb => cb.value);
     if (modelType !== 'embedding' && caps.length === 0) caps.push('text');
-    if (modelType !== 'embedding' && !caps.includes('reasoning')) caps.push('reasoning');
     const upstream = row.querySelector('.group-upstream-model').value.trim();
     const entry = {capabilities: caps.length ? caps : ['text']};
     if (upstream) entry.upstream_model = upstream;
@@ -2844,8 +2839,6 @@ function _modelCapBadges(caps) {
 
 function _modelTestControls(name, caps) {
   const hasVision = caps.includes('vision');
-  const hasTools = caps.includes('tools');
-  const hasReasoning = caps.includes('reasoning');
   const isEmbedding = caps.includes('embedding');
   if (isEmbedding) {
     return `<button class="btn btn-sm btn-test" style="border-radius:var(--radius);color:var(--orange);font-weight:600" onclick="runTest(${handlerArg(name)},'embedding')">${t('btn.test')}</button>`;
@@ -2856,9 +2849,9 @@ function _modelTestControls(name, caps) {
     <div class="test-menu">
       <div class="test-menu-item" onclick="runTest(${handlerArg(name)},'text')">${t('test.text')}</div>
       <div class="test-menu-item" onclick="runTest(${handlerArg(name)},'stream')">${t('test.stream')}</div>
-      <div class="test-menu-item${hasTools ? '' : ' disabled'}" onclick="${hasTools ? `runTest(${handlerArg(name)},'tools')` : ''}">${t('test.tools')}</div>
+      <div class="test-menu-item" onclick="runTest(${handlerArg(name)},'tools')">${t('test.tools')}</div>
       <div class="test-menu-item${hasVision ? '' : ' disabled'}" onclick="${hasVision ? `runTest(${handlerArg(name)},'vision')` : ''}">${t('test.vision')}</div>
-      <div class="test-menu-item${hasReasoning ? '' : ' disabled'}" onclick="${hasReasoning ? `runTest(${handlerArg(name)},'reasoning')` : ''}">${t('test.reasoning')}</div>
+      <div class="test-menu-item" onclick="runTest(${handlerArg(name)},'reasoning')">${t('test.reasoning')}</div>
     </div>
   </div>`;
 }
@@ -3251,9 +3244,7 @@ async function saveModel() {
     capabilities = [];
     if (document.getElementById('capText').checked) capabilities.push('text');
     if (document.getElementById('capVision').checked) capabilities.push('vision');
-    if (document.getElementById('capTools').checked) capabilities.push('tools');
     if (capabilities.length === 0) capabilities.push('text');
-    capabilities.push('reasoning');
   }
   const body = {provider, capabilities};
   const upstreamModel = document.getElementById('modelUpstream').value.trim();
@@ -3343,7 +3334,6 @@ function openFetchModelsModal() {
   document.querySelector('input[name="fetchModelType"][value="llm"]').checked = true;
   document.getElementById('fetchCapText').checked = true;
   document.getElementById('fetchCapVision').checked = false;
-  document.getElementById('fetchCapTools').checked = true;
   document.getElementById('fetchCapsRow').style.display = '';
   document.getElementById('fetchModelsModal').classList.add('open');
 }
@@ -3359,9 +3349,7 @@ function _getFetchCapabilities() {
   const caps = [];
   if (document.getElementById('fetchCapText').checked) caps.push('text');
   if (document.getElementById('fetchCapVision').checked) caps.push('vision');
-  if (document.getElementById('fetchCapTools').checked) caps.push('tools');
   if (caps.length === 0) caps.push('text');
-  caps.push('reasoning');
   return caps;
 }
 

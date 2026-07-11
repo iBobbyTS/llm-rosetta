@@ -159,20 +159,6 @@ def _clean_tool_adaptation(value: Any) -> dict[str, Any] | None:
     )
 
 
-def _normalize_admin_capabilities(value: Any) -> list[str]:
-    """Normalize admin-submitted model capabilities.
-
-    LLM entries managed by the admin UI always enable reasoning mapping; embedding
-    entries stay embedding-only.
-    """
-    if not isinstance(value, list) or not value:
-        value = ["text"]
-    capabilities = [str(c) for c in value]
-    if "embedding" not in capabilities and "reasoning" not in capabilities:
-        capabilities.append("reasoning")
-    return capabilities
-
-
 def _resolve_model_reasoning_mapping(
     model_name: str,
     entry: dict[str, Any],
@@ -314,8 +300,13 @@ def _clean_group_model_entry(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("model entries must be objects or strings")
 
+    capabilities = value.get("capabilities")
     entry: dict[str, Any] = {
-        "capabilities": _normalize_admin_capabilities(value.get("capabilities"))
+        "capabilities": (
+            [str(capability) for capability in capabilities]
+            if isinstance(capabilities, list) and capabilities
+            else ["text"]
+        )
     }
 
     upstream_model = str(value.get("upstream_model") or "").strip()
@@ -705,7 +696,12 @@ async def put_model(request: Any, **kwargs: Any) -> Response:
             {"error": f"Provider '{provider}' not found in config"}, status_code=400
         )
 
-    capabilities = _normalize_admin_capabilities(body.get("capabilities"))
+    capabilities_value = body.get("capabilities")
+    capabilities = (
+        [str(capability) for capability in capabilities_value]
+        if isinstance(capabilities_value, list) and capabilities_value
+        else ["text"]
+    )
 
     # Handle rename: remove old entry
     rename_from = body.get("rename_from")
@@ -1118,7 +1114,12 @@ async def bulk_add_models(request: Any) -> Response:
     provider = body.get("provider")
     models_to_add: list[str] = body.get("models", [])
     prefix = body.get("prefix", "")
-    capabilities = body.get("capabilities", ["text", "vision", "tools"])
+    capabilities_value = body.get("capabilities", ["text", "vision"])
+    capabilities = (
+        [str(capability) for capability in capabilities_value]
+        if isinstance(capabilities_value, list) and capabilities_value
+        else ["text", "vision"]
+    )
 
     if not provider or not models_to_add:
         return JSONResponse(
