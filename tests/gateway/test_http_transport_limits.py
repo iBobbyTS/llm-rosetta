@@ -925,11 +925,11 @@ def test_tavily_real_loopback_rejects_compressed_response(
         )
 
 
-def test_tavily_real_loopback_timeout_and_cancel(
+def test_tavily_real_loopback_timeout(
     monkeypatch: pytest.MonkeyPatch,
     local_upstream: tuple[_LocalUpstreamServer, str],
 ) -> None:
-    server, base_url = local_upstream
+    _server, base_url = local_upstream
     monkeypatch.setattr(web_search_module, "TAVILY_SEARCH_URL", f"{base_url}/slow")
 
     with pytest.raises(RuntimeError, match="Tavily request failed"):
@@ -940,7 +940,13 @@ def test_tavily_real_loopback_timeout_and_cancel(
             )
         )
 
-    server.slow_started.clear()
+
+def test_tavily_real_loopback_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+    local_upstream: tuple[_LocalUpstreamServer, str],
+) -> None:
+    server, base_url = local_upstream
+    monkeypatch.setattr(web_search_module, "TAVILY_SEARCH_URL", f"{base_url}/slow")
     server.slow_delay = 2
 
     async def _cancel() -> None:
