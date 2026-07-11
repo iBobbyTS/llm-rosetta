@@ -2171,29 +2171,8 @@ function renderToolCatalog() {
   status.hidden = Boolean(html);
 }
 
-// ===================== Inactivity auto-logout =====================
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-let _inactivityTimer = null;
-
-function _resetInactivityTimer() {
-  if (_inactivityTimer) clearTimeout(_inactivityTimer);
-  _inactivityTimer = setTimeout(() => doLogout(), INACTIVITY_TIMEOUT_MS);
-}
-
-function _startInactivityTracking() {
-  ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll', 'click'].forEach(evt => {
-    document.addEventListener(evt, _resetInactivityTimer, { passive: true });
-  });
-  _resetInactivityTimer();
-}
-
-function _stopInactivityTracking() {
-  if (_inactivityTimer) { clearTimeout(_inactivityTimer); _inactivityTimer = null; }
-}
-
 function doLogout() {
   localStorage.removeItem('admin_token');
-  _stopInactivityTracking();
   const btn = document.getElementById('logoutBtn');
   if (btn) btn.style.display = 'none';
   showLoginOverlay();
@@ -2243,7 +2222,6 @@ async function doLogin() {
       document.body.classList.remove('auth-pending');
       const btn = document.getElementById('logoutBtn');
       if (btn) btn.style.display = '';
-      _startInactivityTracking();
       initApp();
     } else {
       document.getElementById('loginError').textContent = t('login.error');
@@ -2269,7 +2247,6 @@ async function checkAuthAndInit() {
         }
         const btn = document.getElementById('logoutBtn');
         if (btn) btn.style.display = '';
-        _startInactivityTracking();
       } else {
         showLoginOverlay();
         return;

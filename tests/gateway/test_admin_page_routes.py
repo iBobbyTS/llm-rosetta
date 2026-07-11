@@ -84,6 +84,15 @@ def test_admin_page_routes_serve_admin_html(path: str):
     assert b'class="admin-nav"' in response.body
 
 
+def test_admin_login_token_has_no_browser_inactivity_expiry() -> None:
+    admin_html = load_admin_html()
+
+    assert "localStorage.setItem('admin_token', data.token);" in admin_html
+    assert "localStorage.removeItem('admin_token');" in admin_html
+    assert "INACTIVITY_TIMEOUT_MS" not in admin_html
+    assert "_startInactivityTracking" not in admin_html
+
+
 def test_admin_dynamic_handlers_and_attributes_use_context_specific_encoding():
     """Malicious persisted names cannot break handler or attribute boundaries."""
     admin_html = load_admin_html()
