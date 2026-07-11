@@ -441,9 +441,9 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
 .tool-group-title { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600; }
 .tool-group-count { color:var(--text-dim);font-size:11px;font-weight:400; }
 .tool-list { display:grid; }
-.tool-item { display:grid;grid-template-columns:minmax(180px,1fr) auto minmax(260px,1.4fr);gap:12px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border); }
-.tool-item:last-child { border-bottom:none; }
-.tool-item.nested { padding-left:34px;background:var(--bg); }
+.tool-card-grid { grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:12px; }
+.tool-item { display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg); }
+.tool-item.nested { background:var(--bg-card); }
 .tool-name { min-width:0;font:12px var(--mono);overflow-wrap:anywhere; }
 .tool-badges { display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end; }
 .tool-badge { display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:2px 7px;font-size:10px;line-height:1.4;color:var(--text-dim);background:var(--bg);white-space:nowrap; }
@@ -459,6 +459,7 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
 .tool-namespace-head { display:grid;grid-template-columns:auto minmax(160px,1fr) auto minmax(260px,1.4fr);gap:10px;align-items:center;padding:9px 12px; }
 .tool-namespace-toggle { width:24px;height:24px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);cursor:pointer;line-height:1; }
 .tool-namespace-toggle:hover { border-color:var(--accent); }
+.tool-namespace-children { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:12px;border-top:1px solid var(--border);background:var(--bg); }
 .tool-namespace-children[hidden] { display:none; }
 .tool-catalog-status { padding:28px;text-align:center;color:var(--text-dim);font-size:13px; }
 .tool-catalog-status.error { color:var(--red); }
@@ -499,11 +500,15 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .section-header { flex-wrap: wrap; gap: 8px; }
-  .tool-item { grid-template-columns:1fr;gap:6px; }
+  .tool-card-grid, .tool-namespace-children { grid-template-columns:1fr; }
   .tool-badges, .tool-policy { justify-content:flex-start; }
   .tool-route-defaults { text-align:left; }
   .tool-namespace-head { grid-template-columns:auto 1fr; }
   .tool-namespace-head .tool-badges, .tool-namespace-head .tool-policy { grid-column:2;justify-content:flex-start; }
+}
+
+@media (min-width: 769px) and (max-width: 1100px) {
+  .tool-card-grid, .tool-namespace-children { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 
 /* DB status footer */
@@ -2072,9 +2077,18 @@ function renderToolPolicy(item, policy) {
   return `<div class="tool-policy"><span class="tool-policy-label">${esc(t('tools.supported'))}</span>${supportedBadges}<span class="tool-badge default ${esc(defaultMode)}">${esc(t('tools.default'))}: ${esc(t('tools.policy.' + defaultMode))}</span>${routeDefaults}</div>`;
 }
 
+function renderToolCurrentState(item, policy) {
+  if (item.type === 'custom_injection') {
+    return `<span class="tool-badge default">${esc(t('tools.defaultInjected'))}</span>`;
+  }
+  if (!policy?.default) return '';
+  const defaultMode = policy.default;
+  return `<span class="tool-badge default ${esc(defaultMode)}">${esc(t('tools.policy.' + defaultMode))}</span>`;
+}
+
 function renderToolItem(item, policies, nested=false) {
   const policy = item.policy_id ? policies.get(item.policy_id) : null;
-  return `<div class="tool-item${nested ? ' nested' : ''}" data-tool-id="${escAttr(item.id)}"><div class="tool-name">${esc(item.name)}</div><div class="tool-badges">${renderToolKindBadge(item)}</div>${renderToolPolicy(item, policy)}</div>`;
+  return `<div class="tool-item${nested ? ' nested' : ''}" data-tool-id="${escAttr(item.id)}"><div class="tool-name">${esc(item.name)}</div>${renderToolCurrentState(item, policy)}</div>`;
 }
 
 function renderToolNamespace(namespaceItem, childIds, index) {
@@ -2094,7 +2108,7 @@ function renderToolGroup(groupId, itemIds, index) {
   const items = itemIds.map(id => index.items.get(id)).filter(Boolean);
   if (items.length === 0) return '';
   const body = items.map(item => renderToolItem(item, index.policies)).join('');
-  return `<section class="tool-group" data-tool-group="${escAttr(groupId)}"><div class="tool-group-title"><span>${esc(t('tools.group.' + groupId))}</span><span class="tool-group-count">${items.length}</span></div><div class="tool-list">${body}</div></section>`;
+  return `<section class="tool-group" data-tool-group="${escAttr(groupId)}"><div class="tool-group-title"><span>${esc(t('tools.group.' + groupId))}</span><span class="tool-group-count">${items.length}</span></div><div class="tool-list tool-card-grid">${body}</div></section>`;
 }
 
 function renderNamespaceGroup(index) {

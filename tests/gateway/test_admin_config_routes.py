@@ -1200,6 +1200,31 @@ def test_admin_html_confirmation_button_triggers_action():
     ) in inline_confirm
 
 
+def test_admin_html_renders_tools_as_compact_cards():
+    """Non-namespace tools render as four-column cards with only current state."""
+    html_path = (
+        Path(__file__).parents[2]
+        / "src"
+        / "codex_rosetta"
+        / "gateway"
+        / "admin"
+        / "admin.html"
+    )
+    html = html_path.read_text(encoding="utf-8")
+    render_item = html[
+        html.index("function renderToolItem(item, policies, nested=false)") : html.index(
+            "function renderToolNamespace(namespaceItem, childIds, index)"
+        )
+    ]
+
+    assert ".tool-card-grid { grid-template-columns:repeat(4,minmax(0,1fr))" in html
+    assert "renderToolCurrentState(item, policy)" in render_item
+    assert "renderToolKindBadge(item)" not in render_item
+    assert "renderToolPolicy(item, policy)" not in render_item
+    assert '<div class="tool-list tool-card-grid">${body}</div>' in html
+    assert "${esc(t('tools.default'))}:" not in render_item
+
+
 def test_admin_html_exposes_request_body_limit_options():
     html_path = (
         Path(__file__).parents[2]
