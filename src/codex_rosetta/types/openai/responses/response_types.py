@@ -14,7 +14,13 @@ SDK Source: <python_env>/lib/python3.10/site-packages/openai/types/responses/
 
 from __future__ import annotations
 
+import sys
 from typing import Any, Literal, TypedDict, Union
+
+if sys.version_info >= (3, 11):
+    from typing import Required
+else:
+    from typing_extensions import Required
 
 __all__ = [
     # Status and error types
@@ -129,7 +135,10 @@ class InputTokensDetails(TypedDict, total=False):
     Reference: openai.types.responses.response_usage.InputTokensDetails
     """
 
-    cached_tokens: int
+    cache_write_tokens: Required[int]
+    """Number of input tokens written to the cache."""
+
+    cached_tokens: Required[int]
     """Number of cached tokens."""
 
 

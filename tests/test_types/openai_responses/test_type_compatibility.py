@@ -337,7 +337,7 @@ class TestUsageTypes:
         """Test creating ResponseUsage."""
         usage: ResponseUsage = {
             "input_tokens": 10,
-            "input_tokens_details": {"cached_tokens": 0},
+            "input_tokens_details": {"cache_write_tokens": 0, "cached_tokens": 0},
             "output_tokens": 20,
             "output_tokens_details": {"reasoning_tokens": 0},
             "total_tokens": 30,
@@ -348,7 +348,7 @@ class TestUsageTypes:
         """Test creating ResponseUsage with token details."""
         usage: ResponseUsage = {
             "input_tokens": 100,
-            "input_tokens_details": {"cached_tokens": 50},
+            "input_tokens_details": {"cache_write_tokens": 10, "cached_tokens": 50},
             "output_tokens": 200,
             "output_tokens_details": {"reasoning_tokens": 80},
             "total_tokens": 300,
@@ -357,7 +357,7 @@ class TestUsageTypes:
 
     def test_input_tokens_details(self):
         """Test creating InputTokensDetails."""
-        details: InputTokensDetails = {"cached_tokens": 50}
+        details: InputTokensDetails = {"cache_write_tokens": 10, "cached_tokens": 50}
         assert details["cached_tokens"] == 50
 
     def test_output_tokens_details(self):
@@ -839,7 +839,7 @@ class TestCompleteResponse:
             "status": "completed",
             "usage": {
                 "input_tokens": 10,
-                "input_tokens_details": {"cached_tokens": 0},
+                "input_tokens_details": {"cache_write_tokens": 0, "cached_tokens": 0},
                 "output_tokens": 12,
                 "output_tokens_details": {"reasoning_tokens": 0},
                 "total_tokens": 22,
@@ -938,7 +938,7 @@ class TestCompleteResponse:
             "status": "completed",
             "usage": {
                 "input_tokens": 50,
-                "input_tokens_details": {"cached_tokens": 0},
+                "input_tokens_details": {"cache_write_tokens": 0, "cached_tokens": 0},
                 "output_tokens": 100,
                 "output_tokens_details": {"reasoning_tokens": 0},
                 "total_tokens": 150,
@@ -1154,7 +1154,7 @@ class TestSDKCompatibility:
                 "input_tokens": 10,
                 "output_tokens": 8,
                 "total_tokens": 18,
-                "input_tokens_details": {"cached_tokens": 0},
+                "input_tokens_details": {"cache_write_tokens": 0, "cached_tokens": 0},
                 "output_tokens_details": {"reasoning_tokens": 0},
             },
         }

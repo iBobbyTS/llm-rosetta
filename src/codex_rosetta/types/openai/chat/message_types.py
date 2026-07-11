@@ -3,8 +3,8 @@
 This module contains TypedDict replicas of OpenAI SDK's message types.
 These types are used for type hints and validation in the Codex-Rosetta library.
 
-Supported OpenAI SDK Versions: 1.x.x through 2.14.0
-Last Updated: 2025-01-10
+Supported OpenAI SDK Version: 2.45.0
+Last Updated: 2026-07-11
 
 Reference: openai.types.chat.*MessageParam
 SDK Source: <python_env>/lib/python3.10/site-packages/openai/types/chat/
@@ -78,11 +78,37 @@ class InputAudio(TypedDict, total=False):
     format: Required[Literal["wav", "mp3"]]
 
 
+class FileFile(TypedDict, total=False):
+    """File data or uploaded file reference for a file content part."""
+
+    file_data: str
+    file_id: str
+    filename: str
+
+
+class FilePromptCacheBreakpoint(TypedDict, total=False):
+    """Explicit prompt cache boundary for a file content part."""
+
+    mode: Required[Literal["explicit"]]
+
+
+class File(TypedDict, total=False):
+    """File content part parameter.
+
+    Reference: openai.types.chat.ChatCompletionContentPartParam.File
+    """
+
+    file: Required[FileFile]
+    type: Required[Literal["file"]]
+    prompt_cache_breakpoint: FilePromptCacheBreakpoint
+
+
 # Union of all content part types
 ChatCompletionContentPartParam = Union[
     ChatCompletionContentPartTextParam,
     ChatCompletionContentPartImageParam,
     ChatCompletionContentPartInputAudioParam,
+    File,
 ]
 
 

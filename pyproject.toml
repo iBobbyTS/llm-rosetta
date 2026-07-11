@@ -39,7 +39,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-openai = ["openai"]
+openai = ["openai==2.45.0"]
 anthropic = ["anthropic"]
 google = ["google-genai"]
 gateway = ["cryptography>=42.0.0"]

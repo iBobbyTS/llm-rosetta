@@ -198,7 +198,7 @@ def test_message_params():
             "role": "user",
             "content": "Hello",
         }
-        sdk_user = SDKUserMessageParam(**user_msg)
+        sdk_user = cast(SDKUserMessageParam, user_msg)
         assert sdk_user["role"] == "user"
 
         # User message with multimodal content
@@ -212,8 +212,22 @@ def test_message_params():
                 },
             ],
         }
-        sdk_user_multi = SDKUserMessageParam(**user_multimodal)
+        sdk_user_multi = cast(SDKUserMessageParam, user_multimodal)
         assert len(cast(list, sdk_user_multi["content"])) == 2
+
+        # User message with file content introduced in OpenAI SDK 2.45.0
+        user_file: ChatCompletionUserMessageParam = {
+            "role": "user",
+            "content": [
+                {
+                    "type": "file",
+                    "file": {"file_id": "file_123"},
+                    "prompt_cache_breakpoint": {"mode": "explicit"},
+                }
+            ],
+        }
+        sdk_user_file = cast(SDKUserMessageParam, user_file)
+        assert cast(list, sdk_user_file["content"])[0]["type"] == "file"
 
         # Assistant message with tool calls
         assistant_msg: ChatCompletionAssistantMessageParam = {
@@ -226,7 +240,7 @@ def test_message_params():
                 }
             ],
         }
-        sdk_assistant = SDKAssistantMessageParam(**assistant_msg)
+        sdk_assistant = cast(SDKAssistantMessageParam, assistant_msg)
         assert sdk_assistant["role"] == "assistant"
 
         # System message
@@ -234,7 +248,7 @@ def test_message_params():
             "role": "system",
             "content": "You are a helpful assistant.",
         }
-        sdk_system = SDKSystemMessageParam(**system_msg)
+        sdk_system = cast(SDKSystemMessageParam, system_msg)
         assert sdk_system["role"] == "system"
 
         # Tool message
@@ -243,7 +257,7 @@ def test_message_params():
             "content": "Weather is sunny",
             "tool_call_id": "call_123",
         }
-        sdk_tool = SDKToolMessageParam(**tool_msg)
+        sdk_tool = cast(SDKToolMessageParam, tool_msg)
         assert sdk_tool["role"] == "tool"
 
     except ImportError:
