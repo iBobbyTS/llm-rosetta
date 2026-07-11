@@ -5,11 +5,11 @@
     "codex_cli_version": "0.144.0",
     "codex_source_commit": "2e8c3756f95789c215d9ea9a5ade6ec377934b3f",
     "static_catalog": true,
-    "future_policy_precedence": [
-      "built_in",
-      "global",
-      "model"
-    ]
+    "profile_selection": "model_group"
+  },
+  "builtin_profile": {
+    "id": "builtin",
+    "name": "Built-in"
   },
   "policies": [
     {

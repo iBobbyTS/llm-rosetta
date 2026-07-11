@@ -179,7 +179,7 @@ The following behavior can be automatically verified using the fixed Codex reque
 - Responses→Responses direct path retains unknown fields, original JSON and original SSE bytes below the transport safety envelope;
 - header allowlist; `x-codex-window-id` extraction; exact/+1 model, window, and request-ID budgets; visible-ASCII/control rejection and missing request-ID generation; rejection before body/log/trace/persistence/state/upstream use; correlation/state-key separation; private no-window scope and terminal cleanup;
 - Responses request → IR/adapter → Chat/Anthropic/Google upstream request;
-- Verify protocol-fixed tool behavior: Responses→Responses is unchanged passthrough, while every Responses→Chat route applies the complete tool localization/restoration policy without model-level switches;
+- Verify model-group Tool Profiles on Responses→Responses and Responses→Chat routes, including Disabled filtering, Modified localization/restoration, Namespace expansion, Rosetta injection selection, and Built-in defaults;
 - Responses Lite `additional_tools`, developer instructions, `reasoning.context=all_turns` and embedded tool filtering/deduplication;
 - non-streaming/streaming upstream response → Codex Responses output;
 - The order of `response.created`, item added/delta/done, completed/failed/incomplete;
@@ -208,7 +208,7 @@ The following behavior can be automatically verified using the fixed Codex reque
   former 50 MB ceiling;
 - `/v1/models` current universal response, and future separately implemented Codex `ModelInfo` catalog contract;
 - Configuration/admin UI saving, defaults and runtime loading of Codex tool-adaptation switches.
-- Static tool-catalog contract: unique IDs, valid placement/policy references, required fixed tools, excluded dynamic tools, policy defaults, and exact CLI/source metadata binding.
+- Static tool-catalog contract: unique IDs, valid placement/policy references, required fixed tools, excluded dynamic tools, Built-in Profile defaults, supported states, and exact CLI/source metadata binding.
 
 New fixture/component coverage in this round:
 

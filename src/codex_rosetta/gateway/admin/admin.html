@@ -431,6 +431,10 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
 
 /* Read-only tools catalog */
 .tools-toolbar { display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:14px 0 16px; }
+.tool-profile-toolbar { display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 4px; }
+.tool-profile-toolbar label { font-size:12px;font-weight:600; }
+.tool-profile-toolbar select { min-width:190px;padding:6px 9px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text); }
+.tool-profile-dirty { color:var(--orange);font-size:11px; }
 .tool-filter-btn { border:1px solid var(--border);background:var(--bg-card);color:var(--text-dim);padding:6px 10px;border-radius:999px;font-size:12px;cursor:pointer; }
 .tool-filter-btn:hover { border-color:var(--accent);color:var(--text); }
 .tool-filter-btn.active { background:var(--accent);border-color:var(--accent);color:#fff; }
@@ -443,6 +447,8 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
 .tool-list { display:grid; }
 .tool-card-grid { grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:12px; }
 .tool-item { display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg); }
+.tool-state-select { max-width:130px;min-width:105px;padding:4px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:999px;color:var(--text);font-size:10px; }
+.tool-state-select:disabled { opacity:.75;cursor:not-allowed; }
 .tool-item.nested { background:var(--bg-card); }
 .tool-name { min-width:0;font:12px var(--mono);overflow-wrap:anywhere; }
 .tool-badges { display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end; }
@@ -701,6 +707,15 @@ body { padding-bottom: 26px; }
         <div style="margin-top:4px" data-i18n="tools.disabledHint">Disabled means the tool is not exposed directly to the upstream model; internal translation may still target it.</div>
       </div>
       <div class="tools-meta" id="toolCatalogMeta"></div>
+      <div class="tool-profile-toolbar">
+        <label for="toolProfileSelect" data-i18n="tools.profile">Profile</label>
+        <select id="toolProfileSelect" onchange="selectToolProfile(this.value)"></select>
+        <button type="button" class="btn btn-sm" onclick="openToolProfileCloneModal()" data-i18n="tools.cloneProfile">Create Copy</button>
+        <button type="button" class="btn btn-sm btn-primary" id="saveToolProfileBtn" onclick="saveToolProfile()" data-i18n="tools.saveProfile">Save Profile</button>
+        <button type="button" class="btn btn-sm" id="resetToolProfileBtn" onclick="resetToolProfileDraft()" data-i18n="tools.resetProfile">Reset</button>
+        <button type="button" class="btn btn-sm btn-danger" id="deleteToolProfileBtn" onclick="deleteToolProfile(toolSelectedProfile, this)" data-i18n="tools.deleteProfile">Delete Profile</button>
+        <span class="tool-profile-dirty" id="toolProfileDirty" hidden data-i18n="tools.unsaved">Unsaved changes</span>
+      </div>
       <div class="tools-toolbar" role="toolbar" data-i18n-aria-label="tools.filterLabel" aria-label="Filter tool types">
         <button type="button" class="tool-filter-btn active" data-tool-filter="all" onclick="setToolCatalogFilter('all')" data-i18n="tools.filter.all">All</button>
         <button type="button" class="tool-filter-btn" data-tool-filter="function" onclick="setToolCatalogFilter('function')" data-i18n="tools.filter.function">Function</button>
@@ -821,6 +836,21 @@ body { padding-bottom: 26px; }
   </div>
 </div>
 
+<!-- Tool Profile Clone Modal -->
+<div class="modal-overlay" id="toolProfileCloneModal">
+  <div class="modal">
+    <h3 data-i18n="tools.cloneProfile">Create Copy</h3>
+    <div class="form-group">
+      <label data-i18n="tools.profileName">Profile Name</label>
+      <input id="toolProfileCloneName" maxlength="128" placeholder="e.g. DeepSeek Tools">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('toolProfileCloneModal')" data-i18n="btn.cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="createToolProfileCopy()" data-i18n="tools.createCopy">Create Copy</button>
+    </div>
+  </div>
+</div>
+
 <!-- Settings Popup (tinyleaf-style) -->
 <div class="settings-popup" id="settingsPopup" onclick="this.classList.remove('open')">
   <div class="settings-popup-panel" onclick="event.stopPropagation()">
@@ -918,6 +948,10 @@ body { padding-bottom: 26px; }
         <label><input type="radio" name="modelGroupType" value="llm" checked onchange="onModelGroupTypeChange()"> <span data-i18n="label.llm">LLM</span></label>
         <label><input type="radio" name="modelGroupType" value="embedding" onchange="onModelGroupTypeChange()"> <span data-i18n="label.embedding">Embedding</span></label>
       </div>
+    </div>
+    <div class="form-group" id="modelGroupToolProfileGroup">
+      <label for="modelGroupToolProfile" data-i18n="tools.profile">Profile</label>
+      <select id="modelGroupToolProfile"></select>
     </div>
     <div class="form-group">
       <label data-i18n="label.modelMappings">Model Mappings</label>
@@ -1112,7 +1146,13 @@ const I18N = {
     'tools.type.function':'Function', 'tools.type.namespace':'Namespace', 'tools.type.hosted':'Hosted',
     'tools.type.custom':'Custom', 'tools.type.custom_injection':'Injection',
     'tools.policy.disabled':'Disabled', 'tools.policy.passthrough':'Passthrough',
-    'tools.policy.modified':'Modified', 'tools.policy.expanded':'Expanded',
+    'tools.policy.modified':'Modified', 'tools.policy.expanded':'Expanded', 'tools.policy.injected':'Injected',
+    'tools.profile':'Profile', 'tools.cloneProfile':'Create Copy', 'tools.saveProfile':'Save Profile',
+    'tools.resetProfile':'Reset', 'tools.deleteProfile':'Delete Profile', 'tools.profileName':'Profile Name',
+    'tools.createCopy':'Create Copy', 'tools.unsaved':'Unsaved changes',
+    'tools.profileSaved':"Tool profile '{name}' saved", 'tools.profileDeleted':"Tool profile '{name}' deleted",
+    'tools.profileNameRequired':'Enter a unique profile name.', 'tools.builtinReadonly':'The Built-in profile is read-only.',
+    'tools.discardConfirm':'Discard unsaved profile changes?',
     'tools.default':'Default', 'tools.supported':'Supports', 'tools.defaultInjected':'Injected by default',
     'tools.route.responses_to_responses':'Responses → Responses', 'tools.route.responses_to_chat':'Responses → Chat',
     'tools.condition.tavily_unavailable':'when Tavily is unavailable',
@@ -1283,7 +1323,13 @@ const I18N = {
     'tools.type.function':'Function', 'tools.type.namespace':'Namespace', 'tools.type.hosted':'Hosted',
     'tools.type.custom':'Custom', 'tools.type.custom_injection':'\u6ce8\u5165',
     'tools.policy.disabled':'\u7981\u7528', 'tools.policy.passthrough':'\u76f4\u4f20',
-    'tools.policy.modified':'\u4fee\u6539', 'tools.policy.expanded':'\u5c55\u5f00',
+    'tools.policy.modified':'\u4fee\u6539', 'tools.policy.expanded':'\u5c55\u5f00', 'tools.policy.injected':'\u6ce8\u5165',
+    'tools.profile':'Profile', 'tools.cloneProfile':'\u521b\u5efa\u526f\u672c', 'tools.saveProfile':'\u4fdd\u5b58 Profile',
+    'tools.resetProfile':'\u91cd\u7f6e', 'tools.deleteProfile':'\u5220\u9664 Profile', 'tools.profileName':'Profile \u540d\u79f0',
+    'tools.createCopy':'\u521b\u5efa\u526f\u672c', 'tools.unsaved':'\u6709\u672a\u4fdd\u5b58\u7684\u4fee\u6539',
+    'tools.profileSaved':"Tool Profile '{name}' \u5df2\u4fdd\u5b58", 'tools.profileDeleted':"Tool Profile '{name}' \u5df2\u5220\u9664",
+    'tools.profileNameRequired':'\u8bf7\u8f93\u5165\u552f\u4e00\u7684 Profile \u540d\u79f0\u3002', 'tools.builtinReadonly':'Built-in Profile \u4e3a\u53ea\u8bfb\u3002',
+    'tools.discardConfirm':'\u653e\u5f03\u5f53\u524d\u672a\u4fdd\u5b58\u7684 Profile \u4fee\u6539\uff1f',
     'tools.default':'\u9ed8\u8ba4', 'tools.supported':'\u652f\u6301', 'tools.defaultInjected':'\u9ed8\u8ba4\u6ce8\u5165',
     'tools.route.responses_to_responses':'Responses \u2192 Responses', 'tools.route.responses_to_chat':'Responses \u2192 Chat',
     'tools.condition.tavily_unavailable':'Tavily \u4e0d\u53ef\u7528\u65f6',
@@ -1875,6 +1921,10 @@ const expandedLogRows = new Set();  // track expanded error detail rows by times
 let toolCatalogData = null;
 let toolCatalogError = '';
 let toolCatalogFilter = 'all';
+let toolProfilesData = null;
+let toolSelectedProfile = 'builtin';
+let toolProfileDraft = {};
+let toolProfileDirty = false;
 const expandedToolNamespaces = new Set();
 
 // Apply saved theme now that state vars are declared
@@ -1930,7 +1980,7 @@ function toggleToolNamespace(namespaceId) {
 }
 
 async function loadToolCatalog() {
-  if (toolCatalogData) {
+  if (toolCatalogData && toolProfilesData) {
     renderToolCatalog();
     return;
   }
@@ -1942,7 +1992,15 @@ async function loadToolCatalog() {
   status.hidden = false;
   groups.hidden = true;
   try {
-    toolCatalogData = await api.get('/admin/api/tools/catalog');
+    [toolCatalogData, toolProfilesData] = await Promise.all([
+      api.get('/admin/api/tools/catalog'),
+      api.get('/admin/api/tools/profiles'),
+    ]);
+    const selected = toolProfilesData.profiles.find(profile => profile.id === toolSelectedProfile)
+      || toolProfilesData.profiles[0];
+    toolSelectedProfile = selected.id;
+    toolProfileDraft = {...selected.tools};
+    toolProfileDirty = false;
     for (const item of toolCatalogData.items || []) {
       if (item.type === 'namespace' && item.default_expanded) {
         expandedToolNamespaces.add(item.id);
@@ -1953,6 +2011,100 @@ async function loadToolCatalog() {
     toolCatalogError = error?.message || String(error);
     renderToolCatalog();
   }
+}
+
+function currentToolProfile() {
+  return toolProfilesData?.profiles?.find(profile => profile.id === toolSelectedProfile) || null;
+}
+
+function renderToolProfileControls() {
+  const select = document.getElementById('toolProfileSelect');
+  const profile = currentToolProfile();
+  if (!select || !profile) return;
+  select.innerHTML = toolProfilesData.profiles.map(item =>
+    `<option value="${escAttr(item.id)}"${item.id === profile.id ? ' selected' : ''}>${esc(item.name)}</option>`
+  ).join('');
+  document.getElementById('saveToolProfileBtn').disabled = profile.readonly || !toolProfileDirty;
+  document.getElementById('resetToolProfileBtn').disabled = !toolProfileDirty;
+  document.getElementById('deleteToolProfileBtn').disabled = profile.readonly;
+  document.getElementById('toolProfileDirty').hidden = !toolProfileDirty;
+}
+
+function selectToolProfile(profileId) {
+  if (toolProfileDirty && !window.confirm(t('tools.discardConfirm'))) {
+    document.getElementById('toolProfileSelect').value = toolSelectedProfile;
+    return;
+  }
+  const profile = toolProfilesData.profiles.find(item => item.id === profileId);
+  if (!profile) return;
+  toolSelectedProfile = profile.id;
+  toolProfileDraft = {...profile.tools};
+  toolProfileDirty = false;
+  renderToolCatalog();
+}
+
+function updateToolProfileState(itemId, state) {
+  if (currentToolProfile()?.readonly) return;
+  toolProfileDraft[itemId] = state;
+  toolProfileDirty = true;
+  renderToolProfileControls();
+}
+
+function resetToolProfileDraft() {
+  const profile = currentToolProfile();
+  if (!profile) return;
+  toolProfileDraft = {...profile.tools};
+  toolProfileDirty = false;
+  renderToolCatalog();
+}
+
+async function saveToolProfile() {
+  const profile = currentToolProfile();
+  if (!profile || profile.readonly) { showToast(t('tools.builtinReadonly'), 'error'); return; }
+  const res = await api.put(`/admin/api/tools/profiles/${encodeURIComponent(profile.id)}`, {tools: toolProfileDraft});
+  if (!res.ok) { showToast(res.error || 'Failed', 'error'); return; }
+  profile.tools = {...toolProfileDraft};
+  toolProfileDirty = false;
+  showToast(t('tools.profileSaved', {name: profile.name}));
+  renderToolProfileControls();
+}
+
+function openToolProfileCloneModal() {
+  document.getElementById('toolProfileCloneName').value = '';
+  document.getElementById('toolProfileCloneModal').classList.add('open');
+}
+
+async function createToolProfileCopy() {
+  const name = document.getElementById('toolProfileCloneName').value.trim();
+  if (!name || toolProfilesData.profiles.some(profile => profile.id === name)) {
+    showToast(t('tools.profileNameRequired'), 'error'); return;
+  }
+  const res = await api.put(`/admin/api/tools/profiles/${encodeURIComponent(name)}`, {tools: toolProfileDraft});
+  if (!res.ok) { showToast(res.error || 'Failed', 'error'); return; }
+  toolProfilesData = await api.get('/admin/api/tools/profiles');
+  if (configData) configData.tool_profiles = {...(configData.tool_profiles || {}), [name]: {tools: {...toolProfileDraft}}};
+  toolSelectedProfile = name;
+  toolProfileDraft = {...toolProfilesData.profiles.find(profile => profile.id === name).tools};
+  toolProfileDirty = false;
+  closeModal('toolProfileCloneModal');
+  renderToolCatalog();
+}
+
+async function _doDeleteToolProfile(name) {
+  const res = await api.del(`/admin/api/tools/profiles/${encodeURIComponent(name)}`);
+  if (!res.ok) { showToast(res.error || 'Failed', 'error'); return; }
+  toolProfilesData = await api.get('/admin/api/tools/profiles');
+  if (configData?.tool_profiles) delete configData.tool_profiles[name];
+  toolSelectedProfile = 'builtin';
+  toolProfileDraft = {...toolProfilesData.profiles[0].tools};
+  toolProfileDirty = false;
+  showToast(t('tools.profileDeleted', {name}));
+  renderToolCatalog();
+}
+
+function deleteToolProfile(name, btn) {
+  if (!name || name === 'builtin') return;
+  inlineConfirm(btn, () => _doDeleteToolProfile(name));
 }
 
 function toolCatalogIndex() {
@@ -2006,18 +2158,18 @@ function renderToolPolicy(item, policy) {
   return `<div class="tool-policy"><span class="tool-policy-label">${esc(t('tools.supported'))}</span>${supportedBadges}<span class="tool-badge default ${esc(defaultMode)}">${esc(t('tools.default'))}: ${esc(t('tools.policy.' + defaultMode))}</span>${routeDefaults}</div>`;
 }
 
-function renderToolCurrentState(item, policy) {
-  if (item.type === 'custom_injection') {
-    return `<span class="tool-badge default">${esc(t('tools.defaultInjected'))}</span>`;
-  }
-  if (!policy?.default) return '';
-  const defaultMode = policy.default;
-  return `<span class="tool-badge default ${esc(defaultMode)}">${esc(t('tools.policy.' + defaultMode))}</span>`;
+function renderToolStateSelect(item) {
+  const states = toolProfilesData?.supported_states?.[item.id] || [];
+  const selected = toolProfileDraft[item.id];
+  const disabled = currentToolProfile()?.readonly ? ' disabled' : '';
+  const options = states.map(state =>
+    `<option value="${escAttr(state)}"${state === selected ? ' selected' : ''}>${esc(t('tools.policy.' + state))}</option>`
+  ).join('');
+  return `<select class="tool-state-select" aria-label="${escAttr(item.name)}" onchange="updateToolProfileState(${handlerArg(item.id)}, this.value)"${disabled}>${options}</select>`;
 }
 
 function renderToolItem(item, policies, nested=false) {
-  const policy = item.policy_id ? policies.get(item.policy_id) : null;
-  return `<div class="tool-item${nested ? ' nested' : ''}" data-tool-id="${escAttr(item.id)}"><div class="tool-name">${esc(item.name)}</div>${renderToolCurrentState(item, policy)}</div>`;
+  return `<div class="tool-item${nested ? ' nested' : ''}" data-tool-id="${escAttr(item.id)}"><div class="tool-name">${esc(item.name)}</div>${renderToolStateSelect(item)}</div>`;
 }
 
 function renderToolNamespace(namespaceItem, childIds, index) {
@@ -2028,9 +2180,8 @@ function renderToolNamespace(namespaceItem, childIds, index) {
   if (toolCatalogFilter === 'function' && visibleChildren.length === 0) return '';
 
   const isExpanded = toolCatalogFilter === 'function' || expandedToolNamespaces.has(namespaceItem.id);
-  const policy = index.policies.get(namespaceItem.policy_id);
   const childrenHtml = visibleChildren.map(item => renderToolItem(item, index.policies, true)).join('');
-  return `<div class="tool-namespace" data-namespace-id="${escAttr(namespaceItem.id)}"><div class="tool-namespace-head"><button type="button" class="tool-namespace-toggle" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="tool-children-${escAttr(namespaceItem.id)}" onclick="toggleToolNamespace(${handlerArg(namespaceItem.id)})">${isExpanded ? '&#9662;' : '&#9656;'}</button><div class="tool-name">${esc(namespaceItem.name)}</div><div class="tool-badges">${renderToolKindBadge(namespaceItem)}</div>${renderToolPolicy(namespaceItem, policy)}</div><div class="tool-namespace-children" id="tool-children-${escAttr(namespaceItem.id)}"${isExpanded ? '' : ' hidden'}>${childrenHtml}</div></div>`;
+  return `<div class="tool-namespace" data-namespace-id="${escAttr(namespaceItem.id)}"><div class="tool-namespace-head"><button type="button" class="tool-namespace-toggle" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="tool-children-${escAttr(namespaceItem.id)}" onclick="toggleToolNamespace(${handlerArg(namespaceItem.id)})">${isExpanded ? '&#9662;' : '&#9656;'}</button><div class="tool-name">${esc(namespaceItem.name)}</div><div class="tool-badges">${renderToolKindBadge(namespaceItem)}</div><div class="tool-policy">${renderToolStateSelect(namespaceItem)}</div></div><div class="tool-namespace-children" id="tool-children-${escAttr(namespaceItem.id)}"${isExpanded ? '' : ' hidden'}>${childrenHtml}</div></div>`;
 }
 
 function renderToolGroup(groupId, itemIds, index) {
@@ -2078,6 +2229,8 @@ function renderToolCatalog() {
     groupsEl.hidden = true;
     return;
   }
+
+  renderToolProfileControls();
 
   const metadata = toolCatalogData.metadata || {};
   meta.textContent = t('tools.catalogMeta', {
@@ -2304,6 +2457,10 @@ function openModelGroupModal(groupName) {
   _populateProviderSelect('modelGroupProvider', provider);
   const groupType = group ? group.type : 'llm';
   document.querySelector(`input[name="modelGroupType"][value="${groupType}"]`).checked = true;
+  const profileSelect = document.getElementById('modelGroupToolProfile');
+  const profileNames = ['builtin', ...Object.keys((configData && configData.tool_profiles) || {}).sort()];
+  profileSelect.innerHTML = profileNames.map(name => `<option value="${escAttr(name)}">${esc(name === 'builtin' ? 'Built-in' : name)}</option>`).join('');
+  profileSelect.value = group?.tool_profile || 'builtin';
   document.getElementById('modelGroupRows').innerHTML = '';
   const models = group ? (group.models || {}) : {};
   const entries = Object.entries(models);
@@ -2321,6 +2478,7 @@ function onModelGroupTypeChange() {
   document.querySelectorAll('#modelGroupRows .group-cap-wrap').forEach(el => {
     el.style.display = groupType === 'llm' ? '' : 'none';
   });
+  document.getElementById('modelGroupToolProfileGroup').style.display = groupType === 'llm' ? '' : 'none';
 }
 
 function addModelGroupRow(modelName, info) {
@@ -2370,6 +2528,7 @@ async function saveModelGroup() {
     return;
   }
   const body = {provider, type: groupType, models};
+  if (groupType === 'llm') body.tool_profile = document.getElementById('modelGroupToolProfile').value || 'builtin';
   const originalName = document.getElementById('modelGroupName').dataset.originalName;
   if (originalName && originalName !== name) {
     body.rename_from = originalName;
@@ -2742,7 +2901,7 @@ function renderModels() {
       <div class="model-group-head">
         <div class="model-group-title">
           <button type="button" class="key-btn model-group-toggle" onclick="toggleModelGroup(${handlerArg(groupName)})" aria-expanded="${collapsed ? 'false' : 'true'}">${collapsed ? '&#9656;' : '&#9662;'}</button>
-          <code>${esc(groupName)}</code><span class="model-group-meta">${esc(group.type)} · ${esc(provider)} · ${modelEntries.length}</span>
+          <code>${esc(groupName)}</code><span class="model-group-meta">${esc(group.type)} · ${esc(provider)} · ${esc(group.tool_profile || 'builtin')} · ${modelEntries.length}</span>
         </div>
         <div class="model-group-actions">
           <button class="btn btn-sm" onclick="openModelGroupModal(${handlerArg(groupName)})">${t('btn.edit')}</button>

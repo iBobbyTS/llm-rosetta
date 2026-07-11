@@ -20,12 +20,17 @@
     }
   },
 
+  // User-created tool profiles are stored here. The immutable "builtin"
+  // profile is bundled with the gateway and is not duplicated in this file.
+  "tool_profiles": {},
+
   // Model groups are the only routing definitions. Group type controls
   // LLM vs embedding behavior; LLM models may declare text/vision only.
   "model_groups": {
     "OpenAI Chat": {
       "provider": "openai_chat",
       "type": "llm",
+      "tool_profile": "builtin",
       "models": {
         "gpt-4o": {"capabilities": ["text", "vision"]},
         "gpt-4o-mini": {"capabilities": ["text", "vision"]},
@@ -37,6 +42,7 @@
     "Anthropic": {
       "provider": "anthropic",
       "type": "llm",
+      "tool_profile": "builtin",
       "models": {
         "claude-sonnet-4-20250514": {"capabilities": ["text", "vision"]},
         "claude-3-5-haiku-20241022": {"capabilities": ["text", "vision"]}
@@ -45,6 +51,7 @@
     "Google": {
       "provider": "google",
       "type": "llm",
+      "tool_profile": "builtin",
       "models": {
         "gemini-2.0-flash": {"capabilities": ["text", "vision"]},
         "gemini-2.5-pro": {"capabilities": ["text", "vision"]},

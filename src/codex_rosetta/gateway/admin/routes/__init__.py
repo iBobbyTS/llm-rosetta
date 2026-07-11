@@ -78,7 +78,12 @@ from .testing import (
     get_test_result,
     start_test,
 )
-from .tools import get_tool_catalog
+from .tools import (
+    delete_tool_profile,
+    get_tool_catalog,
+    get_tool_profiles,
+    put_tool_profile,
+)
 
 
 def register_admin_routes(app: Any) -> None:
@@ -122,8 +127,15 @@ def register_admin_routes(app: Any) -> None:
     )
     app.route("/admin/api/config/server", methods=["PUT"])(put_server_settings)
     app.route("/admin/api/config/reload", methods=["POST"])(reload_config)
-    # Read-only tool catalog
+    # Tool catalog and profiles
     app.route("/admin/api/tools/catalog", methods=["GET"])(get_tool_catalog)
+    app.route("/admin/api/tools/profiles", methods=["GET"])(get_tool_profiles)
+    app.route("/admin/api/tools/profiles/<path:name>", methods=["PUT"])(
+        put_tool_profile
+    )
+    app.route("/admin/api/tools/profiles/<path:name>", methods=["DELETE"])(
+        delete_tool_profile
+    )
     # Metrics
     app.route("/admin/api/metrics", methods=["GET"])(get_metrics)
     app.route("/admin/api/metrics/rebuild", methods=["POST"])(rebuild_metrics)

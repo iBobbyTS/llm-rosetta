@@ -188,13 +188,18 @@ class OpenAIChatConverter(BaseConverter):
             optimize_description = ctx.options.get(
                 "enable_tool_description_optimization", True
             )
-            if optimize_description:
+            modified_names = ctx.options.get("modified_tool_names")
+            if optimize_description and modified_names is None:
                 result["tools"] = self._get_cached_tools_to_p(tools)
             else:
                 result["tools"] = [
                     self.tool_ops.ir_tool_definition_to_p(
                         tool,
-                        enable_tool_description_optimization=False,
+                        enable_tool_description_optimization=(
+                            optimize_description and tool.get("name") in modified_names
+                            if isinstance(modified_names, set)
+                            else False
+                        ),
                     )
                     for tool in tools
                 ]

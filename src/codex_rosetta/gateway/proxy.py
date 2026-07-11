@@ -67,11 +67,14 @@ from .tool_adaptation import (
     LocalizedToolCallStreamTransformer,
     NativeToolCapabilities,
     ReadOutputCache,
+    injected_local_tool_names,
     localized_mapping_from_tool_calls,
+    localized_native_tool_names,
     localize_code_editing_chat_request,
     should_localize_code_tools,
     translate_localized_ir_response,
 )
+from .tool_profiles import modified_tool_names, route_tool_state, tool_catalog_lookups
 from .transport import (
     ProviderInfo,
     UpstreamConnectionError,
@@ -583,7 +586,9 @@ def _remove_tool_definition(
 def _apply_tool_adaptation(
     body: dict[str, Any], route: ResolvedRoute
 ) -> dict[str, Any]:
-    """Apply the fixed Chat-bridge tool policy before conversion."""
+    """Apply the selected profile before passthrough or conversion."""
+    if getattr(route, "tool_profile", None):
+        return _apply_tool_profile_to_request(body, route)
     if route.target_provider == "openai_chat":
         return _remove_tool_definition(
             body,
@@ -591,6 +596,146 @@ def _apply_tool_adaptation(
             aliases=frozenset({"image_gen", "imagegen", "image_gen__imagegen"}),
         )
     return body
+
+
+def _profile_item_id(tool: Any, *, namespace: str | None = None) -> str | None:
+    """Resolve one Responses tool definition to its bundled catalog ID."""
+    if not isinstance(tool, dict):
+        return None
+    name = _tool_identifier(tool)
+    if not isinstance(name, str):
+        return None
+    lookups = tool_catalog_lookups()
+    if namespace is not None:
+        return lookups["namespace_children"].get((namespace, name))
+    tool_type = tool.get("type", "function")
+    return lookups["by_type_name"].get((tool_type, name))
+
+
+def _filter_profile_namespace_children(
+    tool: dict[str, Any], route: ResolvedRoute
+) -> tuple[dict[str, Any] | None, set[str]]:
+    """Filter disabled children from one enabled namespace definition."""
+    namespace = tool.get("name")
+    children = tool.get("tools")
+    if not isinstance(namespace, str) or not isinstance(children, list):
+        return tool, set()
+    kept: list[Any] = []
+    removed: set[str] = set()
+    for child in children:
+        child_id = _profile_item_id(child, namespace=namespace)
+        if child_id is not None and route_tool_state(route, child_id) == "disabled":
+            child_name = _tool_identifier(child)
+            if isinstance(child_name, str):
+                removed.add(child_name)
+        else:
+            kept.append(child)
+    if not kept:
+        return None, removed
+    if len(kept) == len(children):
+        return tool, removed
+    adapted = dict(tool)
+    adapted["tools"] = kept
+    return adapted, removed
+
+
+def _filter_profile_tool(
+    tool: Any, route: ResolvedRoute
+) -> tuple[Any | None, set[str]]:
+    """Apply one profile entry to one Responses tool definition."""
+    item_id = _profile_item_id(tool)
+    if item_id is None:
+        return tool, set()
+    name = _tool_identifier(tool)
+    if route_tool_state(route, item_id) == "disabled":
+        return None, {name} if isinstance(name, str) else set()
+    if isinstance(tool, dict) and tool.get("type") == "namespace":
+        adapted, removed = _filter_profile_namespace_children(tool, route)
+        if adapted is None and isinstance(name, str):
+            removed.add(name)
+        return adapted, removed
+    return tool, set()
+
+
+def _filter_profile_tools(
+    tools: list[Any], route: ResolvedRoute
+) -> tuple[list[Any], set[str]]:
+    """Filter one Responses tool list using small per-entry decisions."""
+    filtered: list[Any] = []
+    removed: set[str] = set()
+    for tool in tools:
+        adapted, item_removed = _filter_profile_tool(tool, route)
+        removed.update(item_removed)
+        if adapted is not None:
+            filtered.append(adapted)
+    return filtered, removed
+
+
+def _filter_profile_lite_input(
+    input_items: list[Any], route: ResolvedRoute
+) -> tuple[list[Any], set[str]]:
+    """Filter tools embedded in Responses Lite additional_tools items."""
+    result: list[Any] = []
+    removed: set[str] = set()
+    for item in input_items:
+        if not isinstance(item, dict) or item.get("type") != "additional_tools":
+            result.append(item)
+            continue
+        embedded = item.get("tools")
+        if not isinstance(embedded, list):
+            result.append(item)
+            continue
+        filtered, item_removed = _filter_profile_tools(embedded, route)
+        removed.update(item_removed)
+        if filtered == embedded:
+            result.append(item)
+        elif filtered:
+            next_item = dict(item)
+            next_item["tools"] = filtered
+            result.append(next_item)
+    return result, removed
+
+
+def _apply_tool_profile_to_request(
+    body: dict[str, Any], route: ResolvedRoute
+) -> dict[str, Any]:
+    """Apply catalog states to top-level and Responses Lite tool containers."""
+    if route.source_provider not in ("openai_responses", "open_responses"):
+        return body
+    changed = False
+    removed_names: set[str] = set()
+    adapted = dict(body)
+
+    tools = body.get("tools")
+    if isinstance(tools, list):
+        filtered, removed = _filter_profile_tools(tools, route)
+        removed_names.update(removed)
+        if filtered != tools:
+            changed = True
+            if filtered:
+                adapted["tools"] = filtered
+            else:
+                adapted.pop("tools", None)
+
+    input_items = body.get("input")
+    if isinstance(input_items, list):
+        next_input, removed = _filter_profile_lite_input(input_items, route)
+        removed_names.update(removed)
+        if next_input != input_items:
+            changed = True
+            adapted["input"] = next_input
+
+    if not changed:
+        return body
+    remaining_tools = bool(_flatten_responses_tools(adapted))
+    if not remaining_tools:
+        adapted.pop("tool_config", None)
+    if (
+        _tool_choice_identifier(adapted.get("tool_choice")) in removed_names
+        or not remaining_tools
+    ):
+        adapted.pop("tool_choice", None)
+    return adapted
 
 
 def _apply_converted_request_tool_adaptation(
@@ -610,8 +755,33 @@ def _apply_converted_request_tool_adaptation(
             mappings=persistent_mappings,
             used_call_ids=used_mapping_call_ids,
             capabilities=capabilities,
+            native_tool_names=localized_native_tool_names(route),
+            injected_tool_names=injected_local_tool_names(route),
         )
     return body
+
+
+def _source_tool_capabilities_after_profile(
+    original_body: dict[str, Any],
+    adapted_body: dict[str, Any],
+    route: ResolvedRoute,
+) -> NativeToolCapabilities:
+    """Preserve internal apply_patch capability when only direct exposure is off."""
+    capabilities = NativeToolCapabilities.from_chat_tools(
+        _flatten_responses_tools(adapted_body)
+    )
+    if route_tool_state(route, "custom.apply_patch") != "disabled":
+        return capabilities
+    original = NativeToolCapabilities.from_chat_tools(
+        _flatten_responses_tools(original_body)
+    )
+    if not original.has_custom_apply_patch:
+        return capabilities
+    return NativeToolCapabilities(
+        has_exec_command=capabilities.has_exec_command,
+        has_shell_command=capabilities.has_shell_command,
+        has_custom_apply_patch=True,
+    )
 
 
 def _pop_tool_localization_capabilities(
@@ -2110,6 +2280,10 @@ def _prepare_window_tool_search_request(
     """Update per-window loadable-tool state and return whether injection applies."""
     if not (_uses_responses_chat_bridge(route) and codex_window_id):
         return False
+    if getattr(route, "tool_profile", None):
+        # Profile-managed namespaces are either removed or eagerly expanded by
+        # the Responses converter; Chat has no native namespace wire shape.
+        return False
     deferred_tools = _defer_responses_namespace_tools_for_chat(
         body,
         optimize_tool_descriptions=True,
@@ -2204,9 +2378,10 @@ async def handle_non_streaming(
     used_mapping_call_ids: set[str] = set()
     profile: dict[str, Any] = {}
     # model was already injected into body by app.py
+    original_body = body
     body = _apply_tool_adaptation(body, route)
-    source_tool_capabilities = NativeToolCapabilities.from_chat_tools(
-        _flatten_responses_tools(body)
+    source_tool_capabilities = _source_tool_capabilities_after_profile(
+        original_body, body, route
     )
     use_window_tool_search = _prepare_window_tool_search_request(
         route=route,
@@ -2297,6 +2472,7 @@ async def handle_non_streaming(
         provider_name=route.provider_name,
         conversion_options={
             "enable_tool_description_optimization": True,
+            "modified_tool_names": modified_tool_names(route),
             "image_fetch_policy": image_fetch_policy,
         },
     )
@@ -2821,6 +2997,8 @@ def _prepare_web_search_runtime_and_body(
 ) -> tuple[dict[str, Any], WebSearchRuntime | None]:
     if not _uses_responses_chat_bridge(route):
         return body, None
+    if route_tool_state(route, "hosted.web_search", "modified") != "modified":
+        return body, None
 
     runtime = build_web_search_runtime(
         body,
@@ -3114,6 +3292,7 @@ async def handle_streaming(
     used_mapping_call_ids: set[str] = set()
     profile: dict[str, Any] = {}
     # model was already injected into body by app.py
+    original_body = body
     body = _apply_tool_adaptation(body, route)
     body, web_search_runtime = _prepare_web_search_runtime_and_body(
         route=route,
@@ -3121,8 +3300,8 @@ async def handle_streaming(
         web_search_config=web_search_config,
         web_search_client=web_search_client,
     )
-    source_tool_capabilities = NativeToolCapabilities.from_chat_tools(
-        _flatten_responses_tools(body)
+    source_tool_capabilities = _source_tool_capabilities_after_profile(
+        original_body, body, route
     )
     use_window_tool_search = _prepare_window_tool_search_request(
         route=route,
@@ -3163,6 +3342,7 @@ async def handle_streaming(
         provider_name=route.provider_name,
         conversion_options={
             "enable_tool_description_optimization": True,
+            "modified_tool_names": modified_tool_names(route),
             "image_fetch_policy": image_fetch_policy,
         },
     )

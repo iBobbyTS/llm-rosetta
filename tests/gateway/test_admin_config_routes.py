@@ -816,6 +816,7 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
     request.json = lambda: {
         "provider": "openai",
         "type": "llm",
+        "tool_profile": "builtin",
         "models": {
             "gpt-grouped": {
                 "upstream_model": "gpt-upstream",
@@ -831,6 +832,7 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
     assert saved["model_groups"]["OpenAI"] == {
         "provider": "openai",
         "type": "llm",
+        "tool_profile": "builtin",
         "models": {
             "gpt-grouped": {
                 "capabilities": ["text"],
@@ -915,7 +917,7 @@ def test_admin_html_renders_tools_as_compact_cards():
     ]
 
     assert ".tool-card-grid { grid-template-columns:repeat(4,minmax(0,1fr))" in html
-    assert "renderToolCurrentState(item, policy)" in render_item
+    assert "renderToolStateSelect(item)" in render_item
     assert "renderToolKindBadge(item)" not in render_item
     assert "renderToolPolicy(item, policy)" not in render_item
     assert '<div class="tool-list tool-card-grid">${body}</div>' in html

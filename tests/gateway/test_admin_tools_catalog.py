@@ -1,4 +1,4 @@
-"""Contract tests for the bundled read-only Admin tools catalog."""
+"""Contract tests for the Admin tool catalog and profiles."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from codex_rosetta.gateway.admin.static import load_admin_html
 from codex_rosetta.gateway.admin.tool_catalog import load_tool_catalog
 from codex_rosetta.gateway.app import create_app
 from codex_rosetta.gateway.config import GatewayConfig
+from codex_rosetta.gateway.tool_profiles import tool_profile_contract
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = (
@@ -124,6 +125,18 @@ def _request(app, method: str = "GET") -> Request:
     )
 
 
+def _api_request(app, method: str, path: str, body: dict | None = None) -> Request:
+    return Request(
+        method=method,
+        path=path,
+        query_string="",
+        headers={"x-admin-token": app.auth_state.admin_token},
+        body=json.dumps(body or {}).encode(),
+        client_addr=("127.0.0.1", 12345),
+        app=app,
+    )
+
+
 def test_catalog_has_unique_resolvable_ids_and_policies():
     catalog, items, policies, groups, namespaces = _catalog_maps()
 
@@ -187,11 +200,8 @@ def test_catalog_defaults_and_shared_image_policy():
 
     assert catalog["metadata"]["schema_version"] == 1
     assert catalog["metadata"]["codex_cli_version"] == "0.144.0"
-    assert catalog["metadata"]["future_policy_precedence"] == [
-        "built_in",
-        "global",
-        "model",
-    ]
+    assert catalog["metadata"]["profile_selection"] == "model_group"
+    assert catalog["builtin_profile"] == {"id": "builtin", "name": "Built-in"}
 
     assert policies[items["custom.apply_patch"]["policy_id"]]["default"] == ("disabled")
     image_policy = items["hosted.image_generation"]["policy_id"]
@@ -265,7 +275,7 @@ def test_catalog_api_is_read_only_and_returns_bundled_resource():
         assert response.status_code == 405
 
 
-def test_admin_tools_view_has_all_filters_and_no_editing_controls():
+def test_admin_tools_view_has_profile_editor_and_all_filters():
     html = load_admin_html()
     page = html.split('id="page-tools"', 1)[1].split("<!-- Dashboard Page -->", 1)[0]
 
@@ -281,8 +291,87 @@ def test_admin_tools_view_has_all_filters_and_no_editing_controls():
     ):
         assert f'data-tool-filter="{filter_name}"' in page
 
-    assert "<select" not in page
+    assert 'id="toolProfileSelect"' in page
+    assert 'id="saveToolProfileBtn"' in page
+    assert 'onclick="openToolProfileCloneModal()"' in page
+    assert "updateToolProfileState" in html
     assert 'type="checkbox"' not in page
     assert "tools.disabledHint" in page
     assert "toolCatalogFilter === 'function' ||" in html
-    assert "policy.route_defaults" in html
+    assert "api.get('/admin/api/tools/profiles')" in html
+
+
+def test_admin_tool_profile_crud_and_reference_guard(tmp_path):
+    raw = {
+        "providers": {
+            "test-provider": {
+                "api_key": "sk-test",
+                "base_url": "https://api.example.test/v1",
+                "type": "openai",
+            }
+        },
+        "tool_profiles": {},
+        "model_groups": {
+            "Test": {
+                "provider": "test-provider",
+                "type": "llm",
+                "tool_profile": "builtin",
+                "models": {"gpt-test": {"capabilities": ["text"]}},
+            }
+        },
+        "server": {
+            "admin_password": "test-admin-password",
+            "api_keys": [{"id": "test-client", "label": "Test", "key": "test-key"}],
+        },
+    }
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(raw), encoding="utf-8")
+    app = create_app(GatewayConfig(raw), str(config_path))
+    tools = dict(tool_profile_contract()["builtin"])
+    tools["function.update_plan"] = "disabled"
+
+    response = asyncio.run(
+        app._dispatch(
+            _api_request(
+                app,
+                "PUT",
+                "/admin/api/tools/profiles/restricted",
+                {"tools": tools},
+            )
+        )
+    )
+    assert response.status_code == 200
+
+    response = asyncio.run(
+        app._dispatch(
+            _api_request(
+                app,
+                "PUT",
+                "/admin/api/config/model-groups/Test",
+                {
+                    "provider": "test-provider",
+                    "type": "llm",
+                    "tool_profile": "restricted",
+                    "models": {"gpt-test": {"capabilities": ["text"]}},
+                },
+            )
+        )
+    )
+    assert response.status_code == 200
+    route, _provider = getattr(app, "gateway_config").resolve(
+        "openai_responses", "gpt-test"
+    )
+    assert route.tool_profile_name == "restricted"
+    assert route.tool_profile["function.update_plan"] == "disabled"
+
+    response = asyncio.run(
+        app._dispatch(
+            _api_request(
+                app,
+                "DELETE",
+                "/admin/api/tools/profiles/restricted",
+            )
+        )
+    )
+    assert response.status_code == 409
+    assert json.loads(getattr(response, "body"))["model_groups"] == ["Test"]

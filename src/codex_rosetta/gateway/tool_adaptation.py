@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .state_scope import GatewayStateScope
+from .tool_profiles import route_tool_state, tool_catalog_lookups
 
 
 DEFAULT_TOOL_CALL_CACHE_TTL_HOURS = 24.0
@@ -262,10 +263,55 @@ class CodexToolLocalizationStore:
 
 def should_localize_code_tools(route: Any) -> bool:
     """Return whether a Responses request is crossing into Chat."""
-    return (
+    is_bridge = (
         getattr(route, "source_provider", None)
         in ("openai_responses", "open_responses")
         and getattr(route, "target_provider", None) == "openai_chat"
+    )
+    if not is_bridge:
+        return False
+    if not getattr(route, "tool_profile", None):
+        return True
+    lookup = tool_catalog_lookups()["by_type_name"]
+    native_modified = any(
+        route_tool_state(route, lookup[(tool_type, name)]) == "modified"
+        for tool_type, name in (
+            ("custom", "apply_patch"),
+            ("function", "exec_command"),
+            ("function", "write_stdin"),
+            ("function", "shell_command"),
+        )
+    )
+    return native_modified or bool(injected_local_tool_names(route))
+
+
+def localized_native_tool_names(route: Any) -> frozenset[str]:
+    """Return native code tools selected for Chat localization."""
+    if not getattr(route, "tool_profile", None):
+        return NATIVE_CODE_TOOL_NAMES
+    lookup = tool_catalog_lookups()["by_type_name"]
+    return frozenset(
+        name
+        for tool_type, name in (
+            ("custom", "apply_patch"),
+            ("function", "exec_command"),
+            ("function", "write_stdin"),
+            ("function", "shell_command"),
+        )
+        if route_tool_state(route, lookup[(tool_type, name)]) == "modified"
+    )
+
+
+def injected_local_tool_names(route: Any) -> frozenset[str]:
+    """Return Rosetta-localized tools enabled by the selected profile."""
+    if not getattr(route, "tool_profile", None):
+        return LOCALIZED_CODE_TOOL_NAMES
+    lookup = tool_catalog_lookups()
+    return frozenset(
+        item["name"]
+        for item_id, item in lookup["items"].items()
+        if item["type"] == "custom_injection"
+        and route_tool_state(route, item_id, "injected") == "injected"
     )
 
 
@@ -314,6 +360,8 @@ def localize_code_editing_chat_request(
     mappings: list[LocalizedToolMapping] | None = None,
     used_call_ids: set[str] | None = None,
     capabilities: NativeToolCapabilities | None = None,
+    native_tool_names: frozenset[str] = NATIVE_CODE_TOOL_NAMES,
+    injected_tool_names: frozenset[str] = LOCALIZED_CODE_TOOL_NAMES,
 ) -> dict[str, Any]:
     """Replace Codex-native edit tools with Claude-Code-like Chat tools."""
     adapted = dict(body)
@@ -327,21 +375,26 @@ def localize_code_editing_chat_request(
         existing_names: set[str] = set()
         for tool in tools:
             name = _chat_tool_name(tool)
-            if name in NATIVE_CODE_TOOL_NAMES:
+            if name in native_tool_names:
                 removed_native = True
                 continue
             if name:
                 existing_names.add(name)
             preserved_tools.append(tool)
 
-        if removed_native or LOCALIZED_CODE_TOOL_NAMES.intersection(existing_names):
+        if (
+            removed_native
+            or injected_tool_names
+            or LOCALIZED_CODE_TOOL_NAMES.intersection(existing_names)
+        ):
             localized_tools = [
                 tool
                 for tool in _localized_chat_tool_definitions()
-                if _chat_tool_name(tool) not in existing_names
+                if _chat_tool_name(tool) in injected_tool_names
+                and _chat_tool_name(tool) not in existing_names
             ]
             adapted["tools"] = preserved_tools + localized_tools
-            if _tool_choice_name(adapted.get("tool_choice")) in NATIVE_CODE_TOOL_NAMES:
+            if _tool_choice_name(adapted.get("tool_choice")) in native_tool_names:
                 adapted["tool_choice"] = "auto"
             adapted[LOCALIZATION_CAPABILITIES_KEY] = native_capabilities.to_metadata()
 

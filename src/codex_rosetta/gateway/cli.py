@@ -96,6 +96,7 @@ def _empty_config_template() -> dict[str, Any]:
     """Return a new secure config scaffold."""
     return {
         "providers": {},
+        "tool_profiles": {},
         "model_groups": {},
         "server": _secure_server_template(),
     }
@@ -146,19 +147,23 @@ def _cmd_init(args: argparse.Namespace) -> None:
             "OpenAI": {
                 "provider": "openai_chat",
                 "type": "llm",
+                "tool_profile": "builtin",
                 "models": {"gpt-4o": {}},
             },
             "Anthropic": {
                 "provider": "anthropic",
                 "type": "llm",
+                "tool_profile": "builtin",
                 "models": {"claude-sonnet-4-20250514": {}},
             },
             "Google": {
                 "provider": "google",
                 "type": "llm",
+                "tool_profile": "builtin",
                 "models": {"gemini-2.0-flash": {}},
             },
         },
+        "tool_profiles": {},
         "server": _secure_server_template(),
     }
 
@@ -238,6 +243,7 @@ def _cmd_add_model_group(args: argparse.Namespace) -> None:
     groups[args.name] = {
         "provider": args.provider,
         "type": args.type,
+        **({"tool_profile": "builtin"} if args.type == "llm" else {}),
         "models": {},
     }
     _write_jsonc(path, data)

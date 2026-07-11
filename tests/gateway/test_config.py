@@ -505,5 +505,6 @@ def test_cli_add_model_group_then_grouped_model(tmp_path):
     assert saved["model_groups"]["Test LLMs"] == {
         "provider": "test",
         "type": "llm",
+        "tool_profile": "builtin",
         "models": {"gpt-test": {}},
     }

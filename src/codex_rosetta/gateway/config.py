@@ -20,6 +20,12 @@ from codex_rosetta.routing import ResolvedRoute
 
 from .providers import build_provider_info
 from .stream_trace import StreamTraceConfig
+from .tool_profiles import (
+    BUILTIN_TOOL_PROFILE,
+    normalize_tool_profiles,
+    resolve_tool_profile,
+    validate_tool_profile_reference,
+)
 from .transport import ProviderInfo
 
 logger = logging.getLogger("codex-rosetta-gateway")
@@ -433,6 +439,22 @@ class GatewayConfig:
         self.models, self.model_capabilities, self.model_upstream_names = (
             self._parse_models(self._expanded_raw_models, self._raw_providers)
         )
+        self.tool_profiles = normalize_tool_profiles(raw.get("tool_profiles"))
+        self.model_tool_profile_names: dict[str, str] = {}
+        raw_model_groups = raw.get("model_groups", {})
+        if isinstance(raw_model_groups, dict):
+            for group_name, group in raw_model_groups.items():
+                if not isinstance(group, dict) or group.get("type") != "llm":
+                    continue
+                profile_name = validate_tool_profile_reference(
+                    group.get("tool_profile", BUILTIN_TOOL_PROFILE),
+                    self.tool_profiles,
+                    field=f"config: model_groups.{group_name}.tool_profile",
+                )
+                group_models = group.get("models", {})
+                if isinstance(group_models, dict):
+                    for model_name in group_models:
+                        self.model_tool_profile_names[model_name] = profile_name
 
         _server = raw.get("server", {})
         self.host: str = _server.get("host", "127.0.0.1")
@@ -774,6 +796,9 @@ class GatewayConfig:
         shim_name = self.provider_shim_names.get(provider_name)
         upstream_model = self.model_upstream_names.get(model)
         caps = self.model_capabilities.get(model, list(self.DEFAULT_CAPABILITIES))
+        tool_profile_name = self.model_tool_profile_names.get(
+            model, BUILTIN_TOOL_PROFILE
+        )
 
         route = ResolvedRoute(
             source_provider=source_provider,
@@ -782,5 +807,7 @@ class GatewayConfig:
             shim_name=shim_name,
             upstream_model=upstream_model,
             model_capabilities=caps,
+            tool_profile_name=tool_profile_name,
+            tool_profile=resolve_tool_profile(tool_profile_name, self.tool_profiles),
         )
         return route, self.providers[provider_name]

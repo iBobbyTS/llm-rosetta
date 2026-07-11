@@ -1,0 +1,195 @@
+"""Tool-profile contracts derived from the bundled Codex tool catalog."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Any
+
+from .admin.tool_catalog import load_tool_catalog
+
+BUILTIN_TOOL_PROFILE = "builtin"
+MAX_TOOL_PROFILE_NAME_LENGTH = 128
+
+
+@lru_cache(maxsize=1)
+def tool_profile_contract() -> dict[str, Any]:
+    """Return supported states and the immutable bundled profile."""
+    catalog = load_tool_catalog()
+    policies = {policy["id"]: policy for policy in catalog["policies"]}
+    supported: dict[str, tuple[str, ...]] = {}
+    builtin: dict[str, str] = {}
+
+    for item in catalog["items"]:
+        item_id = item["id"]
+        item_type = item["type"]
+        if item_type == "custom_injection":
+            supported[item_id] = ("disabled", "injected")
+            builtin[item_id] = "injected"
+            continue
+
+        policy = policies[item["policy_id"]]
+        if item_type == "namespace":
+            supported[item_id] = ("disabled", "expanded")
+            builtin[item_id] = (
+                "disabled" if policy["default"] == "disabled" else "expanded"
+            )
+            continue
+
+        states = tuple(policy["supported"])
+        supported[item_id] = states
+        builtin[item_id] = policy["default"]
+
+    return {
+        "profile": dict(catalog["builtin_profile"]),
+        "supported": supported,
+        "builtin": builtin,
+    }
+
+
+def validate_tool_profile_name(value: Any, *, allow_builtin: bool = False) -> str:
+    """Validate and return one persisted profile identifier."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("tool profile name must be a non-empty string")
+    name = value.strip()
+    if len(name) > MAX_TOOL_PROFILE_NAME_LENGTH:
+        raise ValueError(
+            f"tool profile name must be at most {MAX_TOOL_PROFILE_NAME_LENGTH} characters"
+        )
+    if name == BUILTIN_TOOL_PROFILE and not allow_builtin:
+        raise ValueError("the builtin tool profile is read-only")
+    return name
+
+
+def normalize_tool_profile_tools(value: Any, *, field: str) -> dict[str, str]:
+    """Validate a complete tool-state mapping against the bundled catalog."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{field}.tools must be an object")
+
+    contract = tool_profile_contract()
+    supported: dict[str, tuple[str, ...]] = contract["supported"]
+    actual_ids = set(value)
+    expected_ids = set(supported)
+    missing = sorted(expected_ids - actual_ids)
+    unknown = sorted(actual_ids - expected_ids)
+    if missing:
+        raise ValueError(f"{field}.tools is missing catalog IDs: {missing}")
+    if unknown:
+        raise ValueError(f"{field}.tools contains unknown catalog IDs: {unknown}")
+
+    normalized: dict[str, str] = {}
+    for item_id, state in value.items():
+        if not isinstance(state, str) or state not in supported[item_id]:
+            raise ValueError(
+                f"{field}.tools.{item_id} must be one of {list(supported[item_id])}"
+            )
+        normalized[item_id] = state
+    return normalized
+
+
+def normalize_tool_profiles(value: Any) -> dict[str, dict[str, str]]:
+    """Validate user-defined profiles from the top-level config object."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("config: 'tool_profiles' must be an object")
+
+    profiles: dict[str, dict[str, str]] = {}
+    for raw_name, raw_profile in value.items():
+        name = validate_tool_profile_name(raw_name)
+        if not isinstance(raw_profile, dict):
+            raise ValueError(f"config: tool_profiles.{name} must be an object")
+        unsupported_fields = set(raw_profile) - {"tools"}
+        if unsupported_fields:
+            raise ValueError(
+                f"config: tool_profiles.{name} has unsupported fields: "
+                f"{sorted(unsupported_fields)}"
+            )
+        profiles[name] = normalize_tool_profile_tools(
+            raw_profile.get("tools"), field=f"config: tool_profiles.{name}"
+        )
+    return profiles
+
+
+def resolve_tool_profile(
+    name: str,
+    profiles: dict[str, dict[str, str]],
+) -> dict[str, str]:
+    """Resolve a built-in or user profile to an independent state mapping."""
+    if name == BUILTIN_TOOL_PROFILE:
+        return dict(tool_profile_contract()["builtin"])
+    try:
+        return dict(profiles[name])
+    except KeyError as exc:
+        raise ValueError(f"unknown tool profile '{name}'") from exc
+
+
+def validate_tool_profile_reference(
+    value: Any,
+    profiles: dict[str, dict[str, str]],
+    *,
+    field: str,
+) -> str:
+    """Validate a model-group profile reference."""
+    name = validate_tool_profile_name(value, allow_builtin=True)
+    if name != BUILTIN_TOOL_PROFILE and name not in profiles:
+        raise ValueError(f"{field} references unknown tool profile '{name}'")
+    return name
+
+
+def tool_profiles_for_admin(
+    profiles: dict[str, dict[str, str]],
+) -> list[dict[str, Any]]:
+    """Build the ordered public representation consumed by the Admin UI."""
+    contract = tool_profile_contract()
+    result = [
+        {
+            **contract["profile"],
+            "tools": dict(contract["builtin"]),
+            "readonly": True,
+        }
+    ]
+    result.extend(
+        {"id": name, "name": name, "tools": dict(tools), "readonly": False}
+        for name, tools in sorted(profiles.items())
+    )
+    return result
+
+
+@lru_cache(maxsize=1)
+def tool_catalog_lookups() -> dict[str, Any]:
+    """Return catalog indexes used by request-time policy application."""
+    catalog = load_tool_catalog()
+    items = {item["id"]: item for item in catalog["items"]}
+    by_type_name = {
+        (item["type"], item["name"]): item["id"] for item in catalog["items"]
+    }
+    namespace_children: dict[tuple[str, str], str] = {}
+    for placement in catalog["placements"]["namespaces"]:
+        namespace = items[placement["namespace_id"]]["name"]
+        for child_id in placement["child_ids"]:
+            namespace_children[(namespace, items[child_id]["name"])] = child_id
+    return {
+        "items": items,
+        "by_type_name": by_type_name,
+        "namespace_children": namespace_children,
+    }
+
+
+def route_tool_state(route: Any, item_id: str, default: str = "passthrough") -> str:
+    """Return one effective state, retaining fixed behavior for bare test routes."""
+    profile = getattr(route, "tool_profile", None)
+    if not profile:
+        return default
+    return profile.get(item_id, default)
+
+
+def modified_tool_names(route: Any) -> set[str] | None:
+    """Return catalog names whose Chat definitions may be modified."""
+    if not getattr(route, "tool_profile", None):
+        return None
+    return {
+        item["name"]
+        for item_id, item in tool_catalog_lookups()["items"].items()
+        if item["type"] not in {"namespace", "custom_injection"}
+        and route_tool_state(route, item_id) == "modified"
+    }
