@@ -527,11 +527,8 @@ class GatewayConfig:
                     "created": "",
                 }
             ]
-        # Debug / logging options (config + env-var overrides)
+        # Sensitive body logging option (config + env-var override)
         _debug = raw.get("debug", {})
-        self.verbose: bool = _debug.get("verbose", False) or os.environ.get(
-            "CODEX_ROSETTA_VERBOSE", ""
-        ).lower() in ("1", "true", "yes")
         self.log_bodies: bool = _debug.get("log_bodies", False) or os.environ.get(
             "CODEX_ROSETTA_LOG_BODIES", ""
         ).lower() in ("1", "true", "yes")

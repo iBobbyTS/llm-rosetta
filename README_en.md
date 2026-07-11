@@ -40,8 +40,13 @@ send the generated access key as a Bearer token. See
 Start the local gateway each time you use it:
 
 ```bash
-codex-rosetta-gateway --host 127.0.0.1 -v
+codex-rosetta-gateway --host 127.0.0.1 --log-level warning
 ```
+
+Use `--log-level info` (the default) to print request summaries, `warning` to
+show only warnings and errors, or `error` to show only errors. Use the WebUI
+**Request Log** for complete request history and **Gateway Logs** for streaming
+trace diagnostics.
 
 ## Full Documentation
 

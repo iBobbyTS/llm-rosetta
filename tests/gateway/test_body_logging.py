@@ -52,21 +52,30 @@ def isolated_gateway_loggers():
 
 
 @pytest.mark.parametrize(
-    ("verbose", "log_bodies", "expect_debug", "expect_body"),
+    (
+        "log_level",
+        "log_bodies",
+        "expect_info",
+        "expect_warning",
+        "expect_body",
+    ),
     [
-        (False, False, False, False),
-        (False, True, False, True),
-        (True, False, True, False),
-        (True, True, True, True),
+        ("info", False, True, True, False),
+        ("info", True, True, True, True),
+        ("warning", False, False, True, False),
+        ("warning", True, False, True, True),
+        ("error", False, False, False, False),
+        ("error", True, False, False, True),
     ],
 )
 def test_console_and_file_handlers_honor_logging_matrix(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     isolated_gateway_loggers: logging.Logger,
-    verbose: bool,
+    log_level: str,
     log_bodies: bool,
-    expect_debug: bool,
+    expect_info: bool,
+    expect_warning: bool,
     expect_body: bool,
 ) -> None:
     console = io.StringIO()
@@ -76,18 +85,29 @@ def test_console_and_file_handlers_honor_logging_matrix(
     file_handler.setLevel(logging.INFO)
     isolated_gateway_loggers.addHandler(file_handler)
 
-    gateway_logging.setup_logging(verbose=verbose, use_colors=False)
+    gateway_logging.setup_logging(log_level=log_level, use_colors=False)
     state = BodyLogState(enabled=log_bodies, token_values={"configured-token"})
-    isolated_gateway_loggers.debug("ordinary-debug")
+    isolated_gateway_loggers.info("ordinary-info")
+    isolated_gateway_loggers.warning("ordinary-warning")
+    isolated_gateway_loggers.error("ordinary-error")
     state.log("ORIGINAL REQUEST", {"prompt": "ordinary body text"})
     for handler in isolated_gateway_loggers.handlers:
         handler.flush()
 
     outputs = (console.getvalue(), log_path.read_text(encoding="utf-8"))
     for output in outputs:
-        assert ("ordinary-debug" in output) is expect_debug
+        assert ("ordinary-info" in output) is expect_info
+        assert ("ordinary-warning" in output) is expect_warning
+        assert "ordinary-error" in output
         assert ("ordinary body text" in output) is expect_body
         assert ("[ORIGINAL REQUEST]" in output) is expect_body
+
+
+def test_setup_logging_rejects_unsupported_level(
+    isolated_gateway_loggers: logging.Logger,
+) -> None:
+    with pytest.raises(ValueError, match="expected info, warning, or error"):
+        gateway_logging.setup_logging(log_level="debug", use_colors=False)
 
 
 def test_body_log_redacts_tokens_before_serialization_and_preserves_other_data(

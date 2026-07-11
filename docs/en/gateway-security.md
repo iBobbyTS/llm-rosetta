@@ -173,12 +173,12 @@ values; it is not a general-purpose privacy scrubber.
 Request/response body logging is a separate opt-in controlled by
 `debug.log_bodies` or `CODEX_ROSETTA_LOG_BODIES`. It uses the dedicated
 `codex-rosetta-gateway.body` logger at DEBUG: enabling it does not enable other
-Gateway DEBUG noise, and `--verbose` does not enable bodies by itself. Each app
-keeps its own live body-log policy and token set, including after Admin config
-reloads. Original, intermediate, converted, and upstream bodies are recursively
-token-redacted before JSON serialization, then escaped onto one line and capped
-at 20,000 characters. Serialization failures emit only a constant placeholder;
-they never fall back to the raw object or exception text.
+Gateway DEBUG noise. Each app keeps its own live body-log policy and token set,
+including after Admin config reloads. Original, intermediate, converted, and
+upstream bodies are recursively token-redacted before JSON serialization, then
+escaped onto one line and capped at 20,000 characters. Serialization failures
+emit only a constant placeholder; they never fall back to the raw object or
+exception text.
 
 Body logs preserve prompts, source code, personal data, and ordinary
 `password`, `secret`, `client_secret`, and proxy-password values. Treat them as

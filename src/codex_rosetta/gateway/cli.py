@@ -275,16 +275,10 @@ def main() -> None:
         help="HTTP/SOCKS proxy URL for upstream requests (overrides config)",
     )
     parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Enable verbose (DEBUG) logging; overrides config and --log-level",
-    )
-    parser.add_argument(
         "--log-level",
         default="info",
-        choices=["debug", "info", "warning", "error"],
-        help="Log level (default: info)",
+        choices=["info", "warning", "error"],
+        help="Terminal log level (default: info)",
     )
 
     # ``init`` subcommand
@@ -369,10 +363,7 @@ def main() -> None:
 
     config = GatewayConfig(raw_config)
 
-    # Resolve verbosity: CLI --verbose wins, then config/env, then --log-level
-    verbose = args.verbose or config.verbose
-
-    setup_logging(verbose=verbose)
+    setup_logging(log_level=args.log_level)
 
     host = args.host or config.host
     port = args.port or config.port
@@ -385,8 +376,6 @@ def main() -> None:
         logger.info("Starting codex-rosetta gateway on %s:%d", host, port)
     logger.info("Configured providers: %s", list(config.providers.keys()))
     logger.info("Configured models: %s", list(config.models.keys()))
-    if verbose:
-        logger.info("Verbose logging enabled (DEBUG level)")
     if config.log_bodies:
         logger.info(
             "Request/response body logging enabled on the dedicated DEBUG body "

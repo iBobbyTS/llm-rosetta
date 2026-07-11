@@ -329,21 +329,37 @@ def get_logger() -> logging.Logger:
 
 
 def setup_logging(
-    verbose: bool = False,
+    log_level: str = "info",
     use_colors: bool = True,
 ) -> logging.Logger:
     """Configure the gateway logger.
 
     Args:
-        verbose: If *True*, set handler level to DEBUG; otherwise INFO.
+        log_level: Minimum terminal log level: ``info``, ``warning``, or
+            ``error``.
         use_colors: Whether to use ANSI colours in output.
     Returns:
         The configured logger.
+
+    Raises:
+        ValueError: If *log_level* is not supported.
     """
     global _handler
 
+    levels = {
+        "info": logging.INFO,
+        "warning": logging.WARNING,
+        "error": logging.ERROR,
+    }
+    try:
+        level = levels[log_level.lower()]
+    except (AttributeError, KeyError) as exc:
+        raise ValueError(
+            f"Unsupported log level {log_level!r}; expected info, warning, or error"
+        ) from exc
+
     logger = get_logger()
-    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    logger.setLevel(level)
 
     # Remove existing handler if present
     if _handler is not None:
