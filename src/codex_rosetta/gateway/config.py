@@ -10,7 +10,7 @@ import re
 import sys
 import tempfile
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from codex_rosetta.auto_detect import ProviderType
@@ -41,7 +41,8 @@ PATHS_TO_TRY = [
 ]
 
 API_TYPE_TO_PROVIDER_TYPE: dict[str, str] = {
-    "responses": "openai_responses",
+    "responses_passthrough": "openai_responses",
+    "responses_rosetta": "openai_responses",
     "chat": "openai_chat",
     "anthropic": "anthropic",
     "google": "google",
@@ -58,7 +59,8 @@ PROVIDER_API_TYPE_SHIMS: dict[tuple[str, str], str] = {
     ("moonshot_china", "chat"): "moonshot",
     ("moonshot_international", "chat"): "moonshot",
     ("openai", "chat"): "openai",
-    ("openai", "responses"): "openai_responses",
+    ("openai", "responses_passthrough"): "openai_responses",
+    ("openai", "responses_rosetta"): "openai_responses",
     ("openrouter", "anthropic"): "openrouter--anthropic",
     ("openrouter", "chat"): "openrouter--openai_chat",
     ("qwen", "chat"): "qwen",
@@ -162,6 +164,15 @@ def api_type_to_provider_type(api_type: Any) -> str | None:
     if not api_type:
         return None
     return API_TYPE_TO_PROVIDER_TYPE.get(str(api_type))
+
+
+def provider_responses_processing(
+    cfg: dict[str, Any], provider_type: str
+) -> Literal["passthrough", "rosetta"]:
+    """Return the internal handling mode for an OpenAI Responses provider."""
+    if provider_type not in {"openai_responses", "open_responses"}:
+        return "rosetta"
+    return "rosetta" if cfg.get("api_type") == "responses_rosetta" else "passthrough"
 
 
 def derive_provider_shim_name(provider: Any, api_type: Any) -> str | None:
@@ -430,6 +441,10 @@ class GatewayConfig:
         self.provider_types, self.provider_shim_names = self._resolve_provider_types(
             self._raw_providers
         )
+        self.provider_responses_processing = {
+            name: provider_responses_processing(cfg, self.provider_types[name])
+            for name, cfg in self._raw_providers.items()
+        }
 
         # Top-level ``models`` is intentionally ignored. Model groups are the
         # only persisted routing definition; this flat mapping is runtime-only.
@@ -809,5 +824,6 @@ class GatewayConfig:
             model_capabilities=caps,
             tool_profile_name=tool_profile_name,
             tool_profile=resolve_tool_profile(tool_profile_name, self.tool_profiles),
+            responses_processing=self.provider_responses_processing[provider_name],
         )
         return route, self.providers[provider_name]

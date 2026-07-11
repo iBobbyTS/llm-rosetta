@@ -1,15 +1,27 @@
 # 基础对话
 
-Codex 通过 OpenAI Responses API 接口与模型通信。许多第三方供应商只暴露 OpenAI Chat Completions 兼容的端点。Codex-Rosetta 根据路由不同，以两种方式填补这一差距：
+Codex 通过 OpenAI Responses API 接口与模型通信。许多第三方供应商只暴露 OpenAI Chat Completions 兼容的端点。Codex-Rosetta 根据路由不同，以不同方式填补这一差距：
 
-- Responses 到 Responses 的路由直接透传。
+- 配置为 **OpenAI Responses (Pass through)** 的 Responses 到 Responses 供应商直接透传。
+- 配置为 **OpenAI Responses (Rosetta)** 的 Responses 到 Responses 供应商通过 Codex-Rosetta 的 IR 解码，再编码回 Responses 格式。
 - Responses 到 Chat 的路由通过 Codex-Rosetta 的 IR 进行转换，然后再转换回 Responses 事件供 Codex 使用。
 
 目标是保留 Codex 运行时的语义，而不仅仅是让上游请求在语法上有效。
 
+## 两个 Responses 选项不是真正的新协议
+
+**OpenAI Responses (Pass through)** 和 **OpenAI Responses (Rosetta)** 使用相同的 OpenAI Responses 线上协议、端点形态和 converter。管理界面将其拆成两个选项，只是因为网关内部采用不同的处理方式：
+
+- **Pass through** 尽量原样转发请求、响应 JSON 和流式 SSE 字节。适合 OpenAI 官方或能保持 OpenAI Responses 行为的 GPT 中转站。
+- **Rosetta** 让请求和响应经过 Responses → IR → Responses 处理链。适合其他支持 Responses 协议、但需要 Rosetta 归一化处理的模型提供商，如千问。
+
+配置中的 `api_type` 分别为 `responses_passthrough` 和 `responses_rosetta`。二者都会解析到内部的 `openai_responses` provider type；它们不会增加新的公开网关端点或 API 标准。
+
+目前只保证 Responses 透传和 Responses 到 Chat 的转换。Responses (Rosetta)、Anthropic 转换和 Google 转换暂不作保证；本次处理模式分流不会扩展 Responses 字段或事件的解包能力。
+
 ## Responses 透传
 
-对于相同协议的 OpenAI Responses 路由，网关不会解码和重新编码请求体。它直接转发原始请求，并将上游的原始 SSE 字节流式传输回 Codex。
+对于配置为 **Pass through** 的同协议 OpenAI Responses 路由，网关不会解码和重新编码请求体。它直接转发原始请求，并将上游的原始 SSE 字节流式传输回 Codex。
 
 这一点很重要，因为 Codex 依赖的某些字段不属于最小跨供应商 IR 的一部分，包括：
 

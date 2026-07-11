@@ -4,6 +4,15 @@
 
 - [Codex 版本兼容性](version-compatibility.md)
 
+## 当前协议支持状态
+
+目前已重点开发并保证的网关路径仅有：
+
+- OpenAI Responses 到 OpenAI Chat Completions 的协议转换；
+- OpenAI Responses 透传。
+
+Anthropic 转换、Google 转换和 **OpenAI Responses (Rosetta)** 虽然可作为内部路由选项使用，但目前不作保证。其中 Rosetta 模式只是复用现有的 Responses → IR → Responses 处理链；更完整的 Responses 字段、事件解包与重建不在当前开发范围内。
+
 ## 网关运维
 
 - [安全与认证](gateway-security.md)

@@ -902,6 +902,7 @@ body { padding-bottom: 26px; }
     <div class="form-group">
       <label data-i18n="label.providerProtocol">Protocol</label>
       <select id="provApiType" onchange="onProviderProtocolChange()"></select>
+      <div id="provProtocolHint" style="font-size:11px;color:var(--text-dim);margin-top:6px" aria-live="polite"></div>
     </div>
     <div class="form-group">
       <label data-i18n="label.baseUrl">Base URL<span class="hint-icon">?<span class="hint-popup" data-i18n="hint.docker">In Docker, "localhost" refers to the container itself. Use "host.docker.internal" (macOS/Windows) or "172.17.0.1" (Linux) to reach the host machine.</span></span></label>
@@ -1222,7 +1223,10 @@ const I18N = {
     'provider.openai':'OpenAI', 'provider.openrouter':'Open Router', 'provider.opencodeGo':'Opencode Go',
     'provider.qwen':'Qwen', 'provider.zhipu':'Zhipu (GLM)',
     'providerVariant.official':'Official', 'providerVariant.china':'China', 'providerVariant.international':'International', 'providerVariant.custom':'Custom',
-    'protocol.responses':'OpenAI Responses', 'protocol.chat':'OpenAI Chat Completions',
+    'protocol.responsesPassthrough':'OpenAI Responses (Pass through)', 'protocol.responsesRosetta':'OpenAI Responses (Rosetta)',
+    'protocol.responsesPassthroughHint':'Best for official OpenAI or GPT proxy services.',
+    'protocol.responsesRosettaHint':'Best for other model providers that support the Responses API, such as Qwen.',
+    'protocol.chat':'OpenAI Chat Completions',
     'protocol.anthropic':'Anthropic', 'protocol.google':'Google',
     'protocol.unsupportedSuffix':'May not compatible',
     'toast.modelSaved':"Model '{name}' saved",
@@ -1400,7 +1404,10 @@ const I18N = {
     'provider.openai':'OpenAI', 'provider.openrouter':'Open Router', 'provider.opencodeGo':'Opencode Go',
     'provider.qwen':'\u901a\u4e49\u5343\u95ee', 'provider.zhipu':'\u667a\u8c31 GLM',
     'providerVariant.official':'\u5b98\u65b9', 'providerVariant.china':'\u4e2d\u56fd\u7ad9', 'providerVariant.international':'\u56fd\u9645\u7ad9', 'providerVariant.custom':'\u81ea\u5b9a\u4e49',
-    'protocol.responses':'OpenAI Responses', 'protocol.chat':'OpenAI Chat Completions',
+    'protocol.responsesPassthrough':'OpenAI Responses (Pass through)', 'protocol.responsesRosetta':'OpenAI Responses (Rosetta)',
+    'protocol.responsesPassthroughHint':'适合 OpenAI 官方或 GPT 中转站。',
+    'protocol.responsesRosettaHint':'适合其他支持 Responses 协议的模型提供商，如千问。',
+    'protocol.chat':'OpenAI Chat Completions',
     'protocol.anthropic':'Anthropic', 'protocol.google':'Google',
     'protocol.unsupportedSuffix':'May not compatible',
     'toast.modelSaved':"\u6a21\u578b '{name}' \u5df2\u4fdd\u5b58",
@@ -1496,26 +1503,30 @@ function t(key, params) {
 }
 
 const PROVIDER_PROTOCOLS = [
-  {value: 'responses', labelKey: 'protocol.responses'},
+  {value: 'responses_passthrough', labelKey: 'protocol.responsesPassthrough'},
+  {value: 'responses_rosetta', labelKey: 'protocol.responsesRosetta'},
   {value: 'chat', labelKey: 'protocol.chat'},
   {value: 'anthropic', labelKey: 'protocol.anthropic'},
   {value: 'google', labelKey: 'protocol.google'},
 ];
 const PROTOCOL_DIVIDER_VALUE = '__protocol_divider__';
+function _responsesProtocols(url) {
+  return {responses_passthrough: url, responses_rosetta: url};
+}
 const PROVIDER_PRESETS = [
   {id: 'deepseek', label: 'DeepSeek', labelKey: 'provider.deepseek', logoShim: 'deepseek', protocols: {chat: 'https://api.deepseek.com', anthropic: 'https://api.deepseek.com/anthropic'}},
   {id: 'zhipu', label: 'Zhipu (GLM)', labelKey: 'provider.zhipu', logoShim: 'zhipu', protocols: {chat: 'https://open.bigmodel.cn/api/paas/v4'}},
   {id: 'moonshot_china', label: 'Moonshot (Kimi, China)', labelKey: 'provider.moonshotChina', logoShim: 'moonshot', protocols: {chat: 'https://api.moonshot.cn/v1', anthropic: 'https://api.moonshot.cn/anthropic'}},
   {id: 'moonshot_international', label: 'Moonshot (Kimi, International)', labelKey: 'provider.moonshotInternational', logoShim: 'moonshot', protocols: {chat: 'https://api.moonshot.ai/v1', anthropic: 'https://api.moonshot.ai/anthropic'}},
-  {id: 'minimax_china', label: 'MiniMax (China)', labelKey: 'provider.minimaxChina', logoShim: 'minimax--openai_chat', protocols: {anthropic: 'https://api.minimaxi.com/anthropic', chat: 'https://api.minimaxi.com/v1', responses: 'https://api.minimaxi.com/v1'}},
-  {id: 'minimax_international', label: 'MiniMax (International)', labelKey: 'provider.minimaxInternational', logoShim: 'minimax--openai_chat', protocols: {anthropic: 'https://api.minimax.io/anthropic', chat: 'https://api.minimax.io/v1', responses: 'https://api.minimax.io/v1'}},
-  {id: 'qwen', label: 'Qwen', labelKey: 'provider.qwen', logoShim: 'qwen', protocols: {responses: 'https://{WorkspaceId}.{RegionId}.maas.aliyuncs.com/compatible-mode/v1', chat: 'https://{WorkspaceId}.{RegionId}.maas.aliyuncs.com/compatible-mode/v1', anthropic: 'https://{WorkspaceId}.{RegionId}.maas.aliyuncs.com/apps/anthropic'}},
-  {id: 'openai', label: 'OpenAI', labelKey: 'provider.openai', logoShim: 'openai', protocols: {responses: 'https://api.openai.com/v1', chat: 'https://api.openai.com/v1'}},
+  {id: 'minimax_china', label: 'MiniMax (China)', labelKey: 'provider.minimaxChina', logoShim: 'minimax--openai_chat', protocols: {anthropic: 'https://api.minimaxi.com/anthropic', chat: 'https://api.minimaxi.com/v1', ..._responsesProtocols('https://api.minimaxi.com/v1')}},
+  {id: 'minimax_international', label: 'MiniMax (International)', labelKey: 'provider.minimaxInternational', logoShim: 'minimax--openai_chat', protocols: {anthropic: 'https://api.minimax.io/anthropic', chat: 'https://api.minimax.io/v1', ..._responsesProtocols('https://api.minimax.io/v1')}},
+  {id: 'qwen', label: 'Qwen', labelKey: 'provider.qwen', logoShim: 'qwen', protocols: {..._responsesProtocols('https://{WorkspaceId}.{RegionId}.maas.aliyuncs.com/compatible-mode/v1'), chat: 'https://{WorkspaceId}.{RegionId}.maas.aliyuncs.com/compatible-mode/v1', anthropic: 'https://{WorkspaceId}.{RegionId}.maas.aliyuncs.com/apps/anthropic'}},
+  {id: 'openai', label: 'OpenAI', labelKey: 'provider.openai', logoShim: 'openai', protocols: {..._responsesProtocols('https://api.openai.com/v1'), chat: 'https://api.openai.com/v1'}},
   {id: 'google', label: 'Google', labelKey: 'provider.google', logoShim: 'google', protocols: {google: 'https://generativelanguage.googleapis.com'}},
   {id: 'anthropic', label: 'Anthropic', labelKey: 'provider.anthropic', logoShim: 'anthropic', protocols: {anthropic: 'https://api.anthropic.com'}},
   {id: 'openrouter', label: 'Open Router', labelKey: 'provider.openrouter', logoShim: 'openrouter--openai_chat', protocols: {anthropic: 'https://openrouter.ai/api', chat: 'https://openrouter.ai/api/v1'}},
   {id: 'opencode_go', label: 'Opencode Go', labelKey: 'provider.opencodeGo', protocols: {chat: 'https://opencode.ai/zen/go/v1'}},
-  {id: 'custom', label: 'Custom', labelKey: 'provider.custom', protocols: {responses: '', chat: '', anthropic: '', google: ''}},
+  {id: 'custom', label: 'Custom', labelKey: 'provider.custom', protocols: {..._responsesProtocols(''), chat: '', anthropic: '', google: ''}},
 ];
 const PROVIDER_VENDOR_PRESETS = [
   {id: 'deepseek', label: 'DeepSeek', labelKey: 'provider.deepseek', logoShim: 'deepseek', variants: [{id: 'official', labelKey: 'providerVariant.official', providerId: 'deepseek'}, {id: 'custom', labelKey: 'providerVariant.custom', providerId: 'deepseek'}]},
@@ -1574,7 +1585,8 @@ function _protocolLabelsByValue() {
 
 function _apiTypeToProviderType(apiType) {
   return {
-    responses: 'openai_responses',
+    responses_passthrough: 'openai_responses',
+    responses_rosetta: 'openai_responses',
     chat: 'openai_chat',
     anthropic: 'anthropic',
     google: 'google',
@@ -1628,8 +1640,8 @@ function _setProviderBaseUrl(value) {
 
 function _inferProviderSelection(cfg) {
   const apiTypeByBase = {
-    openai_responses: 'responses',
-    open_responses: 'responses',
+    openai_responses: 'responses_passthrough',
+    open_responses: 'responses_passthrough',
     openai_chat: 'chat',
     openai: 'chat',
     anthropic: 'anthropic',
@@ -1658,8 +1670,8 @@ function _inferProviderSelection(cfg) {
     'minimax--openai_chat': 'chat',
     moonshot: 'chat',
     openai: 'chat',
-    openai_responses: 'responses',
-    open_responses: 'responses',
+    openai_responses: 'responses_passthrough',
+    open_responses: 'responses_passthrough',
     openrouter: 'chat',
     'openrouter--anthropic': 'anthropic',
     'openrouter--openai_chat': 'chat',
@@ -1763,6 +1775,16 @@ function _renderProviderProtocolOptions(providerId, variantId, selectedApiType) 
 
   const values = PROVIDER_PROTOCOLS.map(p => p.value);
   protocolSel.value = values.includes(selectedApiType) ? selectedApiType : (supported[0] ? supported[0].value : 'chat');
+  _updateProviderProtocolHint();
+}
+
+function _updateProviderProtocolHint() {
+  const apiType = document.getElementById('provApiType').value;
+  const hintKey = {
+    responses_passthrough: 'protocol.responsesPassthroughHint',
+    responses_rosetta: 'protocol.responsesRosettaHint',
+  }[apiType];
+  document.getElementById('provProtocolHint').textContent = hintKey ? t(hintKey) : '';
 }
 
 function _updateProviderLogo() {
@@ -1818,6 +1840,7 @@ function onProviderProtocolChange() {
     return;
   }
   protocolSel.dataset.previousValue = protocolSel.value;
+  _updateProviderProtocolHint();
   _syncPresetBaseUrl(_providerPresetUrl);
 }
 

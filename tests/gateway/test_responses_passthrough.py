@@ -9,7 +9,11 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from codex_rosetta._vendor.httpserver import StreamingResponse
-from codex_rosetta.gateway.proxy import handle_non_streaming, handle_streaming
+from codex_rosetta.gateway.proxy import (
+    _is_openai_responses_direct,
+    handle_non_streaming,
+    handle_streaming,
+)
 from codex_rosetta.gateway.transport._base import UpstreamResponse, UpstreamStream
 from codex_rosetta.routing import ResolvedRoute
 
@@ -20,6 +24,7 @@ def _responses_route() -> ResolvedRoute:
         target_provider="openai_responses",
         provider_name="test-provider",
         upstream_model="gpt-test",
+        responses_processing="passthrough",
     )
 
 
@@ -27,6 +32,19 @@ def _provider_info() -> MagicMock:
     info = MagicMock()
     info.base_url = "https://api.example.test"
     return info
+
+
+def test_responses_processing_mode_controls_same_protocol_passthrough():
+    passthrough = _responses_route()
+    rosetta = ResolvedRoute(
+        source_provider="openai_responses",
+        target_provider="openai_responses",
+        provider_name="test-provider",
+        responses_processing="rosetta",
+    )
+
+    assert _is_openai_responses_direct(passthrough) is True
+    assert _is_openai_responses_direct(rosetta) is False
 
 
 def test_openai_responses_non_streaming_direct_passthrough():

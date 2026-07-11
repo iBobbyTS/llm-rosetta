@@ -243,10 +243,15 @@ def normalize_codex_window_id(value: Any) -> str | None:
 
 def _is_openai_responses_direct(route: ResolvedRoute) -> bool:
     """Return true for same-protocol Responses requests that can pass through."""
-    return route.source_provider in (
-        "openai_responses",
-        "open_responses",
-    ) and route.target_provider in ("openai_responses", "open_responses")
+    return (
+        route.responses_processing == "passthrough"
+        and route.source_provider
+        in (
+            "openai_responses",
+            "open_responses",
+        )
+        and route.target_provider in ("openai_responses", "open_responses")
+    )
 
 
 def _uses_responses_chat_bridge(route: ResolvedRoute) -> bool:

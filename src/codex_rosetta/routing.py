@@ -15,7 +15,7 @@ separately by each :class:`Router` implementation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Literal, Protocol
 
 from codex_rosetta.auto_detect import ProviderType
 
@@ -43,6 +43,8 @@ class ResolvedRoute:
             (e.g. ``["text", "vision"]``).
         tool_profile_name: Selected tool-profile identifier.
         tool_profile: Effective catalog item states for the selected profile.
+        responses_processing: Internal handling mode for same-format OpenAI
+            Responses routes. This does not represent a distinct wire protocol.
     """
 
     source_provider: ProviderType
@@ -53,6 +55,7 @@ class ResolvedRoute:
     model_capabilities: list[str] = field(default_factory=lambda: ["text"])
     tool_profile_name: str = "builtin"
     tool_profile: dict[str, str] = field(default_factory=dict)
+    responses_processing: Literal["passthrough", "rosetta"] = "rosetta"
 
 
 class Router(Protocol):

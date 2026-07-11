@@ -4,6 +4,15 @@
 
 - [Codex version compatibility](version-compatibility.md)
 
+## Current Protocol Support
+
+The currently developed and supported gateway paths are:
+
+- OpenAI Responses to OpenAI Chat Completions conversion;
+- OpenAI Responses pass-through.
+
+Anthropic conversion, Google conversion, and **OpenAI Responses (Rosetta)** are available as internal routing options but are not currently guaranteed. In particular, the Rosetta mode reuses the existing Responses → IR → Responses pipeline; comprehensive Responses field/event unpacking and reconstruction are outside the current development scope.
+
 ## Gateway operations
 
 - [Security and authentication](gateway-security.md)

@@ -1,15 +1,27 @@
 # Basic Conversation
 
-Codex talks to models through the OpenAI Responses API surface. Many third-party providers only expose an OpenAI Chat Completions-compatible endpoint. Codex-Rosetta bridges that gap in two different ways depending on the route:
+Codex talks to models through the OpenAI Responses API surface. Many third-party providers only expose an OpenAI Chat Completions-compatible endpoint. Codex-Rosetta bridges that gap in different ways depending on the route:
 
-- Responses to Responses routes are passed through directly.
+- Responses to Responses providers configured as **OpenAI Responses (Pass through)** are passed through directly.
+- Responses to Responses providers configured as **OpenAI Responses (Rosetta)** are decoded through Codex-Rosetta's IR and encoded back to the Responses format.
 - Responses to Chat routes are converted through Codex-Rosetta's IR, then converted back to Responses events for Codex.
 
 The goal is to preserve Codex runtime semantics, not just make the upstream request syntactically valid.
 
+## The Two Responses Options Are Not New Protocols
+
+**OpenAI Responses (Pass through)** and **OpenAI Responses (Rosetta)** use the same OpenAI Responses wire protocol, endpoint shape, and converter. They are separate Admin UI choices only because the gateway handles them differently internally:
+
+- **Pass through** forwards the request, response JSON, and streaming SSE bytes with minimal intervention. Use it for official OpenAI or GPT proxy services that preserve OpenAI's Responses behavior.
+- **Rosetta** runs the request and response through the Responses → IR → Responses pipeline. Use it for other model providers that support the Responses protocol but need Rosetta's normalization, such as Qwen.
+
+The configured `api_type` values are `responses_passthrough` and `responses_rosetta`. Both resolve to the internal `openai_responses` provider type; they do not add public gateway endpoints or API standards.
+
+Only Responses pass-through and Responses-to-Chat conversion are currently guaranteed. Responses (Rosetta), Anthropic conversion, and Google conversion remain unguaranteed; this mode-selection work does not expand Responses field or event unpacking.
+
 ## Responses Pass-Through
 
-For same-protocol OpenAI Responses routes, the gateway does not decode and re-encode the request body. It forwards the original request and streams raw upstream SSE bytes back to Codex.
+For same-protocol OpenAI Responses routes configured as **Pass through**, the gateway does not decode and re-encode the request body. It forwards the original request and streams raw upstream SSE bytes back to Codex.
 
 This is important because Codex relies on fields that are not part of a minimal cross-provider IR, including:
 

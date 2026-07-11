@@ -719,6 +719,33 @@ def test_put_provider_persists_provider_and_api_type(tmp_path):
     assert app.gateway_config.provider_shim_names["DeepSeek"] == "deepseek"
 
 
+def test_put_provider_persists_responses_rosetta_processing_mode(tmp_path):
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(_config_data()), encoding="utf-8")
+    initial_config = GatewayConfig(_config_data())
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app, path_params={"name": "Qwen"})
+    request.json = lambda: {
+        "provider": "qwen",
+        "api_type": "responses_rosetta",
+        "base_url": "https://qwen.example.test/v1",
+        "api_key": "sk-new",
+    }
+
+    response = _run(put_provider(request))
+
+    assert response.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["providers"]["Qwen"]["api_type"] == "responses_rosetta"
+    assert app.gateway_config.provider_types["Qwen"] == "openai_responses"
+    assert app.gateway_config.provider_responses_processing["Qwen"] == "rosetta"
+
+
 def test_put_provider_masked_key_preserves_existing_key_with_api_type(tmp_path):
     """Editing a new-style provider with a masked key keeps the old secret."""
     config = _config_data()
@@ -922,6 +949,26 @@ def test_admin_html_renders_tools_as_compact_cards():
     assert "renderToolPolicy(item, policy)" not in render_item
     assert '<div class="tool-list tool-card-grid">${body}</div>' in html
     assert "${esc(t('tools.default'))}:" not in render_item
+
+
+def test_admin_html_splits_responses_internal_handling_options():
+    html_path = (
+        Path(__file__).parents[2]
+        / "src"
+        / "codex_rosetta"
+        / "gateway"
+        / "admin"
+        / "admin.html"
+    )
+    html = html_path.read_text(encoding="utf-8")
+
+    assert "OpenAI Responses (Pass through)" in html
+    assert "OpenAI Responses (Rosetta)" in html
+    assert "{value: 'responses_passthrough'" in html
+    assert "{value: 'responses_rosetta'" in html
+    assert 'id="provProtocolHint"' in html
+    assert "responses_passthrough: 'protocol.responsesPassthroughHint'" in html
+    assert "responses_rosetta: 'protocol.responsesRosettaHint'" in html
 
 
 def test_admin_html_exposes_request_body_limit_options():

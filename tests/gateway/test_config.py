@@ -349,7 +349,7 @@ class TestProviderApiTypeResolution:
                     "api_key": "sk-test",
                     "base_url": "https://api.example.com",
                     "provider": "custom",
-                    "api_type": "responses",
+                    "api_type": "responses_passthrough",
                 }
             },
             "model_groups": {
@@ -369,6 +369,34 @@ class TestProviderApiTypeResolution:
         assert cfg.provider_shim_names["Pixel"] is None
         assert route.target_provider == "openai_responses"
         assert route.shim_name is None
+        assert route.responses_processing == "passthrough"
+
+    def test_responses_rosetta_uses_same_wire_protocol_with_conversion_mode(self):
+        raw = {
+            "providers": {
+                "Qwen": {
+                    "api_key": "sk-test",
+                    "base_url": "https://api.example.com",
+                    "provider": "qwen",
+                    "api_type": "responses_rosetta",
+                }
+            },
+            "model_groups": {
+                "Qwen": {
+                    "provider": "Qwen",
+                    "type": "llm",
+                    "models": {"qwen-test": {}},
+                }
+            },
+            "server": _secure_server(),
+        }
+
+        cfg = GatewayConfig(raw)
+        route, _provider = cfg.resolve("openai_responses", "qwen-test")
+
+        assert cfg.provider_types["Qwen"] == "openai_responses"
+        assert route.target_provider == "openai_responses"
+        assert route.responses_processing == "rosetta"
 
     def test_legacy_type_config_still_resolves(self):
         raw = _minimal_raw()
