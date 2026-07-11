@@ -105,4 +105,4 @@ max-complexity = 15
 [tool.complexipy]
 paths = ["src"]
 max-complexity-allowed = 25
-exclude = ["src/codex_rosetta/_vendor"]
+exclude = ["**/_vendor/**"]

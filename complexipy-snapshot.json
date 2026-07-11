@@ -1,0 +1,174 @@
+[
+  {
+    "path": "src/codex_rosetta/converters/base/helpers/reasoning.py",
+    "file_name": "reasoning.py",
+    "functions": [
+      {
+        "name": "_apply_anthropic_extras",
+        "complexity": 31
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/converters/google_genai/converter.py",
+    "file_name": "converter.py",
+    "functions": [
+      {
+        "name": "GoogleGenAIConverter::request_to_provider",
+        "complexity": 28
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/converters/google_genai/image_fetch.py",
+    "file_name": "image_fetch.py",
+    "functions": [
+      {
+        "name": "fetch_image_url",
+        "complexity": 27
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/converters/google_genai/message_ops.py",
+    "file_name": "message_ops.py",
+    "functions": [
+      {
+        "name": "GoogleGenAIMessageOps::_reconcile_tool_call_ids",
+        "complexity": 33
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/converters/openai_chat/converter.py",
+    "file_name": "converter.py",
+    "functions": [
+      {
+        "name": "OpenAIChatConverter::_build_choice_to_provider",
+        "complexity": 33
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/converters/openai_chat/message_ops.py",
+    "file_name": "message_ops.py",
+    "functions": [
+      {
+        "name": "OpenAIChatMessageOps::_ir_assistant_to_p",
+        "complexity": 29
+      },
+      {
+        "name": "OpenAIChatMessageOps::_reorder_tool_messages",
+        "complexity": 29
+      },
+      {
+        "name": "OpenAIChatMessageOps::_unpack_tool_content",
+        "complexity": 37
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/converters/openai_responses/converter.py",
+    "file_name": "converter.py",
+    "functions": [
+      {
+        "name": "OpenAIResponsesConverter::_handle_output_item_added_from_p",
+        "complexity": 28
+      },
+      {
+        "name": "OpenAIResponsesConverter::_apply_preserve_metadata",
+        "complexity": 29
+      },
+      {
+        "name": "OpenAIResponsesConverter::_capture_preserve_metadata",
+        "complexity": 29
+      },
+      {
+        "name": "OpenAIResponsesConverter::_handle_tool_call_start_to_p",
+        "complexity": 29
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/converters/openai_responses/message_ops.py",
+    "file_name": "message_ops.py",
+    "functions": [
+      {
+        "name": "OpenAIResponsesMessageOps::p_messages_to_ir",
+        "complexity": 30
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/converters/openai_responses/tool_ops.py",
+    "file_name": "tool_ops.py",
+    "functions": [
+      {
+        "name": "OpenAIResponsesToolOps::p_tool_call_to_ir",
+        "complexity": 30
+      },
+      {
+        "name": "OpenAIResponsesToolOps::ir_tool_call_to_p",
+        "complexity": 37
+      },
+      {
+        "name": "OpenAIResponsesToolOps::p_tool_definition_to_ir",
+        "complexity": 64
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/gateway/config.py",
+    "file_name": "config.py",
+    "functions": [
+      {
+        "name": "GatewayConfig::_validate",
+        "complexity": 26
+      },
+      {
+        "name": "write_config",
+        "complexity": 27
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/gateway/proxy.py",
+    "file_name": "proxy.py",
+    "functions": [
+      {
+        "name": "ProviderMetadataStore::_put_many",
+        "complexity": 26
+      },
+      {
+        "name": "WindowToolSearchStore::_schema_search_text",
+        "complexity": 26
+      },
+      {
+        "name": "WindowToolSearchStore::inject_into_request",
+        "complexity": 28
+      },
+      {
+        "name": "_remove_tool_definition",
+        "complexity": 29
+      },
+      {
+        "name": "_stream_event_generator",
+        "complexity": 40
+      },
+      {
+        "name": "_web_search_stream_event_generator",
+        "complexity": 86
+      }
+    ]
+  },
+  {
+    "path": "src/codex_rosetta/shims/providers/__init__.py",
+    "file_name": "__init__.py",
+    "functions": [
+      {
+        "name": "load_providers_from_dir",
+        "complexity": 30
+      }
+    ]
+  }
+]

@@ -32,6 +32,8 @@ lint:
 	ruff format --check $(PY_CHECK_PATHS)
 	@echo "Running ty check..."
 	ty check
+	@echo "Checking complexity ratchet..."
+	complexipy --quiet
 	@echo "Lint complete."
 
 # Auto-fix lint issues
