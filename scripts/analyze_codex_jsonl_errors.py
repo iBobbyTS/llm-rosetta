@@ -52,7 +52,7 @@ STRONG_ERROR_RE = re.compile(
 )
 ERROR_CONTAINER_RE = re.compile(r"(?:error|exception|fail)", re.IGNORECASE)
 SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"(?i)(\b(?:authorization|api[ _-]?key|[a-z0-9_-]*token|secret)\b\s*[:=]\s*)"
+    r"(?i)(\b(?:authorization|api[ _-]?key|[a-z0-9_-]*token)\b\s*[:=]\s*)"
     r"(?:(['\"])(.*?)\2|([^,;\r\n]+))"
 )
 BEARER_RE = re.compile(r"(?i)(bearer\s+)[^\s,;]+")

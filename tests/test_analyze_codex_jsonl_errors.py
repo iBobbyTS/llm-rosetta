@@ -63,6 +63,30 @@ def test_classifies_rate_limit_without_leaking_bearer_token(tmp_path: Path):
     }
 
 
+def test_redaction_preserves_non_token_secrets_and_redacts_token_boundary():
+    value = (
+        "secret=ordinary-secret; client_secret=ordinary-client-secret; "
+        "access_token=access-token-value; api_key=api-key-value; "
+        "Authorization=Basic authorization-value; Bearer bearer-value"
+    )
+
+    redacted = SCRIPT["redact_text"](value)
+
+    assert "secret=ordinary-secret" in redacted
+    assert "client_secret=ordinary-client-secret" in redacted
+    for sensitive in (
+        "access-token-value",
+        "api-key-value",
+        "authorization-value",
+        "bearer-value",
+    ):
+        assert sensitive not in redacted
+    assert "access_token=<redacted>" in redacted
+    assert "api_key=<redacted>" in redacted
+    assert "Authorization=<redacted>" in redacted
+    assert "Bearer <redacted>" in redacted
+
+
 def test_deduplicates_same_session_id_by_largest_copy(tmp_path: Path):
     session_id = "019f3cbf-be45-7813-9d46-ff29d2773507"
     first = tmp_path / "active" / f"rollout-{session_id}.jsonl"
