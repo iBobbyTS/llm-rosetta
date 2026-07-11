@@ -37,7 +37,7 @@ class StreamTraceConfig:
 
         try:
             max_string_chars = int(value.get("max_string_chars", DEFAULT_MAX_CHARS))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             max_string_chars = DEFAULT_MAX_CHARS
         if max_string_chars <= 0:
             max_string_chars = DEFAULT_MAX_CHARS

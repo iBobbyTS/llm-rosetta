@@ -384,7 +384,7 @@ class BaseConverter(ABC):
         self,
         ir_request: IRRequest,
         result: dict[str, Any],
-        ctx: "ConversionContext",
+        ctx: ConversionContext,
     ) -> None:
         """Apply tools, tool_choice, and tool_config from IR to provider request.
 

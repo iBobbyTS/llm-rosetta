@@ -937,7 +937,7 @@ async def put_server_settings(request: Any) -> Response:
             max_string_chars = int(
                 stream_trace.get("max_string_chars", DEFAULT_MAX_CHARS)
             )
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return JSONResponse(
                 {"error": "'stream_trace.max_string_chars' must be an integer"},
                 status_code=400,

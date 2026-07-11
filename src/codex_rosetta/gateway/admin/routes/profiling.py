@@ -54,7 +54,7 @@ async def enable_profiling(request: Any) -> Response:
 
     try:
         requests = int(body.get("requests", 5))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return JSONResponse({"error": "'requests' must be an integer"}, status_code=400)
     requests = max(1, min(requests, 100))  # clamp to [1, 100]
     return JSONResponse(state.enable(requests))
@@ -84,7 +84,7 @@ async def get_profiling_result(request: Any, **kwargs: Any) -> Response:
     state: ProfilerState = request.app.profiler_state
     try:
         index = int(request.path_params["index"])
-    except (ValueError, TypeError, KeyError):
+    except ValueError, TypeError, KeyError:
         return JSONResponse({"error": "Invalid index"}, status_code=400)
 
     if index < 0 or index >= len(state.results):

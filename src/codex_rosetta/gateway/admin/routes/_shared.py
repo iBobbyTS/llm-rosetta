@@ -53,7 +53,7 @@ def _bounded_int_qp(
         )
     try:
         value = int(values[0])
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return JSONResponse(
             {"error": f"'{key}' must be an integer"},
             status_code=400,

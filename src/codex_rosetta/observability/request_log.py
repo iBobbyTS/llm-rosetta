@@ -200,7 +200,7 @@ class RequestLog:
             try:
                 entry = RequestLogEntry(**d)
                 self._entries.append(entry)
-            except (TypeError, KeyError):
+            except TypeError, KeyError:
                 continue
 
     def pending_entries(self) -> list[dict[str, Any]]:

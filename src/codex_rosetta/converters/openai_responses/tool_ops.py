@@ -752,7 +752,7 @@ class OpenAIResponsesToolOps(BaseToolOps):
             input_str = provider_tool_call.get("input", "")
             try:
                 parsed_input = json.loads(input_str) if input_str else {}
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 parsed_input = {"input": input_str}
             # Ensure tool_input is always a dict
             if not isinstance(parsed_input, dict):
@@ -822,7 +822,7 @@ class OpenAIResponsesToolOps(BaseToolOps):
             try:
                 parsed = json.loads(output)
                 output = parsed
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 pass
 
         # Normalize provider-specific content blocks to IR format

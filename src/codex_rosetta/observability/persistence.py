@@ -1568,7 +1568,7 @@ class PersistenceManager:
         if row[0]:
             try:
                 existing = json.loads(row[0])
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 pass
         existing = self.redact_sensitive(existing)
         redacted_update = self.redact_sensitive(profile_update)
@@ -1599,7 +1599,7 @@ class PersistenceManager:
         if row[0]:
             try:
                 profile = json.loads(row[0])
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 pass
         if profile_update:
             profile.update(self.redact_sensitive(profile_update))
@@ -1628,7 +1628,7 @@ class PersistenceManager:
                 if val is not None:
                     try:
                         d[col] = json.loads(val)
-                    except (json.JSONDecodeError, TypeError):
+                    except json.JSONDecodeError, TypeError:
                         d[col] = None
                 # omit if None (match old behavior for optional fields)
             elif col in ("error_detail", "api_key_label", "client_ip") and val is None:

@@ -372,7 +372,7 @@ class OpenAIChatToolOps(BaseToolOps):
 
         try:
             tool_input = json.loads(arguments_str) if arguments_str else {}
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             tool_input = {"raw_arguments": arguments_str}
 
         return ToolCallPart(

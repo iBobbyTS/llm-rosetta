@@ -106,7 +106,7 @@ class GoogleGenAIContentOps(BaseContentOps):
                     header, data = url.split(",", 1)
                     mime = header.split(":")[1].split(";")[0]
                     return {"inlineData": {"mimeType": mime, "data": data}}
-                except (IndexError, ValueError):
+                except IndexError, ValueError:
                     pass
                 return None
 

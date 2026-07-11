@@ -139,7 +139,7 @@ Tooling config (ruff, ty, complexipy) lives in `pyproject.toml`.
 3. New code has tests in `tests/`
 4. Google-style docstrings on public APIs; comments in English
 5. No manual edits to `_vendor/` — update upstream, re-vendor
-6. Python 3.13 compatibility
+6. Python 3.14.6 compatibility
 
 ## Integration testing with agentabi
 

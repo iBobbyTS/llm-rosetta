@@ -207,7 +207,7 @@ class _Socks5Handler(socketserver.StreamRequestHandler):
                 for sock in readable:
                     try:
                         data = sock.recv(8192)
-                    except (BlockingIOError, ConnectionResetError):
+                    except BlockingIOError, ConnectionResetError:
                         data = b""
                     if not data:
                         return

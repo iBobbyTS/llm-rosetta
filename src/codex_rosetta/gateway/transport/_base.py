@@ -52,7 +52,7 @@ class UpstreamResponse:
         """Best-effort JSON string of the error body for SSE passthrough."""
         try:
             return json.dumps(json.loads(self.error_text))
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError, ValueError:
             return self.error_text
 
 

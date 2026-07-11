@@ -86,7 +86,7 @@ def _normalize_openai_response(body: dict[str, Any]) -> dict[str, Any]:
         fn = tc.get("function", {})
         try:
             input_data = json.loads(fn.get("arguments", "{}"))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             input_data = {}
         anthropic_content.append(
             {

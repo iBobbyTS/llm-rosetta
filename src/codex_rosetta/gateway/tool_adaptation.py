@@ -1357,7 +1357,7 @@ def validate_tool_call_cache_ttl_hours(
         )
     try:
         ttl = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise ValueError(
             f"{field} must be a finite number greater than 0 and at most "
             f"{MAX_TOOL_CALL_CACHE_TTL_HOURS:g} hours"

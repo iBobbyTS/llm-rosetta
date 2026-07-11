@@ -286,7 +286,7 @@ class UpstreamErrorLogState:
         text = error_text if isinstance(error_text, str) else str(error_text)
         try:
             parsed = json.loads(text)
-        except (json.JSONDecodeError, TypeError, ValueError):
+        except json.JSONDecodeError, TypeError, ValueError:
             safe = self._redactor.redact(text)
             safe = _redact_token_assignments(safe)
         else:

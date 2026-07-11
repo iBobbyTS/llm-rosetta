@@ -9,15 +9,15 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    name: lint-and-test (Python 3.13)
+    name: lint-and-test (Python 3.14.6)
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python 3.13
+      - name: Set up Python 3.14.6
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14.6"
 
       - name: Install dependencies
         run: |
@@ -47,14 +47,14 @@ jobs:
               python -c "from codex_rosetta.gateway import main; print('gateway import OK')"
               codex-rosetta-gateway --version
 
-    name: smoke-test (${{ matrix.variant.name }}, Python 3.13)
+    name: smoke-test (${{ matrix.variant.name }}, Python 3.14.6)
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python 3.13
+      - name: Set up Python 3.14.6
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14.6"
 
       - name: Build wheel
         run: |

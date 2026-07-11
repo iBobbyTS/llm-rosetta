@@ -156,7 +156,7 @@ class _LocalUpstreamHandler(BaseHTTPRequestHandler):
             self.end_headers()
             try:
                 self.wfile.write(payload)
-            except (BrokenPipeError, ConnectionResetError):
+            except BrokenPipeError, ConnectionResetError:
                 pass
         elif case == "sse":
             payload = b'data: {"delta":"ok"}\n\ndata: [DONE]\n\n'

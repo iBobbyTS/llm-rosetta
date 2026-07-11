@@ -163,7 +163,7 @@ async def _enforce_content_length(
         return
     try:
         content_length = int(raw_length)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         await resp.aclose()
         raise UpstreamConnectionError(
             "Upstream response has an invalid Content-Length"
@@ -351,7 +351,7 @@ class HttpUpstreamStream(UpstreamStream):
         except SSELimitError as exc:
             await self.close()
             raise _stream_limit_error(exc.kind, exc.limit, exc.actual) from exc
-        except (asyncio.CancelledError, GeneratorExit):
+        except asyncio.CancelledError, GeneratorExit:
             await self.close()
             raise
 
@@ -368,7 +368,7 @@ class HttpUpstreamStream(UpstreamStream):
                     tracker.feed(chunk)
                     yield chunk
                 tracker.finish()
-            except (asyncio.CancelledError, GeneratorExit):
+            except asyncio.CancelledError, GeneratorExit:
                 await self.close()
                 raise
             except UpstreamStreamLimitError:

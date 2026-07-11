@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [{ name = "Oaklight", email = "oaklight@gmx.com" }]
 description = "Codex-Rosetta: Unified LLM API adapter — bidirectional conversion between OpenAI, Anthropic, and Google formats via intermediate representation (IR)."
 readme = "README.md"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.14.6,<3.15"
 license = "MIT"
 keywords = [
     "openai",
@@ -27,7 +27,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -71,7 +71,7 @@ where = ["src"]
 version = { attr = "codex_rosetta.__version__" }
 
 [tool.ty.environment]
-python-version = "3.13"
+python-version = "3.14"
 
 [tool.ty.src]
 include = [
@@ -84,7 +84,7 @@ include = [
 exclude = ["src/codex_rosetta/_vendor", "llm_api_simple_tests", "tests/integration"]
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 exclude = ["src/codex_rosetta/_vendor", "llm_api_simple_tests", "tests/integration"]
 
 [tool.ruff.lint]
@@ -96,7 +96,7 @@ ignore = [
     "UP046",
     "UP047",
     "E501",
-]  # Keep existing syntax/style; enforce Python 3.13 compatibility.
+]  # Keep existing syntax/style; enforce Python 3.14 compatibility.
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15

@@ -203,7 +203,7 @@ class CompletionCreateParams(TypedDict, total=False):
     """
 
     # Required parameters
-    messages: Required[Iterable["ChatCompletionMessageParam"]]
+    messages: Required[Iterable[ChatCompletionMessageParam]]
     model: Required[str | ChatModel]
 
     # Tool related parameters

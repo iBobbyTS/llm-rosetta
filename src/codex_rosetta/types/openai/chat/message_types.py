@@ -37,7 +37,7 @@ class ChatCompletionContentPartImageParam(TypedDict, total=False):
     """
 
     type: Required[Literal["image_url"]]
-    image_url: Required["ImageURL"]
+    image_url: Required[ImageURL]
 
 
 class ImageURL(TypedDict, total=False):
@@ -64,7 +64,7 @@ class ChatCompletionContentPartInputAudioParam(TypedDict, total=False):
     """
 
     type: Required[Literal["input_audio"]]
-    input_audio: Required["InputAudio"]
+    input_audio: Required[InputAudio]
 
 
 class InputAudio(TypedDict, total=False):

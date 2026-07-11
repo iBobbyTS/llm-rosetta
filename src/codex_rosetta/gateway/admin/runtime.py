@@ -371,7 +371,7 @@ class AdminTestTaskStore:
         if body_bytes is not None:
             try:
                 result["body"] = json.loads(body_bytes)
-            except (UnicodeDecodeError, json.JSONDecodeError):
+            except UnicodeDecodeError, json.JSONDecodeError:
                 result["body"] = body_bytes.decode("utf-8", errors="replace")
         return result
 

@@ -2233,7 +2233,7 @@ class OpenAIResponsesConverter(BaseConverter):
     ) -> dict[str, Any]:
         try:
             parsed_arguments = json.loads(arguments) if arguments else {}
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             parsed_arguments = {"raw_arguments": arguments}
         if not isinstance(parsed_arguments, dict):
             parsed_arguments = {"input": parsed_arguments}
@@ -2255,7 +2255,7 @@ class OpenAIResponsesConverter(BaseConverter):
     ) -> dict[str, Any]:
         try:
             parsed_arguments = json.loads(arguments) if arguments else {}
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             parsed_arguments = {"query": arguments}
         if not isinstance(parsed_arguments, dict):
             parsed_arguments = {"query": str(parsed_arguments)}

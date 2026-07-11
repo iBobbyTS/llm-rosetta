@@ -1100,7 +1100,7 @@ class GoogleGenAIConverter(BaseConverter):
             for _call_id, tool_name, args_str in context.get_pending_tool_calls():
                 try:
                     args = json.loads(args_str) if args_str else {}
-                except (json.JSONDecodeError, TypeError):
+                except json.JSONDecodeError, TypeError:
                     args = {}
                 parts.append({"functionCall": {"name": tool_name, "args": args}})
 

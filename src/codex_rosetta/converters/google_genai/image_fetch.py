@@ -162,7 +162,7 @@ def _validate_public_url(
     try:
         parsed = urllib.parse.urlsplit(url)
         port = parsed.port
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise ImageFetchError("Image URL is invalid") from None
 
     if parsed.scheme.lower() not in {"http", "https"}:
@@ -581,7 +581,7 @@ def fetch_image_url(
         )
     except ImageFetchError:
         raise
-    except (OSError, urllib.error.URLError, ValueError):
+    except OSError, urllib.error.URLError, ValueError:
         if cancellation is not None and cancellation.cancelled:
             raise ImageFetchCancelledError("Image download was cancelled") from None
         if time.monotonic() >= deadline:

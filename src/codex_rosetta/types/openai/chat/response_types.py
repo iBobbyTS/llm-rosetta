@@ -157,7 +157,7 @@ class ChatCompletionMessage(TypedDict, total=False):
     content: NotRequired[str | None]
     refusal: NotRequired[str | None]
     tool_calls: NotRequired[list[ChatCompletionMessageToolCallUnion] | None]
-    function_call: NotRequired["FunctionCallResponse | None"]  # Deprecated
+    function_call: NotRequired[FunctionCallResponse | None]  # Deprecated
     annotations: NotRequired[list[Annotation] | None]
     audio: NotRequired[ChatCompletionAudio | None]
 
