@@ -1,4 +1,4 @@
 interface:
-  display_name: "Rosetta Codex README Test"
-  short_description: "Run controlled Rosetta Codex README tests"
-  default_prompt: "Use $rosetta-codex-readme-test to run a controlled README rewrite or local-edit test through Codex-Rosetta."
+  display_name: "Rosetta Codex Agent Tool Test"
+  short_description: "Run isolated Rosetta agent tool-use tests"
+  default_prompt: "Use $rosetta-codex-readme-test to copy and run one repository-owned agent tool-use task through Codex-Rosetta."

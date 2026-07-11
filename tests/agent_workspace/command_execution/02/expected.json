@@ -1,0 +1,12 @@
+{
+  "id": "02",
+  "timeout_seconds": 30,
+  "success_marker": "RESULT:DELAYED_OK",
+  "expected_native_pattern": {
+    "command_starts": 1,
+    "continuations_min": 1,
+    "continuations_max": null,
+    "non_empty_writes": 0,
+    "same_session_required": true
+  }
+}

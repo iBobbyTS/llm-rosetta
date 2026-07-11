@@ -1,71 +1,117 @@
 ---
 name: rosetta-codex-readme-test
-description: Run controlled Codex-through-Codex-Rosetta README editing tests in /Users/ibobby/Projects/AGENTS.md-test. Use when Codex needs to enable Rosetta backend logging, route a Codex CLI run through the gateway for a specific model, test whole-file README rewrite versus localized edit behavior, identify the resulting Codex session JSONL and Rosetta log, verify the real working-tree outcome, and then revert the test repository changes.
+description: Run controlled Codex-through-Codex-Rosetta tool-use tasks copied from tests/agent_workspace into an isolated repository-local runtime. Use when Codex needs to compare model-facing and native tool calls, validate command execution or process continuation, identify the resulting Codex session and Rosetta trace, or smoke-test real providers without measuring general model quality.
 ---
 
-# Rosetta Codex README Test
+# Rosetta Codex Agent Tool Test
 
 ## Purpose
 
-Use this skill to run repeatable agent-behavior tests against
-`/Users/ibobby/Projects/AGENTS.md-test` through `codex-rosetta-gateway`.
-The test repository is disposable for content changes, but preserve diagnostics
-and revert the repository after inspection.
+Run repeatable real-agent tests from `tests/agent_workspace` through
+`codex-rosetta-gateway`. Test only whether the model selects and sequences tools
+correctly. Do not score reasoning, coding skill, prose, or general agent quality.
+
+Never execute a template in place. Copy one task into a disposable workspace
+under this repository. Keep temporary configuration and Codex sessions inside
+the repository-local run root. On macOS, only the stream trace enabled by the
+Web Admin **Gateway Logs** page belongs on a RAM Disk.
 
 ## Defaults
 
-- Choose the model by debugging goal:
-  - To observe Codex/GPT's native request shape, use `gpt-5.6-terra`. The
-    gateway trace must confirm the request actually reached the GPT route; a
-    local alias that forwards this name to a third-party model does not count.
-  - To debug third-party model conversion or agent behavior, use
-    `deepseek-v4-flash` by default because it is the low-cost test model.
-- Default real-provider smoke matrix: `deepseek-v4-flash` and
-  `gpt-5.6-terra`. Keep third-party aliases as separate matrix entries and
-  verify every upstream route in the Rosetta trace rather than assuming it
-  from the Codex-facing model name.
-- Temporary Rosetta gateway configs live under
-  `/Users/ibobby/Projects/codex-rosetta/rosetta-test-config`.
-- The isolated Codex home lives at
-  `/Users/ibobby/Projects/codex-rosetta/codex-test-home`.
-- Gateway trace logs and captured Codex stdout/stderr should be kept under
-  `/Volumes/RAM Disk`.
+- Repository root: resolve with `git rev-parse --show-toplevel`.
+- Default suite: `tests/agent_workspace/command_execution`.
+- Default task: `01`; select `02` for polling, `03` for one stdin intervention,
+  and `04` for two ordered interventions.
+- Default third-party model: `deepseek-v4-flash`.
+- Native GPT comparison model: `gpt-5.6-terra`. Confirm the upstream route in
+  the Rosetta trace; the Codex-facing alias alone is not evidence.
+- Default real-provider matrix: `deepseek-v4-flash` and `gpt-5.6-terra`.
+- Runtime root: `tmp/agent_testing_workspace/YYYYMMDDHHMM`, using local time.
+- macOS Gateway Logs root: `/Volumes/RAMDisk/YYYYMMDDHHMM`.
 
-## Workflow
+The timestamp must be exactly 12 digits and the complete directory name. Do not
+include a model, task, suite, protocol, or tool name. If that minute already
+exists, stop and use another unused minute rather than adding a suffix.
 
-1. Confirm the test repository exists:
+## Create The Isolated Run
+
+1. Resolve and validate the selected template:
 
    ```bash
-   test -d /Users/ibobby/Projects/AGENTS.md-test
+   ROOT=$(git rev-parse --show-toplevel)
+   SUITE="$ROOT/tests/agent_workspace/command_execution"
+   TASK_ID=02
+   test -f "$SUITE/$TASK_ID/TASK.md"
+   test -f "$SUITE/$TASK_ID/expected.json"
    ```
 
-2. Confirm `codex-rosetta-gateway` is running and locate the active port. The
-   usual local endpoint is `http://127.0.0.1:8765/v1`. When testing current
-   uncommitted gateway code, prefer launching a separate gateway instance on a
-   free port with a config copied into
-   `/Users/ibobby/Projects/codex-rosetta/rosetta-test-config`, rather than
-   changing or killing the user's main gateway.
+2. Create a timestamp-only run root and merge the shared fixture plus exactly
+   one task into `worktree`:
 
    ```bash
-   curl -sS http://127.0.0.1:8765/v1/models | python3 -m json.tool | sed -n '1,120p'
+   RUN_ID=$(date +%Y%m%d%H%M)
+   RUN_ROOT="$ROOT/tmp/agent_testing_workspace/$RUN_ID"
+   test ! -e "$RUN_ROOT"
+   mkdir -p "$RUN_ROOT/worktree" "$RUN_ROOT/codex_home" "$RUN_ROOT/gateway" "$RUN_ROOT/artifacts"
+   cp -R "$SUITE/common/." "$RUN_ROOT/worktree/"
+   cp -R "$SUITE/$TASK_ID/." "$RUN_ROOT/worktree/"
    ```
 
-3. Enable Rosetta backend logging before starting the Codex run. Use the admin
-   UI/API or the project's current config mechanism. Set:
+3. Select the Web Admin **Gateway Logs** root. On macOS, prefer an existing
+   `/Volumes/RAMDisk`. If it is not mounted, create a 1 GiB HFS+ RAM Disk named
+   `RAMDisk`:
 
-   - log path: an explicit path under `/Volumes/RAM Disk`, for example
-     `/Volumes/RAM Disk/<model>-readme-test-<timestamp>.jsonl`
-   - model filter: the model being tested. Use `gpt-5.6-terra` for native GPT
-     request observation and `deepseek-v4-flash` for third-party conversion
-     debugging, unless the user explicitly specifies another model
+   ```bash
+   if ! mount | grep -Fq "on /Volumes/RAMDisk "; then
+     diskutil erasevolume HFS+ 'RAMDisk' "$(hdiutil attach -nobrowse -nomount ram://2097152)"
+   fi
+   GATEWAY_LOG_ROOT="/Volumes/RAMDisk/$RUN_ID"
+   mkdir -p "$GATEWAY_LOG_ROOT"
+   printf '%s\n' "$GATEWAY_LOG_ROOT" >"$RUN_ROOT/artifacts/gateway-log-root.txt"
+   ```
 
-   If the exact admin API is uncertain, inspect existing gateway config/routes
-   before changing anything. Do not leave broad logging enabled after the test.
+   The mount command above is the non-nested equivalent of:
 
-4. Run a single Codex CLI test with an isolated `CODEX_HOME` if the user has not
-   specified another home. A known-good minimal config can live at
-   `/Users/ibobby/Projects/codex-rosetta/codex-test-home/config.toml` and point
-   to the Rosetta base URL:
+   ```bash
+   diskutil erasevolume HFS+ 'RAMDisk' `hdiutil attach -nobrowse -nomount ram://2097152`
+   ```
+
+   `ram://2097152` creates 2,097,152 512-byte sectors, or 1 GiB. Never erase an
+   already-mounted volume. On non-macOS systems, or when RAM Disk creation is
+   unavailable, use `GATEWAY_LOG_ROOT="$RUN_ROOT/artifacts"` and record the
+   fallback in the final report. This location is only for the Gateway Logs
+   stream trace. All other files stay under `RUN_ROOT`.
+
+4. Copy the user's gateway configuration into the run root. Never edit or stop
+   the user's main gateway:
+
+   ```bash
+   cp "$HOME/.config/codex-rosetta-gateway/config.jsonc" "$RUN_ROOT/gateway/config.jsonc"
+   ```
+
+   Edit only the copied config. Choose a free localhost port and set:
+
+   ```json
+   {
+     "server": {
+       "host": "127.0.0.1",
+       "port": 18765,
+       "stream_trace": {
+         "enabled": true,
+         "filter": "<tested-model>",
+         "path": "<GATEWAY_LOG_ROOT>/rosetta-trace.jsonl"
+       }
+     }
+   }
+   ```
+
+   Preserve all providers, model groups, profiles, keys, and unrelated server
+   settings from the copied config. The trace path must be absolute. Do not log
+   or print credentials while editing it.
+
+5. Create `RUN_ROOT/codex_home/config.toml` pointing to the isolated gateway.
+   Use a client API key from the copied gateway config as the bearer token, but
+   never include that value in reports:
 
    ```toml
    model_provider = "rosetta"
@@ -78,181 +124,127 @@ and revert the repository after inspection.
    name = "rosetta"
    wire_api = "responses"
    requires_openai_auth = true
-   base_url = "http://127.0.0.1:8765/v1"
-   experimental_bearer_token = "none"
+   base_url = "http://127.0.0.1:18765/v1"
+   experimental_bearer_token = "<copied-gateway-client-key>"
 
-   [projects."/Users/ibobby/Projects/AGENTS.md-test"]
+   [projects."<RUN_ROOT>/worktree"]
    trust_level = "trusted"
    ```
 
-5. Choose exactly one prompt according to the test goal:
+## Run One Task
 
-   Whole-file rewrite:
+1. Launch a separate gateway from the current checkout and copied config.
+   Capture its process output, PID, and configuration under the repository-local
+   run root. Gateway process stdout/stderr are not Web Admin Gateway Logs and
+   must not be written to the RAM Disk:
 
-   ```text
-   帮我重新组织一下README.md里的语言（重写整个文件）
+   ```bash
+   codex-rosetta-gateway --config "$RUN_ROOT/gateway/config.jsonc" --host 127.0.0.1 --port 18765 --no-banner \
+     >"$RUN_ROOT/gateway/stdout.log" 2>"$RUN_ROOT/gateway/stderr.log" &
+   GATEWAY_PID=$!
+   printf '%s\n' "$GATEWAY_PID" >"$RUN_ROOT/gateway/pid"
    ```
 
-   Localized edit:
+   Poll `/v1/models` with the copied client key until ready. Do not use or
+   modify the user's main gateway.
 
-   ```text
-   帮我重新组织一下README.md里的语言（使用局部编辑，不要整体重写）
-   ```
+2. Read `TASK.md` as the exact prompt. Do not paraphrase or add hints. Read
+   `expected.json` for the timeout and evidence contract, not as prompt text.
 
-   Run the prompt non-interactively, capture stdout/stderr, and keep the command
-   bounded:
+3. Run Codex non-interactively with the isolated home and bounded duration:
 
    ```bash
    MODEL=deepseek-v4-flash
-   CODEX_HOME=/Users/ibobby/Projects/codex-rosetta/codex-test-home \
-     codex exec --json --skip-git-repo-check \
-     -C /Users/ibobby/Projects/AGENTS.md-test \
-     -m "$MODEL" '<prompt>' \
-     > "/Volumes/RAM Disk/codex-readme-test-${MODEL}.jsonl" \
-     2> "/Volumes/RAM Disk/codex-readme-test-${MODEL}.stderr"
+   PROMPT=$(<"$RUN_ROOT/worktree/TASK.md")
+   CODEX_HOME="$RUN_ROOT/codex_home" codex exec --json --skip-git-repo-check \
+     -C "$RUN_ROOT/worktree" -m "$MODEL" "$PROMPT" \
+     >"$RUN_ROOT/artifacts/codex.jsonl" \
+     2>"$RUN_ROOT/artifacts/codex.stderr"
    ```
 
-6. Immediately disable Rosetta backend logging after the Codex run finishes,
-   even if the run failed. Keep the generated log file for inspection.
+   Enforce the task's `timeout_seconds` externally if the runner supports it.
+   A timeout is a test failure, not permission to restart the scenario.
 
-7. Confirm the result from three evidence sources:
+4. Stop only the isolated gateway PID after Codex exits, including failure and
+   timeout paths. Because tracing exists only in the copied config, no global
+   logging setting needs restoration.
 
-   - Working tree: run `git -C /Users/ibobby/Projects/AGENTS.md-test status --short`
-     and inspect the README diff with `git diff -- README.md`. Do not judge
-     answer quality unless the user explicitly asks; focus on whether the file
-     changed and how.
-   - Codex session JSONL: extract `thread_id` from the `codex exec --json`
-     stdout, then locate the rollout under
-     `/Users/ibobby/Projects/codex-rosetta/codex-test-home/sessions`. Search
-     filenames first and avoid reading the full file because early system
-     prompts are large.
-   - Rosetta log: inspect the configured log path with bounded JSONL tools,
-     filtering by model, request id, session id, or timestamp. Do not dump full
-     logs into the reply.
+## Evaluate Tool Use
 
-8. Revert the test repository changes after evidence capture:
+Use three bounded evidence sources:
 
-   ```bash
-   git -C /Users/ibobby/Projects/AGENTS.md-test restore README.md
-   git -C /Users/ibobby/Projects/AGENTS.md-test status --short
-   ```
+1. `RUN_ROOT/artifacts/codex.jsonl`: exit status, thread id, final message, and
+   visible tool-call sequence.
+2. `codex_home/sessions`: locate the rollout by thread id or timestamp. Search
+   filenames and extract only relevant tool calls/results; never dump a whole
+   rollout into context.
+3. `GATEWAY_LOG_ROOT/rosetta-trace.jsonl`: verify the actual upstream model,
+   converted model-facing tool calls, reconstructed Codex-facing calls, and
+   successful stream completion. This is the only artifact stored on the RAM
+   Disk. Filter by model, request id, thread id, and timestamp.
 
-   If files other than `README.md` changed, stop and report them before
-   reverting unless the user explicitly asked for broader cleanup.
+Compare the evidence with `worktree/expected.json`:
 
-## Real Provider Smoke And EOF Regression
+- final output must equal `success_marker`;
+- `command_starts` counts new process starts for the scenario;
+- `continuations_min` and `continuations_max` count later operations on a
+  returned process session;
+- `non_empty_writes` counts continuation operations that send input;
+- when `same_session_required` is true, every continuation must reuse the
+  session returned by the single initial command.
 
-Use this workflow when validating whether real Chat upstream providers still
-work through Rosetta's Responses downstream path, especially after stream
-terminal-event, phase-buffer, or tool-adaptation changes. The goal is to verify
-real Codex behavior and Rosetta stream shape; do not judge answer quality unless
-the user asks.
+Restarting the scenario is a failure even if the marker is correct. A correct
+answer inferred from source without execution is a failure. Do not judge any
+text beyond the exact marker.
 
-1. Prefer an isolated gateway on a free port when testing uncommitted gateway
-   code. Use a copied config under
-   `/Users/ibobby/Projects/codex-rosetta/rosetta-test-config`, enable verbose
-   stream trace logging to an explicit `/Volumes/RAM Disk/*.jsonl` path, and set
-   the trace model filter to the tested upstream models, for example
-   `deepseek-v4-flash,glm-5.2`.
+For Responses-to-Chat tests, explicitly distinguish:
 
-2. Point the isolated Codex home at the test gateway. Back up
-   `/Users/ibobby/Projects/codex-rosetta/codex-test-home/config.toml` before
-   editing it, and restore it after the run.
+- the localized command call visible to the upstream model;
+- the native Codex command-start call returned by Rosetta;
+- any later native continuation call.
 
-3. For each model in the matrix, run at least these tests:
+This distinction is required when diagnosing a route that handles initial
+execution but loses polling or stdin intervention.
 
-   Short final-answer test:
+## Real Provider Matrix
 
-   ```text
-   只回复一行：OK
-   ```
+When comparing providers, create a separate timestamp run root for every model
+and task. Never reuse a Codex home, copied gateway config, process state, or
+workspace across matrix cells. Start with task `01`, then run `02` through `04`
+only for models whose basic command execution succeeds.
 
-   Read/tool test:
+For every cell, record:
 
-   ```text
-   读取 README.md 的第一行，然后只回复这一行原文。
-   ```
-
-   Multi-turn modification test:
-
-   ```text
-   这是一个真实 provider 多轮次修改测试。请严格按顺序执行，且不要把多个步骤合并到同一个 shell 命令：1. 用一次独立的命令读取 README.md 的第一行。2. 收到结果后，用另一次独立的命令在 README.md 末尾追加一行：Rosetta multi-turn smoke: <model>。3. 收到结果后，用第三次独立命令检查 git diff -- README.md。4. 最终只回复一行：done:<model>
-   ```
-
-   Capture each run separately:
-
-   ```bash
-   MODEL=deepseek-v4-flash
-   TS=$(date +%Y%m%d-%H%M%S)
-   CODEX_HOME=/Users/ibobby/Projects/codex-rosetta/codex-test-home \
-     codex exec --json --skip-git-repo-check \
-     -C /Users/ibobby/Projects/AGENTS.md-test \
-     -m "$MODEL" '<prompt>' \
-     > "/Volumes/RAM Disk/codex-provider-smoke-${MODEL}-${TS}.jsonl" \
-     2> "/Volumes/RAM Disk/codex-provider-smoke-${MODEL}-${TS}.stderr"
-   ```
-
-4. For modification tests, capture the README diff and then restore only the
-   test file:
-
-   ```bash
-   git -C /Users/ibobby/Projects/AGENTS.md-test diff -- README.md
-   git -C /Users/ibobby/Projects/AGENTS.md-test restore README.md
-   git -C /Users/ibobby/Projects/AGENTS.md-test status --short
-   ```
-
-5. Inspect the Codex JSONL output without dumping full logs. Confirm:
-
-   - exit status is `0`
-   - short test final message is `OK`
-   - read/tool test used command execution and returned the README first line
-   - multi-turn test has separate command executions for read, write, and diff
-   - final message is exactly `done:<model>`
-   - any `error` item is distinguished from fatal failure; Codex may emit a
-     non-fatal unknown-model metadata warning for custom model names
-
-6. Inspect the Rosetta trace by request, not by raw line count. For each stream,
-   confirm:
-
-   - `stream_complete=true` and `stream_error=null`
-   - downstream SSE includes exactly one `response.completed`
-   - the corresponding source event includes exactly one `response.completed`
-   - `ir_event` includes one `finish` and one `stream_end`
-   - no duplicate completion is introduced by EOF fallback
-   - DeepSeek-style streams usually end with `choices_len=1`,
-     `finish_reason` and `usage`
-   - GLM-style streams usually end with a prior `finish_reason` followed by an
-     empty `choices: []` chunk carrying `usage`
-
-7. Treat the EOF fallback as exercised only if the trace shows a structured
-   `finish` without the provider's normal terminal chunk before upstream EOF.
-   If DeepSeek or GLM complete through their normal terminal shapes, record that
-   the fallback was not needed and that the real-provider test verified existing
-   success paths were not broken.
-
-8. Stop only the isolated gateway instance started for the test, restore the
-   backed-up Codex home config, and leave the user's main gateway alone.
+- model and task id;
+- Codex exit status and exact final marker;
+- thread id and rollout path;
+- Rosetta trace path and observed upstream model;
+- initial command count, continuation count, non-empty write count, and session
+  reuse result;
+- terminal stream shape and any warning that changes interpretation.
 
 ## Safety Rules
 
-- Keep this workflow scoped to `/Users/ibobby/Projects/AGENTS.md-test`.
-- Do not run it in the codex-rosetta repository or any production project.
-- Do not leave backend logging enabled.
-- Do not read whole Codex rollout JSONL files or whole Rosetta JSONL logs.
-- Redact API keys, bearer tokens, cookies, and authorization headers from any
-  report.
-- Revert only the test repository changes produced by this run. Do not reset or
-  clean unrelated user work.
+- Work only inside `tmp/agent_testing_workspace/<timestamp>` after copying the
+  selected template.
+- Do not run agent tasks in the repository source tree or any external project.
+- Do not edit the canonical files under `tests/agent_workspace` during a run.
+- Do not alter, reload, kill, or reuse the user's main gateway.
+- Keep the copied gateway config and Codex home under the run root.
+- On macOS, write only the Web Admin **Gateway Logs** stream trace under
+  `/Volumes/RAMDisk/<timestamp>`; do not use `/Volumes/RAM Disk` with a space.
+- Keep Gateway process stdout/stderr, Codex stdout/stderr, Codex sessions,
+  copied configuration, and all other artifacts under `RUN_ROOT`.
+- Never erase or remount an existing `/Volumes/RAMDisk`; mount it only when the
+  path is not already an active volume.
+- Do not read whole session or trace files into context.
+- Redact API keys, bearer tokens, cookies, and authorization headers.
+- Preserve completed run artifacts unless the user explicitly requests
+  deletion. Do not use `git restore`, `git reset`, or cleanup commands for runs.
 
 ## Final Report
 
-Report:
-
-- model, prompt variant, exit status, and final assistant message if relevant
-- working-tree status before cleanup and after cleanup
-- Codex thread/session id and exact rollout JSONL path
-- Rosetta log path and whether the expected request or requests appeared
-- for real-provider smoke tests: per-model short/read/multi-turn result,
-  command-execution count or summary, upstream model observed in the trace, and
-  terminal stream shape
-- any warning or error that affects interpreting the test
+Report the model, task id, exit status, exact marker, native interaction counts,
+session reuse result, thread id, rollout path, trace path, observed upstream
+model, and any warning or failure affecting interpretation. State explicitly
+that the result measures tool-call behavior only.

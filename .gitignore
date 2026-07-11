@@ -219,6 +219,9 @@ __marimo__/
 .complexipy_cache/
 .playwright-mcp/
 
+# Isolated real-agent test runs may contain copied gateway credentials and logs.
+tmp/agent_testing_workspace/
+
 # Temporary notes
 REVIEW_*
 TEMP_*

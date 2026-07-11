@@ -16,6 +16,7 @@ lives in [`docs/en`](../en/README.md) and [`docs/zh-cn`](../zh-cn/README.md).
 - [Provider and model parameter survey](provider_model_params/survey.md)
 - [SDK and IR research](sdk_ir/)
 - [Codex tool localization trace QA](codex-tool-localization/trace-qa.md)
+- [Real-agent tool-use testing](agent-tool-testing.md)
 
 ## Release
 
