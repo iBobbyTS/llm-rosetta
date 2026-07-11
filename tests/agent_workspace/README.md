@@ -12,6 +12,8 @@ handling rather than prose quality.
 
 - [`command_execution`](command_execution/README.md): starting commands,
   polling a running process, and sending input to an existing process.
+- [`network_search`](network_search/README.md): selecting network search and
+  receiving a usable result without shell or browser fallbacks.
 
 ## Execution model
 

@@ -1,0 +1,11 @@
+{
+  "id": "01",
+  "timeout_seconds": 90,
+  "success_marker": "RESULT:NETWORK_SEARCH_OK",
+  "expected_native_pattern": {
+    "network_search_calls_min": 1,
+    "successful_search_result_required": true,
+    "command_calls_max": 0,
+    "browser_calls_max": 0
+  }
+}

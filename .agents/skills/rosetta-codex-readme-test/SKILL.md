@@ -22,6 +22,9 @@ Web Admin **Gateway Logs** page belongs on a RAM Disk.
 - Default suite: `tests/agent_workspace/command_execution`.
 - Default task: `01`; select `02` for polling, `03` for one stdin intervention,
   and `04` for two ordered interventions.
+- Network-search suite: `tests/agent_workspace/network_search`; task `01`
+  verifies a successful model-facing network search without command or browser
+  fallbacks.
 - Default third-party model: `deepseek-v4-flash`.
 - Native GPT comparison model: `gpt-5.6-terra`. Confirm the upstream route in
   the Rosetta trace; the Codex-facing alias alone is not evidence.
@@ -119,6 +122,7 @@ exists, stop and use another unused minute rather than adding a suffix.
    sandbox_mode = "danger-full-access"
    approval_policy = "never"
    model_reasoning_effort = "medium"
+   # Add `web_search = "live"` for tests/agent_workspace/network_search.
 
    [model_providers.rosetta]
    name = "rosetta"
@@ -130,6 +134,14 @@ exists, stop and use another unused minute rather than adding a suffix.
    [projects."<RUN_ROOT>/worktree"]
    trust_level = "trusted"
    ```
+
+   The network-search suite requires `web_search = "live"` at the top level of
+   this isolated Codex config so the model-facing search surface is present.
+   Do not add it for unrelated suites. When the tested model uses Responses
+   Lite, set the isolated provider's display `name = "openai"` while retaining
+   the Rosetta provider id and localhost `base_url`; current Codex gates the
+   standalone `web.run` extension on that provider identity. Record this
+   test-only identity override in the final report.
 
 ## Run One Task
 
@@ -192,6 +204,10 @@ Compare the evidence with `worktree/expected.json`:
 - `non_empty_writes` counts continuation operations that send input;
 - when `same_session_required` is true, every continuation must reuse the
   session returned by the single initial command.
+- for network-search tasks, `network_search_calls_min` counts model-facing
+  namespace or hosted search calls, `successful_search_result_required`
+  requires a non-error result satisfying the task, and the command/browser
+  maxima prohibit bypassing the search surface.
 
 The outer evaluating agent decides success by the task's core objective, not by
 perfect compliance with every incidental instruction. Mark the task successful
@@ -216,6 +232,12 @@ For Responses-to-Chat tests, explicitly distinguish:
 
 This distinction is required when diagnosing a route that handles initial
 execution but loses polling or stdin intervention.
+
+For network-search tests, distinguish the model-facing search definition and
+call (`web.run`, `web_search`, or a localized bridge), the Codex-facing output
+item, and any separate HTTP request made by Codex or Rosetta. Inspect the
+gateway process and stream trace to record the actual destination host and port
+without exposing credentials.
 
 ## Real Provider Matrix
 

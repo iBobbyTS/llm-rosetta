@@ -19,6 +19,12 @@ The first suite is
 It covers a foreground command, delayed completion, one interactive input, and
 two ordered interactive inputs.
 
+The network-search suite is
+[`tests/agent_workspace/network_search`](../../tests/agent_workspace/network_search/README.md).
+It verifies that the agent selects the model-facing search surface, receives a
+successful result containing an official Python documentation URL, and does not bypass the
+tool with a shell command or browser automation.
+
 ## Runtime layout
 
 Every invocation uses one repository-local run root:
@@ -54,6 +60,16 @@ A pass requires the exact success marker and the native call pattern declared
 in `expected.json`. For continuation tasks, confirm that the returned session
 identifier is reused. Restarting the scenario is a failure even if it produces
 the same final marker.
+
+For network-search tasks, confirm at least one model-facing search call, a
+non-error search result satisfying the task, and the absence of prohibited
+command or browser calls. Record whether the model used a namespace function,
+a hosted tool, or a Rosetta-translated bridge.
+
+Responses Lite models use Codex's standalone `web.run` extension instead of a
+hosted Responses search tool. An isolated custom-provider test must retain its
+Rosetta localhost base URL but identify the provider as `openai` so Codex
+registers that extension; record the override as part of the test evidence.
 
 When testing a Responses-to-Chat route, compare both layers:
 
