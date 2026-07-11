@@ -3291,7 +3291,7 @@ function inlineConfirm(btn, action) {
   const revert = () => { btn.innerHTML = orig; btn.className = origClass; btn.style.minWidth = ''; btn.onclick = origOnclick; delete btn.dataset.confirming; };
   const timer = setTimeout(revert, 3000);
   btn.querySelector('span').onclick = (e) => { e.stopPropagation(); clearTimeout(timer); revert(); action(); };
-  btn.onclick = (e) => { e.stopPropagation(); clearTimeout(timer); revert(); };
+  btn.onclick = (e) => { e.stopPropagation(); clearTimeout(timer); revert(); action(); };
 }
 
 async function _doDeleteModel(name) {

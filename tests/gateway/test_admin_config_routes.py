@@ -1177,6 +1177,29 @@ def test_admin_html_exposes_tool_adaptation_switches():
     assert "toolFlattenNestedNamespaceTools" not in html
 
 
+def test_admin_html_confirmation_button_triggers_action():
+    """The full second-stage confirmation button executes the pending action."""
+    html_path = (
+        Path(__file__).parents[2]
+        / "src"
+        / "codex_rosetta"
+        / "gateway"
+        / "admin"
+        / "admin.html"
+    )
+    html = html_path.read_text(encoding="utf-8")
+    inline_confirm = html[
+        html.index("function inlineConfirm(btn, action)") : html.index(
+            "async function _doDeleteModel(name)"
+        )
+    ]
+
+    assert (
+        "btn.onclick = (e) => { e.stopPropagation(); clearTimeout(timer); "
+        "revert(); action(); };"
+    ) in inline_confirm
+
+
 def test_admin_html_exposes_request_body_limit_options():
     html_path = (
         Path(__file__).parents[2]
