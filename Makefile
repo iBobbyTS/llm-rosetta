@@ -14,7 +14,8 @@ CODEX_SOURCE ?= ../openai-codex-src
 CODEX_CONTRACT_BASELINE ?= docs/dev/version-compatibility/codex-source-contract.json
 CODEX_CONTRACT_SCRIPT := scripts/check_codex_compatibility.py
 RELEASE_VERSION_SCRIPT := scripts/check_release_version.py
-PY_CHECK_PATHS := src/ tests/ $(CODEX_CONTRACT_SCRIPT) $(RELEASE_VERSION_SCRIPT)
+CODEX_JSONL_ANALYZER := scripts/analyze_codex_jsonl_errors.py
+PY_CHECK_PATHS := src/ tests/ $(CODEX_CONTRACT_SCRIPT) $(RELEASE_VERSION_SCRIPT) $(CODEX_JSONL_ANALYZER)
 
 # Default target
 all: lint test build

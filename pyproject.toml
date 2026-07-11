@@ -82,6 +82,7 @@ python-version = "3.10"
 include = [
     "src",
     "tests",
+    "scripts/analyze_codex_jsonl_errors.py",
     "scripts/check_codex_compatibility.py",
     "scripts/check_release_version.py",
 ]
