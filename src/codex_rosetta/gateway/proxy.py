@@ -92,6 +92,16 @@ from .web_search import (
 
 logger = get_logger()
 
+# Provider model IDs are compact identifiers, not request payloads.  The
+# 256-byte ceiling leaves ample room for namespaced/versioned IDs while
+# preventing routing errors from reflecting an entire large request field.
+MAX_MODEL_ID_BYTES = 256
+
+# Codex currently sends ``{UUID}:{window_number}`` (about 40 bytes).  Keep a
+# generous forward-compatible envelope while preventing state-map keys from
+# bypassing the stores' value-byte accounting.
+MAX_CODEX_WINDOW_ID_BYTES = 128
+
 
 async def _convert_request(
     pipeline: ConversionPipeline,
@@ -201,14 +211,34 @@ def detect_stream_request(source_provider: ProviderType, body: dict[str, Any]) -
     return False
 
 
-def extract_model(source_provider: ProviderType, body: dict[str, Any]) -> str | None:
-    """Extract the model name from a source-format request body."""
-    model = body.get("model")
+def validate_model_id(model: Any) -> str | None:
+    """Return a valid bounded model identifier or raise a stable input error."""
     if model is None:
         return None
     if not isinstance(model, str) or not model.strip():
         raise ValueError("'model' must be a non-empty string")
+    if len(model.encode("utf-8")) > MAX_MODEL_ID_BYTES:
+        raise ValueError(f"'model' must be at most {MAX_MODEL_ID_BYTES} UTF-8 bytes")
     return model
+
+
+def extract_model(source_provider: ProviderType, body: dict[str, Any]) -> str | None:
+    """Extract and validate the model name from a source-format request body."""
+    return validate_model_id(body.get("model"))
+
+
+def normalize_codex_window_id(value: Any) -> str | None:
+    """Normalize an optional bounded Codex window identity header."""
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        raise ValueError("'x-codex-window-id' must be a string")
+    if len(value.encode("utf-8")) > MAX_CODEX_WINDOW_ID_BYTES:
+        raise ValueError(
+            "'x-codex-window-id' must be at most "
+            f"{MAX_CODEX_WINDOW_ID_BYTES} UTF-8 bytes"
+        )
+    return value
 
 
 def _is_openai_responses_direct(route: ResolvedRoute) -> bool:

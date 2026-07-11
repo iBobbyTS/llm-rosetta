@@ -50,6 +50,13 @@ Each access-key entry needs a stable, unique `id`. Rosetta uses that ID as the
 authenticated principal for cross-turn state isolation; changing a label does
 not change identity. The Admin UI rejects deletion of the final access key.
 
+Gateway model identifiers are limited to 256 UTF-8 bytes. The Codex
+`x-codex-window-id` header is limited to 128 UTF-8 bytes; current Codex window
+IDs use `{UUID}:{window_number}` and are normally about 40 bytes. Requests over
+either semantic limit receive a format-appropriate HTTP 400 before routing or
+state allocation. These limits prevent request-error reflection and state-key
+memory from bypassing the larger body/header and cache-value byte budgets.
+
 Cross-turn in-memory state has principal-fair hard limits. Provider continuation
 metadata is limited to 1 MiB per entry, 8 MiB per scope, 1,024 entries and
 16 MiB per principal, and 10,000 entries and 64 MiB for the app. Deferred tool

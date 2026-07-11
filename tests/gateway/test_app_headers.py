@@ -587,3 +587,83 @@ def test_proxy_handler_passes_codex_window_id_to_non_streaming_proxy(monkeypatch
     assert scope.conversation_id == "thread-abc:0"
     assert scope.persistent is True
     assert "x-codex-window-id" not in captured_kwargs["extra_headers"]
+
+
+@pytest.mark.parametrize(
+    "window_id",
+    [
+        "x" * 129,
+        "é" * 65,
+    ],
+)
+def test_proxy_handler_rejects_oversized_window_id_before_state(
+    monkeypatch, window_id: str
+):
+    called = False
+
+    class _Config:
+        models = {"glm-5.2": "test-provider"}
+
+        def resolve(self, source_provider: ProviderType, model: str):
+            raise AssertionError("oversized window id reached routing")
+
+    async def _fake_handle_non_streaming(*args: Any, **kwargs: Any):
+        nonlocal called
+        called = True
+        return JSONResponse({"ok": True}), {}
+
+    monkeypatch.setattr(app_module, "handle_non_streaming", _fake_handle_non_streaming)
+    request = MagicMock()
+    request.headers = {"x-codex-window-id": window_id}
+    request.json.return_value = {"model": "glm-5.2", "input": []}
+    request.app.gateway_config = _Config()
+
+    response = asyncio.run(app_module._proxy_handler(request, "openai_responses"))
+
+    assert response.status_code == 400
+    assert json.loads(response.body)["error"]["message"] == (
+        "'x-codex-window-id' must be at most 128 UTF-8 bytes"
+    )
+    assert called is False
+
+
+def test_proxy_handler_accepts_exact_window_id_byte_limit(monkeypatch):
+    captured_kwargs: dict[str, Any] = {}
+
+    class _Config:
+        models = {"glm-5.2": "test-provider"}
+
+        def resolve(self, source_provider: ProviderType, model: str):
+            return (
+                ResolvedRoute(
+                    source_provider=source_provider,
+                    target_provider="openai_chat",
+                    provider_name="test-provider",
+                ),
+                MagicMock(),
+            )
+
+    async def _fake_handle_non_streaming(*args: Any, **kwargs: Any):
+        captured_kwargs.update(kwargs)
+        return JSONResponse({"ok": True}), {}
+
+    monkeypatch.setattr(app_module, "handle_non_streaming", _fake_handle_non_streaming)
+    window_id = "é" * 64
+    request = MagicMock()
+    request.headers = {"x-codex-window-id": window_id}
+    request.json.return_value = {"model": "glm-5.2", "input": []}
+    request.app.metadata_store = MagicMock()
+    request.app.codex_tool_store = MagicMock()
+    request.app.window_tool_search_store = MagicMock()
+    request.app.metrics = None
+    request.app.request_log = None
+    request.app.persistence = None
+    request.app.profiler_state = None
+    request.app.transport = MagicMock()
+    request.app.gateway_config = _Config()
+
+    response = asyncio.run(app_module._proxy_handler(request, "openai_responses"))
+
+    assert response.status_code == 200
+    assert captured_kwargs["codex_window_id"] == window_id
+    assert captured_kwargs["state_scope"].conversation_id == window_id

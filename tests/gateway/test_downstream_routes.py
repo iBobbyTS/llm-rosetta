@@ -8,8 +8,9 @@ import json
 import pytest
 
 from codex_rosetta._vendor.httpserver import Request
-from codex_rosetta.gateway.app import create_app
+from codex_rosetta.gateway.app import _proxy_handler, create_app, handle_google_genai
 from codex_rosetta.gateway.config import GatewayConfig
+from codex_rosetta.gateway.proxy import MAX_MODEL_ID_BYTES
 
 
 def _make_app():
@@ -38,12 +39,21 @@ def _make_app():
     return create_app(config)
 
 
-def _request(app, path: str, *, body: bytes = b"not json") -> Request:
+def _request(
+    app,
+    path: str,
+    *,
+    body: bytes = b"not json",
+    headers: dict[str, str] | None = None,
+) -> Request:
     return Request(
         method="POST",
         path=path,
         query_string="",
-        headers={"authorization": "Bearer test-gateway-key"},
+        headers={
+            "authorization": "Bearer test-gateway-key",
+            **(headers or {}),
+        },
         body=body,
         client_addr=("127.0.0.1", 12345),
         app=app,
@@ -104,6 +114,83 @@ def test_public_post_endpoints_keep_missing_model_error(path: str):
     assert response.status_code == 400
     payload = json.loads(response.body)
     assert payload["error"]["message"] == "Missing 'model' in request body"
+
+
+@pytest.mark.parametrize("path", ["/v1/responses", "/v1/embeddings"])
+@pytest.mark.parametrize(
+    ("model", "expected_status"),
+    [
+        ("x" * MAX_MODEL_ID_BYTES, 404),
+        ("é" * (MAX_MODEL_ID_BYTES // 2), 404),
+        ("x" * (MAX_MODEL_ID_BYTES + 1), 400),
+        ("é" * (MAX_MODEL_ID_BYTES // 2 + 1), 400),
+    ],
+)
+def test_public_post_endpoints_bound_model_utf8_bytes(
+    path: str, model: str, expected_status: int
+):
+    app = _make_app()
+
+    response = asyncio.run(
+        app._dispatch(
+            _request(
+                app,
+                path,
+                body=json.dumps({"model": model, "input": []}).encode(),
+            )
+        )
+    )
+
+    assert response.status_code == expected_status
+    if expected_status == 400:
+        payload = json.loads(response.body)
+        assert payload["error"]["message"] == (
+            f"'model' must be at most {MAX_MODEL_ID_BYTES} UTF-8 bytes"
+        )
+
+
+@pytest.mark.parametrize(
+    "source_provider",
+    ["openai_chat", "openai_responses", "anthropic", "google"],
+)
+def test_all_proxy_source_formats_share_model_byte_limit(source_provider: str):
+    app = _make_app()
+    request = _request(
+        app,
+        "/unused",
+        body=json.dumps(
+            {"model": "x" * (MAX_MODEL_ID_BYTES + 1), "input": []}
+        ).encode(),
+    )
+
+    response = asyncio.run(_proxy_handler(request, source_provider))
+
+    assert response.status_code == 400
+    payload = json.loads(response.body)
+    error = payload["error"]
+    assert error["message"] == (
+        f"'model' must be at most {MAX_MODEL_ID_BYTES} UTF-8 bytes"
+    )
+
+
+@pytest.mark.parametrize(
+    ("model_size", "expected_status"),
+    [(MAX_MODEL_ID_BYTES, 404), (MAX_MODEL_ID_BYTES + 1, 400)],
+)
+def test_google_path_model_override_uses_shared_byte_limit(
+    model_size: int, expected_status: int
+):
+    app = _make_app()
+    request = _request(app, "/unused", body=b"{}")
+
+    response = asyncio.run(
+        handle_google_genai(
+            request,
+            model_path=f"{'x' * model_size}:generateContent",
+        )
+    )
+
+    assert response.status_code == expected_status
 
 
 @pytest.mark.parametrize(

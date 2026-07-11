@@ -48,6 +48,8 @@ from .proxy import (
     extract_model,
     handle_non_streaming,
     handle_streaming,
+    normalize_codex_window_id,
+    validate_model_id,
 )
 from .state_scope import GatewayStateScope
 from .tool_adaptation import CodexToolLocalizationStore
@@ -494,7 +496,14 @@ async def _proxy_handler(
 
     # Determine model
     try:
-        model = model_override or extract_model(source_provider, body)
+        model = (
+            validate_model_id(model_override)
+            if model_override
+            else extract_model(source_provider, body)
+        )
+        codex_window_id = normalize_codex_window_id(
+            request.headers.get("x-codex-window-id")
+        )
     except ValueError as exc:
         resp = error_response_for_source(source_provider, 400, str(exc))
         resp.headers["x-request-id"] = request_id
@@ -531,7 +540,6 @@ async def _proxy_handler(
 
     # Determine streaming
     is_stream = force_stream or detect_stream_request(source_provider, body)
-    codex_window_id = request.headers.get("x-codex-window-id")
     principal_id = api_key_principal_var.get()
     if principal_id is None:
         resp = error_response_for_source(

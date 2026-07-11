@@ -177,7 +177,7 @@ Still to be implemented: field types, serde rename/default/skip strategy, SSE ma
 The following behavior can be automatically verified using the fixed Codex request/SSE fixture:
 
 - Responses→Responses direct path retains unknown fields, original JSON and original SSE bytes below the transport safety envelope;
-- header allowlist, `x-codex-window-id` extraction, correlation/state-key separation, private no-window scope and terminal cleanup;
+- header allowlist, `x-codex-window-id` extraction, exact/+1 UTF-8 identity budgets, rejection before routing/state allocation, correlation/state-key separation, private no-window scope and terminal cleanup;
 - Responses request → IR/adapter → Chat/Anthropic/Google upstream request;
 - Responses Lite `additional_tools`, developer instructions, `reasoning.context=all_turns` and embedded tool filtering/deduplication;
 - non-streaming/streaming upstream response → Codex Responses output;
