@@ -203,16 +203,16 @@ result = run_sync(
 
 ## Workflow
 
-- **Branch from master**, open a PR, require CI green before merge.
+- **Branch from main**, open a PR, require CI green before merge.
 - **Merge strategy: rebase** — keep commits atomic and well-messaged.
 - Branch naming: `feature/...`, `fix/...`, `refactor/...`, `test/...`, `docs/...`
-- Never force-push to `master`.
+- Never force-push to `main`.
 - **No AI co-author tags in commits.** Do not add `Co-authored-by` lines for AI
   tools in git commit messages. Disclose AI usage in PR descriptions instead.
 
 ## Documentation
 
-Documentation is versioned on `master` under `docs/`:
+Documentation is versioned on `main` under `docs/`:
 
 - `docs/en/` contains English user documentation.
 - `docs/zh-cn/` contains the matching Chinese user documentation.

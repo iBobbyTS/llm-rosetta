@@ -58,7 +58,7 @@ dev = [
 all = ["codex-rosetta[openai,anthropic,google,gateway,profiling,dev]"]
 
 [project.urls]
-Documentation = "https://github.com/iBobbyTS/codex-rosetta/tree/master/docs"
+Documentation = "https://github.com/iBobbyTS/codex-rosetta/tree/main/docs"
 Repository = "https://github.com/iBobbyTS/codex-rosetta"
 Issues = "https://github.com/iBobbyTS/codex-rosetta/issues"
 
