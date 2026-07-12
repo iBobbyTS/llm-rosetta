@@ -2,7 +2,7 @@
 
 Codex talks to models through the OpenAI Responses API surface. Many third-party providers only expose an OpenAI Chat Completions-compatible endpoint. Codex-Rosetta bridges that gap in different ways depending on the route:
 
-- Responses to Responses providers configured as **OpenAI Responses (Pass through)** are passed through directly.
+- Responses to Responses providers configured as **OpenAI Responses (Tool Mapping only)** apply the selected Tool Profile, then pass the Responses payload through directly.
 - Responses to Responses providers configured as **OpenAI Responses (Rosetta)** are decoded through Codex-Rosetta's IR and encoded back to the Responses format.
 - Responses to Chat routes are converted through Codex-Rosetta's IR, then converted back to Responses events for Codex.
 
@@ -10,18 +10,18 @@ The goal is to preserve Codex runtime semantics, not just make the upstream requ
 
 ## The Two Responses Options Are Not New Protocols
 
-**OpenAI Responses (Pass through)** and **OpenAI Responses (Rosetta)** use the same OpenAI Responses wire protocol, endpoint shape, and converter. They are separate Admin UI choices only because the gateway handles them differently internally:
+**OpenAI Responses (Tool Mapping only)** and **OpenAI Responses (Rosetta)** use the same OpenAI Responses wire protocol and endpoint shape. They are separate Admin UI choices only because the gateway handles them differently internally:
 
-- **Pass through** forwards the request, response JSON, and streaming SSE bytes with minimal intervention. Use it for official OpenAI or GPT proxy services that preserve OpenAI's Responses behavior.
+- **Tool Mapping only** applies the selected Tool Profile without running the complete Responses body through IR, then forwards the response JSON and streaming SSE bytes directly. Use it for official OpenAI or GPT proxy services that preserve OpenAI's Responses behavior.
 - **Rosetta** runs the request and response through the Responses → IR → Responses pipeline. Use it for other model providers that support the Responses protocol but need Rosetta's normalization, such as Qwen.
 
 The configured `api_type` values are `responses_passthrough` and `responses_rosetta`. Both resolve to the internal `openai_responses` provider type; they do not add public gateway endpoints or API standards.
 
-Only Responses pass-through and Responses-to-Chat conversion are currently guaranteed. Responses (Rosetta), Anthropic conversion, and Google conversion remain unguaranteed; this mode-selection work does not expand Responses field or event unpacking.
+Only the direct transport used by Tool Mapping only and Responses-to-Chat conversion are currently guaranteed. Responses (Rosetta), Anthropic conversion, and Google conversion remain unguaranteed; this mode-selection work does not expand Responses field or event unpacking.
 
-## Responses Pass-Through
+## Responses Tool Mapping Only
 
-For same-protocol OpenAI Responses routes configured as **Pass through**, the gateway normally does not decode and re-encode the request body. It forwards the original request and streams raw upstream SSE bytes back to Codex. The transport-level exception is an authenticated request with `Content-Encoding: zstd`: Rosetta decodes it under the configured pre/post-decompression size limits, removes the encoding header, and then preserves the decoded JSON fields through pass-through handling.
+For same-protocol OpenAI Responses routes configured as **Tool Mapping only**, the gateway does not decode and re-encode the complete request through IR. It applies the selected Tool Profile, forwards the resulting request, and streams raw upstream SSE bytes back to Codex. The transport-level exception is an authenticated request with `Content-Encoding: zstd`: Rosetta decodes it under the configured pre/post-decompression size limits and removes the encoding header first.
 
 This is important because Codex relies on fields that are not part of a minimal cross-provider IR, including:
 
@@ -30,7 +30,7 @@ This is important because Codex relies on fields that are not part of a minimal 
 - Native Responses tool item structure.
 - Provider-specific request fields such as `include`.
 
-Tool Profiles do not apply to Pass-through providers. The gateway forwards their tool definitions and choices without Profile filtering, modification, namespace expansion, or Rosetta tool injection. Tool Profiles remain selectable for **OpenAI Responses (Rosetta)**, Chat, Anthropic, and Google providers.
+Tool Profiles are selectable for this mode. The bundled **Responses pass through** Profile leaves native tools unchanged and disables Rosetta-only injections. The bundled **Responses web.run mapping** Profile differs only by setting `web.run` to Modified: Codex still exposes and calls `tools.web__run`, while `/v1/alpha/search` is handled by Rosetta's reliable Tavily/Python subset. Other Responses fields and upstream response bytes remain on the direct path.
 
 Codex's standalone Search and Images clients use three additional JSON endpoints:
 
@@ -39,13 +39,13 @@ Codex's standalone Search and Images clients use three additional JSON endpoints
 - `POST /v1/images/edits`
 
 Images remain native pass-through endpoints: the gateway forwards them only
-when the request model resolves to an **OpenAI Responses (Pass through)**
+when the request model resolves to an **OpenAI Responses (Tool Mapping only)**
 provider. The configured upstream model alias is applied, but the payload and
 JSON response otherwise bypass IR conversion.
 
-Standalone Search has an additional local bridge. When
-`server.web_search.tavily_api_key` is configured, `/v1/alpha/search` executes
-the reliable subset locally for every model route: `search_query` uses Tavily,
+Standalone Search has an additional local bridge. When the selected Profile
+marks `web.run` as Modified, `/v1/alpha/search` executes the reliable subset
+locally: `search_query` uses the configured `server.web_search.tavily_api_key`,
 direct-URL `open` fetches public static HTML or plain text, and `time` uses
 Python fixed-UTC-offset calculation. Open validates every redirect target,
 rejects credentials and non-public addresses, permits at most five redirects,
@@ -59,9 +59,10 @@ sports, recency, blocked-domain, location, or non-live access semantics return
 HTTP `501` with `code: "not_implemented"` before any partial operation runs.
 Every `501` message from these auxiliary endpoints also ends with
 `Consider "Browser Use" skill` so Codex can choose the browser fallback.
-Without a Tavily key, a Responses Pass-through route retains native
-`/alpha/search` pass-through for search queries; direct-URL `open` and
-time-only requests can still use the local Python executor.
+With the **Responses pass through** Profile, `/alpha/search` remains native
+upstream pass-through even when Tavily is configured. With **Responses web.run
+mapping**, supported commands use the local executor; search queries require a
+Tavily key, while direct-URL `open` and time-only requests use Python.
 
 ## Responses To Chat Conversion
 

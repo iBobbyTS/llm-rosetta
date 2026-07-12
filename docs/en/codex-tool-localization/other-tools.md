@@ -67,4 +67,4 @@ The important behavior is that tool calls must survive the round trip:
 
 ## Tool Profile Scope
 
-**OpenAI Responses (Pass through)** ignores Tool Profiles completely and keeps the incoming tools unchanged. Responses Rosetta, Chat, Anthropic, and Google model groups retain Profile selection and processing; each conversion path applies the states it supports in addition to its built-in bridge behavior.
+**OpenAI Responses (Tool Mapping only)** supports Tool Profiles while keeping the rest of the Responses request and response on the direct path. The bundled **Responses pass through** Profile preserves incoming tools; **Responses web.run mapping** changes only `web.run` so `/v1/alpha/search` uses Rosetta's local mapping. Responses Rosetta, Chat, Anthropic, and Google model groups continue to support Profile selection and processing.

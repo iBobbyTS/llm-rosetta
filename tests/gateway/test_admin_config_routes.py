@@ -822,6 +822,14 @@ def test_get_config_returns_model_groups_and_effective_models(tmp_path):
     assert body["model_groups"]["OpenAI"]["provider"] == "openai"
     assert body["model_groups"]["OpenAI"]["type"] == "llm"
     assert body["model_groups"]["OpenAI"]["tool_profile"] == "builtin"
+    assert body["tool_profile_presets"] == [
+        {"id": "builtin", "name": "Built-in"},
+        {"id": "responses_pass_through", "name": "Responses pass through"},
+        {
+            "id": "responses_web_run_mapping",
+            "name": "Responses web.run mapping",
+        },
+    ]
     assert body["model_groups"]["OpenAI"]["models"]["grouped"]["upstream_model"] == (
         "grouped-upstream"
     )
@@ -992,7 +1000,7 @@ def test_admin_html_splits_responses_internal_handling_options():
     )
     html = html_path.read_text(encoding="utf-8")
 
-    assert "OpenAI Responses (Pass through)" in html
+    assert "OpenAI Responses (Tool Mapping only)" in html
     assert "OpenAI Responses (Rosetta)" in html
     assert "{value: 'responses_passthrough'" in html
     assert "{value: 'responses_rosetta'" in html
@@ -1001,7 +1009,7 @@ def test_admin_html_splits_responses_internal_handling_options():
     assert "responses_rosetta: 'protocol.responsesRosettaHint'" in html
 
 
-def test_admin_html_hides_model_group_profile_only_for_responses_pass_through():
+def test_admin_html_shows_model_group_profile_for_all_llm_protocols():
     html_path = (
         Path(__file__).parents[2]
         / "src"
@@ -1013,7 +1021,8 @@ def test_admin_html_hides_model_group_profile_only_for_responses_pass_through():
     html = html_path.read_text(encoding="utf-8")
 
     assert 'id="modelGroupProvider" onchange="onModelGroupProviderChange()"' in html
-    assert "api_type !== 'responses_passthrough'" in html
+    assert "return !!provider;" in html
+    assert "responses_pass_through" in html
     assert "groupType === 'llm' && _modelGroupProviderUsesToolProfiles()" in html
     assert "if (groupType === 'llm' && _modelGroupProviderUsesToolProfiles())" in html
 

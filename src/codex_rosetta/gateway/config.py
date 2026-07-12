@@ -22,6 +22,7 @@ from .providers import build_provider_info
 from .stream_trace import StreamTraceConfig
 from .tool_profiles import (
     BUILTIN_TOOL_PROFILE,
+    RESPONSES_PASS_THROUGH_TOOL_PROFILE,
     normalize_tool_profiles,
     resolve_tool_profile,
     validate_tool_profile_reference,
@@ -177,7 +178,14 @@ def provider_responses_processing(
 
 def provider_supports_tool_profiles(cfg: Any) -> bool:
     """Return whether a provider is allowed to use model-group Tool Profiles."""
-    return isinstance(cfg, dict) and cfg.get("api_type") != "responses_passthrough"
+    return isinstance(cfg, dict)
+
+
+def default_tool_profile_for_provider(cfg: Any) -> str:
+    """Return the bundled default Profile for one provider handling mode."""
+    if isinstance(cfg, dict) and cfg.get("api_type") == "responses_passthrough":
+        return RESPONSES_PASS_THROUGH_TOOL_PROFILE
+    return BUILTIN_TOOL_PROFILE
 
 
 def resolve_model_tool_profile_names(
@@ -185,7 +193,7 @@ def resolve_model_tool_profile_names(
     raw_providers: dict[str, dict[str, str]],
     tool_profiles: dict[str, dict[str, str]],
 ) -> dict[str, str]:
-    """Resolve Profile names for every model except Responses pass-through."""
+    """Resolve Profile names for every LLM model group."""
     result: dict[str, str] = {}
     if not isinstance(raw_model_groups, dict):
         return result
@@ -197,7 +205,12 @@ def resolve_model_tool_profile_names(
         ):
             continue
         profile_name = validate_tool_profile_reference(
-            group.get("tool_profile", BUILTIN_TOOL_PROFILE),
+            group.get(
+                "tool_profile",
+                default_tool_profile_for_provider(
+                    raw_providers.get(group.get("provider"))
+                ),
+            ),
             tool_profiles,
             field=f"config: model_groups.{group_name}.tool_profile",
         )

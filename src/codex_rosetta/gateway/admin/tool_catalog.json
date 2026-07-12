@@ -11,6 +11,34 @@
     "id": "builtin",
     "name": "Built-in"
   },
+  "preset_profiles": [
+    {
+      "id": "responses_pass_through",
+      "name": "Responses pass through",
+      "defaults": {
+        "function": "passthrough",
+        "custom": "passthrough",
+        "hosted": "passthrough",
+        "namespace": "passthrough",
+        "custom_injection": "disabled"
+      },
+      "tools": {}
+    },
+    {
+      "id": "responses_web_run_mapping",
+      "name": "Responses web.run mapping",
+      "defaults": {
+        "function": "passthrough",
+        "custom": "passthrough",
+        "hosted": "passthrough",
+        "namespace": "passthrough",
+        "custom_injection": "disabled"
+      },
+      "tools": {
+        "namespace.web.run": "modified"
+      }
+    }
+  ],
   "policies": [
     {
       "id": "passthrough",
@@ -31,6 +59,15 @@
         "disabled",
         "passthrough",
         "expanded"
+      ]
+    },
+    {
+      "id": "web_run_mapping",
+      "default": "modified",
+      "supported": [
+        "disabled",
+        "passthrough",
+        "modified"
       ]
     },
     {
@@ -443,7 +480,7 @@
       "name": "run",
       "type": "function",
       "namespace_id": "namespace.web",
-      "policy_id": "passthrough"
+      "policy_id": "web_run_mapping"
     },
     {
       "id": "namespace.memories.add_ad_hoc_note",

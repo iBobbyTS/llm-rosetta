@@ -6,9 +6,12 @@ from typing import Any
 
 from codex_rosetta._vendor.httpserver import JSONResponse, Response
 
-from ...config import load_config_raw, provider_supports_tool_profiles
+from ...config import (
+    default_tool_profile_for_provider,
+    load_config_raw,
+    provider_supports_tool_profiles,
+)
 from ...tool_profiles import (
-    BUILTIN_TOOL_PROFILE,
     normalize_tool_profile_tools,
     normalize_tool_profiles,
     tool_profile_contract,
@@ -50,7 +53,10 @@ def _tool_profile_references(data: dict[str, Any]) -> dict[str, list[str]]:
             continue
         if not provider_supports_tool_profiles(providers.get(group.get("provider"))):
             continue
-        profile_name = group.get("tool_profile", BUILTIN_TOOL_PROFILE)
+        profile_name = group.get(
+            "tool_profile",
+            default_tool_profile_for_provider(providers.get(group.get("provider"))),
+        )
         references.setdefault(profile_name, []).append(group_name)
     return references
 

@@ -11,14 +11,15 @@ from codex_rosetta.shims import list_shims
 
 from ...config import (
     GatewayConfig,
+    default_tool_profile_for_provider,
     load_config_raw,
     provider_supports_tool_profiles,
 )
 from ...providers import known_provider_types
 from ...stream_trace import DEFAULT_MAX_CHARS
 from ...tool_profiles import (
-    BUILTIN_TOOL_PROFILE,
     normalize_tool_profiles,
+    tool_profile_contract,
     validate_tool_profile_reference,
 )
 from ...transport.http.transport import request_bounded_response
@@ -192,9 +193,12 @@ def _normalize_model_groups_for_admin(
             "type": group_type,
             "models": models,
         }
-        if provider_supports_tool_profiles(raw_providers.get(provider)):
+        if group_type == "llm" and provider_supports_tool_profiles(
+            raw_providers.get(provider)
+        ):
             normalized_group["tool_profile"] = group_value.get(
-                "tool_profile", BUILTIN_TOOL_PROFILE
+                "tool_profile",
+                default_tool_profile_for_provider(raw_providers.get(provider)),
             )
         groups[group_name] = normalized_group
     return groups
@@ -349,6 +353,10 @@ async def get_config(request: Any) -> Response:
             "tool_profiles": {
                 name: {"tools": dict(tools)} for name, tools in tool_profiles.items()
             },
+            "tool_profile_presets": [
+                {"id": profile["id"], "name": profile["name"]}
+                for profile in tool_profile_contract()["profiles"]
+            ],
             "server": server,
             "credential_visible": config.credential_visible,
             "version": _get_version(),
@@ -591,7 +599,9 @@ async def put_model_group(request: Any, **kwargs: Any) -> Response:
         tool_profiles = normalize_tool_profiles(data.get("tool_profiles"))
         try:
             tool_profile = validate_tool_profile_reference(
-                body.get("tool_profile", BUILTIN_TOOL_PROFILE),
+                body.get(
+                    "tool_profile", default_tool_profile_for_provider(provider_config)
+                ),
                 tool_profiles,
                 field=f"model group '{name}' tool_profile",
             )

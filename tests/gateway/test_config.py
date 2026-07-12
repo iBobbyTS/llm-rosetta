@@ -370,6 +370,8 @@ class TestProviderApiTypeResolution:
         assert route.target_provider == "openai_responses"
         assert route.shim_name is None
         assert route.responses_processing == "passthrough"
+        assert route.tool_profile_name == "responses_pass_through"
+        assert route.tool_profile["namespace.web.run"] == "passthrough"
 
     def test_responses_rosetta_uses_same_wire_protocol_with_conversion_mode(self):
         raw = {
@@ -570,3 +572,39 @@ def test_cli_add_rosetta_model_group_selects_builtin_profile(tmp_path):
 
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     assert saved["model_groups"]["Test Rosetta"]["tool_profile"] == "builtin"
+
+
+def test_cli_add_tool_mapping_only_group_selects_pass_through_profile(tmp_path):
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(
+        json.dumps(
+            {
+                "providers": {
+                    "test": {
+                        "api_key": "sk-test",
+                        "base_url": "https://api.example.test",
+                        "provider": "custom",
+                        "api_type": "responses_passthrough",
+                    }
+                },
+                "tool_profiles": {},
+                "model_groups": {},
+                "server": _secure_server(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _cmd_add_model_group(
+        Namespace(
+            config=str(config_path),
+            name="Test Responses",
+            provider="test",
+            type="llm",
+        )
+    )
+
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["model_groups"]["Test Responses"]["tool_profile"] == (
+        "responses_pass_through"
+    )

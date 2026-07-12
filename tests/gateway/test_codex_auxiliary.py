@@ -27,6 +27,7 @@ def _make_config(
     *,
     upstream_model: str | None = "gpt-image-2",
     tavily_api_key: str | None = None,
+    tool_profile: str | None = None,
 ) -> GatewayConfig:
     provider_by_api_type = {
         "responses_passthrough": "openai",
@@ -52,6 +53,11 @@ def _make_config(
                 "codex": {
                     "provider": "upstream",
                     "type": "llm",
+                    **(
+                        {"tool_profile": tool_profile}
+                        if tool_profile is not None
+                        else {}
+                    ),
                     "models": {"gateway-model": model},
                 }
             },
@@ -135,7 +141,7 @@ def test_non_passthrough_modes_return_not_implemented(
     payload = json.loads(response.body)
     assert payload["error"]["type"] == "invalid_request_error"
     assert (
-        "only implemented for OpenAI Responses (Pass through)"
+        "only implemented for OpenAI Responses (Tool Mapping only)"
         in payload["error"]["message"]
     )
     assert payload["error"]["message"].endswith('Consider "Browser Use" skill')
@@ -230,8 +236,12 @@ def _search_body(commands: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def test_tavily_configuration_intercepts_passthrough_search() -> None:
-    config = _make_config(tavily_api_key="tvly-test", upstream_model="real-model")
+def test_web_run_mapping_profile_intercepts_tool_mapping_only_search() -> None:
+    config = _make_config(
+        tavily_api_key="tvly-test",
+        upstream_model="real-model",
+        tool_profile="responses_web_run_mapping",
+    )
     request = _make_request(
         _search_body({"search_query": [{"q": "Python documentation"}]})
     )
@@ -252,9 +262,30 @@ def test_tavily_configuration_intercepts_passthrough_search() -> None:
     request.app.transport.send_passthrough.assert_not_awaited()
 
 
+def test_responses_pass_through_profile_keeps_search_native_with_tavily() -> None:
+    config = _make_config(tavily_api_key="tvly-test")
+    request = _make_request(
+        _search_body({"search_query": [{"q": "Python documentation"}]})
+    )
+
+    response = asyncio.run(
+        handle_codex_auxiliary(
+            request,
+            config,
+            "alpha/search",
+            search_client=_FakeTavilyClient(),
+        )
+    )
+
+    assert response.status_code == 202
+    request.app.transport.send_passthrough.assert_awaited_once()
+
+
 def test_local_search_records_gateway_log_stages(tmp_path: Path) -> None:
     trace_path = tmp_path / "search-trace.jsonl"
-    config = _make_config(tavily_api_key="tvly-test")
+    config = _make_config(
+        tavily_api_key="tvly-test", tool_profile="responses_web_run_mapping"
+    )
     request = _make_request(
         _search_body({"search_query": [{"q": "Python documentation"}]})
     )
@@ -304,7 +335,9 @@ def test_non_passthrough_search_uses_local_tavily_bridge() -> None:
 
 
 def test_local_search_open_returns_static_page_content() -> None:
-    config = _make_config(tavily_api_key="tvly-test")
+    config = _make_config(
+        tavily_api_key="tvly-test", tool_profile="responses_web_run_mapping"
+    )
     request = _make_request(
         _search_body({"open": [{"ref_id": "https://docs.python.org/3/"}]})
     )
@@ -327,7 +360,9 @@ def test_local_search_open_returns_static_page_content() -> None:
 
 
 def test_stored_reference_open_returns_not_implemented() -> None:
-    config = _make_config(tavily_api_key="tvly-test")
+    config = _make_config(
+        tavily_api_key="tvly-test", tool_profile="responses_web_run_mapping"
+    )
     request = _make_request(_search_body({"open": [{"ref_id": "turn0search0"}]}))
 
     response = asyncio.run(handle_codex_auxiliary(request, config, "alpha/search"))

@@ -202,6 +202,10 @@ def test_catalog_defaults_and_shared_image_policy():
     assert catalog["metadata"]["codex_cli_version"] == "0.144.0"
     assert catalog["metadata"]["profile_selection"] == "model_group"
     assert catalog["builtin_profile"] == {"id": "builtin", "name": "Built-in"}
+    assert [profile["id"] for profile in catalog["preset_profiles"]] == [
+        "responses_pass_through",
+        "responses_web_run_mapping",
+    ]
 
     assert policies[items["custom.apply_patch"]["policy_id"]]["default"] == ("disabled")
     image_policy = items["hosted.image_generation"]["policy_id"]
@@ -218,6 +222,7 @@ def test_catalog_defaults_and_shared_image_policy():
         "function.create_goal",
         "function.update_goal",
         "hosted.web_search",
+        "namespace.web.run",
     }
     assert {
         item_id
@@ -359,6 +364,29 @@ def test_admin_tool_profile_crud_and_reference_guard(tmp_path):
     app = create_app(GatewayConfig(raw), str(config_path))
     tools = dict(tool_profile_contract()["builtin"])
     tools["function.update_plan"] = "disabled"
+
+    response = asyncio.run(
+        app._dispatch(_api_request(app, "GET", "/admin/api/tools/profiles"))
+    )
+    assert response.status_code == 200
+    profiles = json.loads(getattr(response, "body"))["profiles"]
+    assert [(profile["id"], profile["readonly"]) for profile in profiles[:3]] == [
+        ("builtin", True),
+        ("responses_pass_through", True),
+        ("responses_web_run_mapping", True),
+    ]
+
+    response = asyncio.run(
+        app._dispatch(
+            _api_request(
+                app,
+                "PUT",
+                "/admin/api/tools/profiles/responses_pass_through",
+                {"tools": tools},
+            )
+        )
+    )
+    assert response.status_code == 400
 
     response = asyncio.run(
         app._dispatch(

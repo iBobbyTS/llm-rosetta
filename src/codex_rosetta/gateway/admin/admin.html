@@ -1227,8 +1227,8 @@ const I18N = {
     'provider.openai':'OpenAI', 'provider.openrouter':'Open Router', 'provider.opencodeGo':'Opencode Go',
     'provider.qwen':'Qwen', 'provider.zhipu':'Zhipu (GLM)',
     'providerVariant.official':'Official', 'providerVariant.china':'China', 'providerVariant.international':'International', 'providerVariant.custom':'Custom',
-    'protocol.responsesPassthrough':'OpenAI Responses (Pass through)', 'protocol.responsesRosetta':'OpenAI Responses (Rosetta)',
-    'protocol.responsesPassthroughHint':'Best for official OpenAI or GPT proxy services.',
+    'protocol.responsesPassthrough':'OpenAI Responses (Tool Mapping only)', 'protocol.responsesRosetta':'OpenAI Responses (Rosetta)',
+    'protocol.responsesPassthroughHint':'Best for official OpenAI or GPT proxy services. Only the selected Tool Profile mappings are applied; other Responses content passes through.',
     'protocol.responsesRosettaHint':'Best for other model providers that support the Responses API, such as Qwen.',
     'protocol.chat':'OpenAI Chat Completions',
     'protocol.anthropic':'Anthropic', 'protocol.google':'Google',
@@ -1411,8 +1411,8 @@ const I18N = {
     'provider.openai':'OpenAI', 'provider.openrouter':'Open Router', 'provider.opencodeGo':'Opencode Go',
     'provider.qwen':'\u901a\u4e49\u5343\u95ee', 'provider.zhipu':'\u667a\u8c31 GLM',
     'providerVariant.official':'\u5b98\u65b9', 'providerVariant.china':'\u4e2d\u56fd\u7ad9', 'providerVariant.international':'\u56fd\u9645\u7ad9', 'providerVariant.custom':'\u81ea\u5b9a\u4e49',
-    'protocol.responsesPassthrough':'OpenAI Responses (Pass through)', 'protocol.responsesRosetta':'OpenAI Responses (Rosetta)',
-    'protocol.responsesPassthroughHint':'适合 OpenAI 官方或 GPT 中转站。',
+    'protocol.responsesPassthrough':'OpenAI Responses (Tool Mapping only)', 'protocol.responsesRosetta':'OpenAI Responses (Rosetta)',
+    'protocol.responsesPassthroughHint':'适合 OpenAI 官方或 GPT 中转站。仅应用所选 Tool Profile 的工具映射，其他 Responses 内容直通。',
     'protocol.responsesRosettaHint':'适合其他支持 Responses 协议的模型提供商，如千问。',
     'protocol.chat':'OpenAI Chat Completions',
     'protocol.anthropic':'Anthropic', 'protocol.google':'Google',
@@ -2484,9 +2484,15 @@ function openModelGroupModal(groupName) {
   const groupType = group ? group.type : 'llm';
   document.querySelector(`input[name="modelGroupType"][value="${groupType}"]`).checked = true;
   const profileSelect = document.getElementById('modelGroupToolProfile');
-  const profileNames = ['builtin', ...Object.keys((configData && configData.tool_profiles) || {}).sort()];
-  profileSelect.innerHTML = profileNames.map(name => `<option value="${escAttr(name)}">${esc(name === 'builtin' ? 'Built-in' : name)}</option>`).join('');
-  profileSelect.value = group?.tool_profile || 'builtin';
+  const presets = (configData && configData.tool_profile_presets) || [{id: 'builtin', name: 'Built-in'}];
+  const profileOptions = [
+    ...presets,
+    ...Object.keys((configData && configData.tool_profiles) || {}).sort().map(name => ({id: name, name})),
+  ];
+  profileSelect.innerHTML = profileOptions.map(profile => `<option value="${escAttr(profile.id)}">${esc(profile.name)}</option>`).join('');
+  const providerConfig = configData?.providers?.[provider];
+  const defaultProfile = providerConfig?.api_type === 'responses_passthrough' ? 'responses_pass_through' : 'builtin';
+  profileSelect.value = group?.tool_profile || defaultProfile;
   document.getElementById('modelGroupRows').innerHTML = '';
   const models = group ? (group.models || {}) : {};
   const entries = Object.entries(models);
@@ -2502,10 +2508,17 @@ function openModelGroupModal(groupName) {
 function _modelGroupProviderUsesToolProfiles() {
   const providerName = document.getElementById('modelGroupProvider').value;
   const provider = configData?.providers?.[providerName];
-  return !!provider && provider.api_type !== 'responses_passthrough';
+  return !!provider;
 }
 
 function onModelGroupProviderChange() {
+  if (!_editingModelGroupName) {
+    const providerName = document.getElementById('modelGroupProvider').value;
+    const provider = configData?.providers?.[providerName];
+    document.getElementById('modelGroupToolProfile').value = provider?.api_type === 'responses_passthrough'
+      ? 'responses_pass_through'
+      : 'builtin';
+  }
   onModelGroupTypeChange();
 }
 
@@ -2565,7 +2578,9 @@ async function saveModelGroup() {
   }
   const body = {provider, type: groupType, models};
   if (groupType === 'llm' && _modelGroupProviderUsesToolProfiles()) {
-    body.tool_profile = document.getElementById('modelGroupToolProfile').value || 'builtin';
+    const providerConfig = configData?.providers?.[provider];
+    const defaultProfile = providerConfig?.api_type === 'responses_passthrough' ? 'responses_pass_through' : 'builtin';
+    body.tool_profile = document.getElementById('modelGroupToolProfile').value || defaultProfile;
   }
   const originalName = document.getElementById('modelGroupName').dataset.originalName;
   if (originalName && originalName !== name) {

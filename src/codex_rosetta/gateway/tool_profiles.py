@@ -8,12 +8,13 @@ from typing import Any
 from .admin.tool_catalog import load_tool_catalog
 
 BUILTIN_TOOL_PROFILE = "builtin"
+RESPONSES_PASS_THROUGH_TOOL_PROFILE = "responses_pass_through"
 MAX_TOOL_PROFILE_NAME_LENGTH = 128
 
 
 @lru_cache(maxsize=1)
 def tool_profile_contract() -> dict[str, Any]:
-    """Return supported states and the immutable bundled profile."""
+    """Return supported states and the immutable bundled profiles."""
     catalog = load_tool_catalog()
     policies = {policy["id"]: policy for policy in catalog["policies"]}
     supported: dict[str, tuple[str, ...]] = {}
@@ -29,7 +30,9 @@ def tool_profile_contract() -> dict[str, Any]:
 
         policy = policies[item["policy_id"]]
         if item_type == "namespace":
-            supported[item_id] = ("disabled", "expanded")
+            supported[item_id] = tuple(
+                policy.get("namespace_supported", ("disabled", "expanded"))
+            )
             builtin[item_id] = (
                 "disabled" if policy["default"] == "disabled" else "expanded"
             )
@@ -39,14 +42,42 @@ def tool_profile_contract() -> dict[str, Any]:
         supported[item_id] = states
         builtin[item_id] = policy["default"]
 
+    profiles = [
+        {
+            **dict(catalog["builtin_profile"]),
+            "tools": dict(builtin),
+        }
+    ]
+    for preset in catalog.get("preset_profiles", []):
+        defaults = preset.get("defaults", {})
+        overrides = preset.get("tools", {})
+        tools: dict[str, str] = {}
+        for item in catalog["items"]:
+            item_id = item["id"]
+            state = overrides.get(item_id, defaults.get(item["type"]))
+            if state not in supported[item_id]:
+                raise ValueError(
+                    f"bundled profile {preset.get('id')!r} has unsupported state "
+                    f"{state!r} for {item_id}"
+                )
+            tools[item_id] = state
+        profiles.append(
+            {
+                "id": preset["id"],
+                "name": preset["name"],
+                "tools": tools,
+            }
+        )
+
     return {
-        "profile": dict(catalog["builtin_profile"]),
+        "profiles": profiles,
         "supported": supported,
         "builtin": builtin,
+        "readonly": {profile["id"]: profile for profile in profiles},
     }
 
 
-def validate_tool_profile_name(value: Any, *, allow_builtin: bool = False) -> str:
+def validate_tool_profile_name(value: Any, *, allow_readonly: bool = False) -> str:
     """Validate and return one persisted profile identifier."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError("tool profile name must be a non-empty string")
@@ -55,8 +86,8 @@ def validate_tool_profile_name(value: Any, *, allow_builtin: bool = False) -> st
         raise ValueError(
             f"tool profile name must be at most {MAX_TOOL_PROFILE_NAME_LENGTH} characters"
         )
-    if name == BUILTIN_TOOL_PROFILE and not allow_builtin:
-        raise ValueError("the builtin tool profile is read-only")
+    if name in tool_profile_contract()["readonly"] and not allow_readonly:
+        raise ValueError(f"the bundled tool profile '{name}' is read-only")
     return name
 
 
@@ -115,8 +146,9 @@ def resolve_tool_profile(
     profiles: dict[str, dict[str, str]],
 ) -> dict[str, str]:
     """Resolve a built-in or user profile to an independent state mapping."""
-    if name == BUILTIN_TOOL_PROFILE:
-        return dict(tool_profile_contract()["builtin"])
+    readonly = tool_profile_contract()["readonly"]
+    if name in readonly:
+        return dict(readonly[name]["tools"])
     try:
         return dict(profiles[name])
     except KeyError as exc:
@@ -130,8 +162,8 @@ def validate_tool_profile_reference(
     field: str,
 ) -> str:
     """Validate a model-group profile reference."""
-    name = validate_tool_profile_name(value, allow_builtin=True)
-    if name != BUILTIN_TOOL_PROFILE and name not in profiles:
+    name = validate_tool_profile_name(value, allow_readonly=True)
+    if name not in tool_profile_contract()["readonly"] and name not in profiles:
         raise ValueError(f"{field} references unknown tool profile '{name}'")
     return name
 
@@ -143,10 +175,12 @@ def tool_profiles_for_admin(
     contract = tool_profile_contract()
     result = [
         {
-            **contract["profile"],
-            "tools": dict(contract["builtin"]),
+            "id": profile["id"],
+            "name": profile["name"],
+            "tools": dict(profile["tools"]),
             "readonly": True,
         }
+        for profile in contract["profiles"]
     ]
     result.extend(
         {"id": name, "name": name, "tools": dict(tools), "readonly": False}

@@ -38,7 +38,11 @@ def test_builtin_profile_covers_catalog_with_type_specific_states():
     contract = tool_profile_contract()
 
     assert set(contract["builtin"]) == set(contract["supported"])
-    assert contract["supported"]["namespace.clock"] == ("disabled", "expanded")
+    assert contract["supported"]["namespace.clock"] == (
+        "disabled",
+        "passthrough",
+        "expanded",
+    )
     assert contract["builtin"]["namespace.clock"] == "expanded"
     assert contract["supported"]["injection.claude_code.read"] == (
         "disabled",
@@ -112,7 +116,7 @@ def test_gateway_config_rejects_unknown_group_profile():
         GatewayConfig(raw)
 
 
-def test_pass_through_provider_ignores_group_profile_completely():
+def test_tool_mapping_only_provider_applies_selected_group_profile():
     tools = _profile(**{"function.update_plan": "disabled"})
     raw = {
         "providers": {
@@ -142,9 +146,27 @@ def test_pass_through_provider_ignores_group_profile_completely():
     adapted = _apply_tool_adaptation(body, route)
 
     assert route.responses_processing == "passthrough"
-    assert route.tool_profile_name is None
-    assert route.tool_profile == {}
-    assert adapted is body
+    assert route.tool_profile_name == "custom"
+    assert route.tool_profile["function.update_plan"] == "disabled"
+    assert "tools" not in adapted
+
+
+def test_responses_presets_are_read_only_and_only_mapping_profile_modifies_web_run():
+    pass_through = resolve_tool_profile("responses_pass_through", {})
+    web_run_mapping = resolve_tool_profile("responses_web_run_mapping", {})
+    items = tool_profile_contract()["readonly"]["responses_pass_through"]["tools"]
+
+    assert pass_through == items
+    assert all(
+        state == ("disabled" if item_id.startswith("injection.") else "passthrough")
+        for item_id, state in pass_through.items()
+    )
+    assert {
+        item_id
+        for item_id, state in web_run_mapping.items()
+        if state != pass_through[item_id]
+    } == {"namespace.web.run"}
+    assert web_run_mapping["namespace.web.run"] == "modified"
 
 
 def test_profile_filters_top_level_lite_and_namespace_children():

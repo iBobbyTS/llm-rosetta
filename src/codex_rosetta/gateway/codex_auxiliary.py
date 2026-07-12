@@ -22,6 +22,7 @@ from .headers import build_upstream_extra_headers, resolve_request_id
 from .logging import record_request_stat
 from .proxy import error_response_for_source, extract_model
 from .stream_trace import StreamTraceLogger, StreamTraceState
+from .tool_profiles import route_tool_state
 from .transport import UpstreamConnectionError, UpstreamTransport
 from .web_search import TavilySearchClient
 
@@ -79,22 +80,32 @@ async def handle_codex_auxiliary(
         )
 
     native_passthrough = is_openai_responses_passthrough(route)
+    web_run_state = route_tool_state(route, "namespace.web.run", "modified")
+    web_run_mapping = web_run_state == "modified"
     use_local_search = (
         upstream_path == "alpha/search"
+        and web_run_mapping
         and should_use_local_codex_search(
             body,
             config.web_search,
-            native_passthrough_available=native_passthrough,
+            native_passthrough_available=False,
         )
     )
-    if not native_passthrough and not use_local_search:
+    native_endpoint_available = native_passthrough and (
+        upstream_path != "alpha/search" or web_run_state == "passthrough"
+    )
+    if not native_endpoint_available and not use_local_search:
+        if upstream_path == "alpha/search" and web_run_state == "disabled":
+            message = "web.run is disabled by the selected Tool Profile"
+        else:
+            message = (
+                f"POST /v1/{upstream_path} is only implemented for "
+                "OpenAI Responses (Tool Mapping only) providers"
+            )
         return error_response_for_source(
             "openai_responses",
             501,
-            _with_browser_use_hint(
-                f"POST /v1/{upstream_path} is only implemented for "
-                "OpenAI Responses (Pass through) providers"
-            ),
+            _with_browser_use_hint(message),
         )
 
     if route.upstream_model:

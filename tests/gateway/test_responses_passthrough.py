@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from codex_rosetta._vendor.httpserver import StreamingResponse
 from codex_rosetta.gateway.proxy import handle_non_streaming, handle_streaming
+from codex_rosetta.gateway.tool_profiles import resolve_tool_profile
 from codex_rosetta.gateway.transport._base import UpstreamResponse, UpstreamStream
 from codex_rosetta.routing import ResolvedRoute, is_openai_responses_passthrough
 
@@ -20,6 +21,8 @@ def _responses_route() -> ResolvedRoute:
         target_provider="openai_responses",
         provider_name="test-provider",
         upstream_model="gpt-test",
+        tool_profile_name="responses_pass_through",
+        tool_profile=resolve_tool_profile("responses_pass_through", {}),
         responses_processing="passthrough",
     )
 

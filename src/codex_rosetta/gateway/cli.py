@@ -19,6 +19,7 @@ from .config import (
     DEFAULT_REQUEST_BODY_LIMIT_MB,
     PATHS_TO_TRY,
     GatewayConfig,
+    default_tool_profile_for_provider,
     discover_config,
     load_config,
     load_config_raw,
@@ -245,7 +246,11 @@ def _cmd_add_model_group(args: argparse.Namespace) -> None:
         "provider": args.provider,
         "type": args.type,
         **(
-            {"tool_profile": "builtin"}
+            {
+                "tool_profile": default_tool_profile_for_provider(
+                    providers[args.provider]
+                )
+            }
             if args.type == "llm"
             and provider_supports_tool_profiles(providers[args.provider])
             else {}

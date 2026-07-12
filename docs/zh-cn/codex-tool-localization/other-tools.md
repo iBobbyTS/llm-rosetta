@@ -67,4 +67,4 @@ multi_agent_v1.spawn_agent -> spawn_agent
 
 ## Tool Profile 作用范围
 
-**OpenAI Responses (Pass through)** 会完全忽略 Tool Profile，并保持传入工具不变。Responses Rosetta、Chat、Anthropic 和 Google 模型组仍保留 Profile 选择与处理；各转换路径会在自身内建桥接行为之外，执行该路径支持的 Profile 状态。
+**OpenAI Responses (Tool Mapping only)** 支持 Tool Profile，同时让 Responses 请求和响应的其余部分继续走直接路径。内置的 **Responses pass through** Profile 保持传入工具不变；**Responses web.run mapping** 只修改 `web.run`，让 `/v1/alpha/search` 使用 Rosetta 的本地映射。Responses Rosetta、Chat、Anthropic 和 Google 模型组仍支持 Profile 选择与处理。

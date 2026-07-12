@@ -180,10 +180,10 @@ Still to be implemented: field types, serde rename/default/skip strategy, SSE ma
 
 The following behavior can be automatically verified using the fixed Codex request/SSE fixture:
 
-- Responses→Responses Pass-through mode retains unknown fields, original JSON and original SSE bytes below the transport safety envelope, while Rosetta mode selects Responses→IR→Responses without changing the wire protocol;
+- Responses→Responses Tool Mapping only applies the selected Profile, retains unknown non-tool fields and preserves original response JSON/SSE bytes below the transport safety envelope, while Rosetta mode selects Responses→IR→Responses without changing the wire protocol;
 - header allowlist; `x-codex-window-id` extraction; exact/+1 model, window, and request-ID budgets; visible-ASCII/control rejection and missing request-ID generation; rejection before body/log/trace/persistence/state/upstream use; correlation/state-key separation; private no-window scope and terminal cleanup;
 - Responses request → IR/adapter → Chat/Anthropic/Google upstream request;
-- Verify model-group Tool Profiles on Responses Rosetta, Chat, Anthropic, and Google routes, including Disabled filtering, Modified handling, Namespace expansion, Rosetta injection selection, and Built-in defaults; verify only Responses Pass through omits and ignores Profiles;
+- Verify model-group Tool Profiles on Tool Mapping only, Responses Rosetta, Chat, Anthropic, and Google routes, including Disabled filtering, Modified handling, Namespace pass-through/expansion, Rosetta injection selection, and all bundled defaults; verify Responses pass through preserves native tools and Responses web.run mapping changes only `web.run` endpoint handling;
 - Responses Lite `additional_tools`, developer instructions, `reasoning.context=all_turns` and embedded tool filtering/deduplication;
 - non-streaming/streaming upstream response → Codex Responses output;
 - The order of `response.created`, item added/delta/done, completed/failed/incomplete;
@@ -299,7 +299,7 @@ Select a model by debugging target, don't just look at the Codex-facing alias:
 - Complete a single round of text and multiple rounds of dialogue, and confirm that there are no repeated, truncated or unended turns;
 - Capture real HTTP headers and body `client_metadata`, confirm identity/turn metadata;
 - Verify window/thread changes of the same turn, compact, resume, fork, subagent;
-- Confirm that Responses Pass through does not lose fields; record Responses Rosetta with the intended third-party provider as unverified unless it completes through IR and can be continued; confirm the Chat bridge does not leak Rosetta's internal metadata to the upstream;
+- Confirm that Responses Tool Mapping only with the Responses pass through Profile does not lose fields, and that Responses web.run mapping changes only Search endpoint handling; record Responses Rosetta with the intended third-party provider as unverified unless it completes through IR and can be continued; confirm the Chat bridge does not leak Rosetta's internal metadata to the upstream;
 - Confirm that the actual stream will not end abnormally before `response.completed`, and failed/incomplete can be rendered correctly.
 
 #### B. UI, phase and steering behavior
