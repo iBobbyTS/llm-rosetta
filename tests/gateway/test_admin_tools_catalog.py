@@ -228,6 +228,24 @@ def test_catalog_defaults_and_namespace_image_policy():
             "default": "",
         },
     ]
+    search_inputs = [
+        {
+            "id": "provider",
+            "label_i18n": "tools.input.web_search.provider",
+            "type": "select",
+            "default": "tavily",
+            "options": [{"value": "tavily", "label": "Tavily"}],
+        },
+        {
+            "id": "token",
+            "label_i18n": "tools.input.web_search.token",
+            "placeholder_i18n": "tools.input.web_search.token_placeholder",
+            "type": "password",
+            "default": "",
+        },
+    ]
+    assert items["hosted.web_search"]["profile_inputs"] == search_inputs
+    assert items["namespace.web.run"]["profile_inputs"] == search_inputs
 
     for namespace_id in ("namespace.multi_agent_v1", "namespace.multi_agent_v2"):
         namespace = items[namespace_id]
@@ -347,6 +365,7 @@ def test_admin_tools_view_has_profile_editor_and_all_filters():
     assert "item.description_i18n" in html
     assert "item.profile_inputs" in html
     assert "renderToolProfileInputs(item)" in html
+    assert "['function', 'hosted'].includes(item.type)" in html
     assert "updateToolProfileInput" in html
     assert "input.type === 'password'" in html
     assert "input.type === 'select'" in html
@@ -359,6 +378,9 @@ def test_admin_tools_view_has_profile_editor_and_all_filters():
     assert "tools.description.update_goal" in html
     assert "toolCatalogFilter === 'all' || toolCatalogFilter === 'namespace'" in html
     assert "api.get('/admin/api/tools/profiles')" in html
+    assert 'href="/admin/web-search"' not in html
+    assert 'id="page-web-search"' not in html
+    assert "saveWebSearchSettings" not in html
 
 
 def test_admin_tool_profile_crud_and_reference_guard(tmp_path):
@@ -435,10 +457,12 @@ def test_admin_tool_profile_crud_and_reference_guard(tmp_path):
         if profile["id"] == "restricted"
     )
     expected_inputs = {
+        "hosted.web_search": {"provider": "tavily", "token": ""},
         "namespace.image_gen.imagegen": {
             "base_url": "https://api.openai.com/v1",
             "token": "",
-        }
+        },
+        "namespace.web.run": {"provider": "tavily", "token": ""},
     }
     assert restricted["inputs"] == expected_inputs
     saved = json.loads(config_path.read_text(encoding="utf-8"))

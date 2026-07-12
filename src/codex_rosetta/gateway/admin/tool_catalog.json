@@ -311,6 +311,27 @@
       "name": "web_search",
       "type": "hosted",
       "policy_id": "web_search_bridge",
+      "profile_inputs": [
+        {
+          "id": "provider",
+          "label_i18n": "tools.input.web_search.provider",
+          "type": "select",
+          "default": "tavily",
+          "options": [
+            {
+              "value": "tavily",
+              "label": "Tavily"
+            }
+          ]
+        },
+        {
+          "id": "token",
+          "label_i18n": "tools.input.web_search.token",
+          "placeholder_i18n": "tools.input.web_search.token_placeholder",
+          "type": "password",
+          "default": ""
+        }
+      ],
       "aliases": [
         "web_search_preview"
       ]
@@ -490,7 +511,28 @@
       "name": "run",
       "type": "function",
       "namespace_id": "namespace.web",
-      "policy_id": "web_run_mapping"
+      "policy_id": "web_run_mapping",
+      "profile_inputs": [
+        {
+          "id": "provider",
+          "label_i18n": "tools.input.web_search.provider",
+          "type": "select",
+          "default": "tavily",
+          "options": [
+            {
+              "value": "tavily",
+              "label": "Tavily"
+            }
+          ]
+        },
+        {
+          "id": "token",
+          "label_i18n": "tools.input.web_search.token",
+          "placeholder_i18n": "tools.input.web_search.token_placeholder",
+          "type": "password",
+          "default": ""
+        }
+      ]
     },
     {
       "id": "namespace.memories.add_ad_hoc_note",

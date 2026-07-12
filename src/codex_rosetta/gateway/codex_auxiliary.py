@@ -31,7 +31,11 @@ from .proxy import error_response_for_source, extract_model
 from .stream_trace import StreamTraceLogger, StreamTraceState
 from .tool_profiles import route_tool_state
 from .transport import UpstreamConnectionError, UpstreamTransport
-from .web_search import TavilySearchClient
+from .web_search import (
+    WEB_RUN_PROFILE_ITEM_ID,
+    TavilySearchClient,
+    profile_search_config,
+)
 
 _BROWSER_USE_HINT = 'Consider "Browser Use" skill'
 
@@ -144,6 +148,7 @@ async def handle_codex_auxiliary(
     web_run_state = route_tool_state(route, "namespace.web.run", "modified")
     image_tool_state = route_tool_state(route, IMAGEGEN_PROFILE_ITEM_ID, "disabled")
     web_run_mapping = web_run_state == "modified"
+    web_run_config = profile_search_config(route, WEB_RUN_PROFILE_ITEM_ID)
     use_profile_images = (
         upstream_path in IMAGE_ENDPOINTS and image_tool_state == "modified"
     )
@@ -152,7 +157,7 @@ async def handle_codex_auxiliary(
         and web_run_mapping
         and should_use_local_codex_search(
             body,
-            config.web_search,
+            web_run_config,
             native_passthrough_available=False,
         )
     )
@@ -210,7 +215,7 @@ async def handle_codex_auxiliary(
             response, status_code, error_detail = await _handle_local_search(
                 trace,
                 body,
-                config.web_search,
+                web_run_config,
                 search_client,
                 page_client,
             )

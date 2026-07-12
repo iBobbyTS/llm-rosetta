@@ -95,7 +95,6 @@ def register_admin_routes(app: Any) -> None:
         "providers",
         "models",
         "keys",
-        "web-search",
         "tools",
         "dashboard",
         "logs",

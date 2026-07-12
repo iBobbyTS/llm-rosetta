@@ -56,7 +56,8 @@ not translate vendor-specific image APIs.
 
 Standalone Search has an additional local bridge. When the selected Profile
 marks `web.run` as Modified, `/v1/alpha/search` executes the reliable subset
-locally: `search_query` uses the configured `server.web_search.tavily_api_key`,
+locally: `search_query` uses the Provider and Token configured beneath the
+`web.run` card in that Profile. Tavily is currently the only provider,
 direct-URL `open` fetches public static HTML or plain text, and `time` uses
 Python fixed-UTC-offset calculation. Open validates every redirect target,
 rejects credentials and non-public addresses, permits at most five redirects,
@@ -71,9 +72,9 @@ HTTP `501` with `code: "not_implemented"` before any partial operation runs.
 Every `501` message from these auxiliary endpoints also ends with
 `Consider "Browser Use" skill` so Codex can choose the browser fallback.
 With the **Responses pass through** Profile, `/alpha/search` remains native
-upstream pass-through even when Tavily is configured. With **Responses web.run
+upstream pass-through even when a Tavily Token is configured. With **Responses web.run
 mapping**, supported commands use the local executor; search queries require a
-Tavily key, while direct-URL `open` and time-only requests use Python.
+Tavily Token on the `web.run` card, while direct-URL `open` and time-only requests use Python.
 
 ## Responses To Chat Conversion
 

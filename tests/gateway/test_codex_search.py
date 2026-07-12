@@ -271,7 +271,7 @@ def test_invalid_requests_are_rejected(commands: dict[str, Any], message: str) -
 
 
 def test_search_without_tavily_key_is_not_implemented() -> None:
-    with pytest.raises(CodexSearchNotImplemented, match="tavily_api_key"):
+    with pytest.raises(CodexSearchNotImplemented, match="web.run Profile card"):
         asyncio.run(
             execute_local_codex_search(
                 _body({"search_query": [{"q": "python"}]}),

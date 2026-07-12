@@ -73,6 +73,6 @@ The bundled Profiles manage current Codex image generation through `image_gen.im
 
 ### Function Card Inputs
 
-A Function catalog item may declare multiple `profile_inputs`. Each entry has a stable ID, a localized subtitle, a default value, and a `text`, `password`, or `select` input type. A select declares ordered `{value, label}` options: the Tools page displays each label and persists its value. The Tools page renders the entries in catalog order beneath the Function status selector.
+A Function or Hosted catalog item may declare multiple `profile_inputs`. Each entry has a stable ID, a localized subtitle, a default value, and a `text`, `password`, or `select` input type. A select declares ordered `{value, label}` options: the Tools page displays each label and persists its value. The Tools page renders the entries in catalog order beneath the tool status selector. The `web_search` and `web.run` cards each own their search Provider and Token; Tavily is currently the only provider. The former standalone Web Search settings tab has been removed.
 
 User-entered values are saved with the Profile under `inputs.<function-item-id>.<input-id>`. Creating a Profile copy carries the current values into the new Profile; switching or resetting a Profile restores its saved values. Read-only bundled Profiles expose their declared defaults without allowing edits. Inputs have no effect unless their runtime feature consumes them; currently `image_gen.imagegen` consumes its Base URL and Token when set to Modified.

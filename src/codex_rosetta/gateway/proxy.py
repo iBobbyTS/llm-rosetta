@@ -83,9 +83,11 @@ from .transport import (
 from .transport.sse_format import SSE_FORMATTERS, format_sse_done
 from .web_search import (
     TavilySearchClient,
+    WEB_SEARCH_PROFILE_ITEM_ID,
     WebSearchRuntime,
     WebSearchStreamController,
     build_web_search_runtime,
+    profile_search_config,
     strip_responses_web_search_tools,
     web_search_trace_summary,
 )
@@ -2984,7 +2986,6 @@ def _prepare_web_search_runtime_and_body(
     *,
     route: ResolvedRoute,
     body: dict[str, Any],
-    web_search_config: dict[str, Any] | None,
     web_search_client: TavilySearchClient | None,
 ) -> tuple[dict[str, Any], WebSearchRuntime | None]:
     if not _uses_responses_chat_bridge(route):
@@ -2994,7 +2995,7 @@ def _prepare_web_search_runtime_and_body(
 
     runtime = build_web_search_runtime(
         body,
-        web_search_config,
+        profile_search_config(route, WEB_SEARCH_PROFILE_ITEM_ID),
         client=web_search_client,
     )
     if runtime is None:
@@ -3255,7 +3256,6 @@ async def handle_streaming(
     upstream_error_log_state: UpstreamErrorLogState | None = None,
     body_log_state: BodyLogState | None = None,
     image_fetch_workers: ImageFetchWorkerPool | None = None,
-    web_search_config: dict[str, Any] | None = None,
     web_search_client: TavilySearchClient | None = None,
 ) -> tuple[Response | StreamingResponse, dict[str, Any]]:
     """Streaming proxy: convert -> forward -> stream-convert back -> SSE.
@@ -3289,7 +3289,6 @@ async def handle_streaming(
     body, web_search_runtime = _prepare_web_search_runtime_and_body(
         route=route,
         body=body,
-        web_search_config=web_search_config,
         web_search_client=web_search_client,
     )
     source_tool_capabilities = _source_tool_capabilities_after_profile(

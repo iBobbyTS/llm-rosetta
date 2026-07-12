@@ -560,11 +560,6 @@ class GatewayConfig:
         self.stream_trace: StreamTraceConfig = StreamTraceConfig.from_mapping(
             _server.get("stream_trace", {})
         )
-        web_search = _server.get("web_search", {}) or {}
-        self.web_search: dict[str, Any] = (
-            dict(web_search) if isinstance(web_search, dict) else {}
-        )
-
         # Multi-key auth: server.api_keys takes precedence over server.api_key
         self.api_keys: list[dict[str, str]] = _server.get("api_keys", [])
         if not self.api_keys and _server.get("api_key"):

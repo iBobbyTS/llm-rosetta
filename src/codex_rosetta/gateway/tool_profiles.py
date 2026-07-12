@@ -70,7 +70,7 @@ def _normalize_profile_input_definition(
     value: Any,
     existing_ids: set[str],
 ) -> tuple[str, dict[str, Any]]:
-    """Validate one catalog-declared Function-card input definition."""
+    """Validate one catalog-declared tool-card input definition."""
     if not isinstance(value, dict):
         raise ValueError(f"catalog item {item_id!r} profile input must be an object")
     unsupported = set(value) - {
@@ -143,7 +143,7 @@ def _normalize_profile_input_definition(
 
 
 def _profile_input_contract(catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Return validated Function-card input definitions keyed by tool and input ID."""
+    """Return validated tool-card input definitions keyed by tool and input ID."""
     definitions: dict[str, dict[str, Any]] = {}
     for item in catalog["items"]:
         raw_inputs = item.get("profile_inputs", [])
@@ -151,10 +151,10 @@ def _profile_input_contract(catalog: dict[str, Any]) -> dict[str, dict[str, Any]
             raise ValueError(
                 f"catalog item {item['id']!r} profile_inputs must be a list"
             )
-        if raw_inputs and item["type"] != "function":
+        if raw_inputs and item["type"] not in {"function", "hosted"}:
             raise ValueError(
                 f"catalog item {item['id']!r} profile_inputs are only supported "
-                "for Function tools"
+                "for Function and Hosted tools"
             )
         item_inputs: dict[str, Any] = {}
         for raw_input in raw_inputs:
@@ -291,7 +291,7 @@ def normalize_tool_profile_tools(value: Any, *, field: str) -> dict[str, str]:
 def normalize_tool_profile_inputs(
     value: Any, *, field: str
 ) -> dict[str, dict[str, str]]:
-    """Validate and fill Function-card input values from the bundled defaults."""
+    """Validate and fill tool-card input values from the bundled defaults."""
     if value is None:
         value = {}
     if not isinstance(value, dict):
@@ -397,7 +397,7 @@ def resolve_tool_profile_inputs(
     name: str,
     profiles: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, str]]:
-    """Resolve persisted Function-card input values for one Profile."""
+    """Resolve persisted tool-card input values for one Profile."""
     readonly = tool_profile_contract()["readonly"]
     profile = readonly.get(name, profiles.get(name))
     if profile is None:

@@ -11,7 +11,11 @@ from unittest.mock import MagicMock
 from codex_rosetta._vendor.httpserver import StreamingResponse
 from codex_rosetta.gateway.proxy import handle_streaming
 from codex_rosetta.gateway.transport._base import UpstreamStream
-from codex_rosetta.gateway.web_search import WebSearchSettings
+from codex_rosetta.gateway.web_search import (
+    WEB_SEARCH_PROFILE_ITEM_ID,
+    WebSearchSettings,
+    profile_search_config,
+)
 from codex_rosetta.routing import ResolvedRoute
 
 
@@ -58,12 +62,18 @@ class _FakeTavilyClient:
         }
 
 
-def _route() -> ResolvedRoute:
+def _route(*, search_token: str = "tvly-test") -> ResolvedRoute:
     return ResolvedRoute(
         source_provider="openai_responses",
         target_provider="openai_chat",
         provider_name="test-provider",
         upstream_model="deepseek-v4-flash",
+        tool_profile_inputs={
+            "hosted.web_search": {
+                "provider": "tavily",
+                "token": search_token,
+            }
+        },
     )
 
 
@@ -71,6 +81,16 @@ def _provider_info() -> MagicMock:
     info = MagicMock()
     info.base_url = "https://api.example.test"
     return info
+
+
+def test_web_search_runtime_config_comes_from_profile_card() -> None:
+    assert profile_search_config(_route(), WEB_SEARCH_PROFILE_ITEM_ID) == {
+        "provider": "tavily",
+        "tavily_api_key": "tvly-test",
+    }
+    assert profile_search_config(
+        _route(search_token=""), WEB_SEARCH_PROFILE_ITEM_ID
+    ) == {"provider": "tavily", "tavily_api_key": ""}
 
 
 def _tool_call_chunk() -> dict[str, Any]:
@@ -182,7 +202,6 @@ def test_responses_chat_web_search_executes_tavily_and_continues_chat_stream():
             _provider_info(),
             body,
             transport=transport,
-            web_search_config={"tavily_api_key": "tvly-test"},
             web_search_client=fake_tavily,
         )
         assert response.status_code == 200
@@ -274,11 +293,10 @@ def test_responses_chat_without_tavily_key_does_not_expose_web_search_tool():
 
     async def run() -> list[str]:
         response, _profile = await handle_streaming(
-            _route(),
+            _route(search_token=""),
             _provider_info(),
             body,
             transport=transport,
-            web_search_config={},
         )
         assert isinstance(response, StreamingResponse)
         emitted: list[str] = []

@@ -49,7 +49,6 @@ def _config(
                 ],
                 "proxy": proxy,
                 "request_body_limit_mb": request_body_limit_mb,
-                "web_search": {"tavily_api_key": f"tvly-{label}"},
             },
         }
     )
@@ -126,7 +125,6 @@ def test_request_handlers_keep_their_own_config_after_second_app_creation(
     assert captured["embeddings_config"] is config_a
 
     async def _fake_streaming(*args: Any, **kwargs: Any):
-        captured["web_search_config"] = kwargs["web_search_config"]
         captured["stream_body_log_state"] = kwargs["body_log_state"]
         return JSONResponse({"ok": True}), {}
 
@@ -146,7 +144,6 @@ def test_request_handlers_keep_their_own_config_after_second_app_creation(
         api_key_principal_var.reset(token)
 
     assert stream_response.status_code == 200
-    assert captured["web_search_config"] == {"tavily_api_key": "tvly-a"}
     assert captured["stream_body_log_state"] is app_a.body_log_state
     assert app_b.gateway_config.models == {"model-b": "provider-b"}
 

@@ -640,7 +640,6 @@ async def _proxy_handler(
                 state_scope=state_scope,
                 codex_window_id=codex_window_id,
                 window_tool_search_store=window_tool_search_store,
-                web_search_config=config.web_search,
                 stream_trace_state=getattr(request.app, "stream_trace_state", None),
                 upstream_error_log_state=getattr(
                     request.app, "upstream_error_log_state", None

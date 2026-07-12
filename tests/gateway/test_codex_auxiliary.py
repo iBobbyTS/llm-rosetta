@@ -44,20 +44,35 @@ def _make_config(
     if upstream_model is not None:
         model["upstream_model"] = upstream_model
     tool_profiles: dict[str, Any] = {}
-    if image_state is not None:
-        tools = dict(tool_profile_contract()["builtin"])
-        tools["namespace.image_gen"] = "expanded"
-        tools["namespace.image_gen.imagegen"] = image_state
-        tool_profile = "image-test"
-        tool_profiles[tool_profile] = {
-            "tools": tools,
-            "inputs": {
-                "namespace.image_gen.imagegen": {
-                    "base_url": image_base_url,
-                    "token": image_token,
-                }
-            },
+    local_search = tavily_api_key is not None and (
+        tool_profile == "responses_web_run_mapping"
+        or api_type != "responses_passthrough"
+    )
+    if image_state is not None or local_search:
+        base_profile_name = tool_profile or (
+            "responses_pass_through"
+            if api_type == "responses_passthrough"
+            else "builtin"
+        )
+        base_profile = tool_profile_contract()["readonly"][base_profile_name]
+        tools = dict(base_profile["tools"])
+        inputs = {
+            item_id: dict(values) for item_id, values in base_profile["inputs"].items()
         }
+        if local_search:
+            inputs["namespace.web.run"] = {
+                "provider": "tavily",
+                "token": tavily_api_key,
+            }
+        if image_state is not None:
+            tools["namespace.image_gen"] = "expanded"
+            tools["namespace.image_gen.imagegen"] = image_state
+            inputs["namespace.image_gen.imagegen"] = {
+                "base_url": image_base_url,
+                "token": image_token,
+            }
+        tool_profile = "test-profile"
+        tool_profiles[tool_profile] = {"tools": tools, "inputs": inputs}
     return GatewayConfig(
         {
             "providers": {
@@ -90,11 +105,6 @@ def _make_config(
                         "key": "gateway-key",
                     }
                 ],
-                "web_search": (
-                    {"tavily_api_key": tavily_api_key}
-                    if tavily_api_key is not None
-                    else {}
-                ),
             },
         }
     )
@@ -282,6 +292,20 @@ def test_web_run_mapping_profile_intercepts_tool_mapping_only_search() -> None:
     assert response.status_code == 200
     assert "https://docs.python.org/3/" in json.loads(response.body)["output"]
     assert client.calls == [("Python documentation", WebSearchSettings())]
+    request.app.transport.send_passthrough.assert_not_awaited()
+
+
+def test_web_run_mapping_requires_profile_token_for_search_query() -> None:
+    config = _make_config(tool_profile="responses_web_run_mapping")
+    request = _make_request(
+        _search_body({"search_query": [{"q": "Python documentation"}]})
+    )
+
+    response = asyncio.run(handle_codex_auxiliary(request, config, "alpha/search"))
+
+    assert response.status_code == 501
+    payload = json.loads(response.body)
+    assert "web.run Profile card" in payload["error"]["message"]
     request.app.transport.send_passthrough.assert_not_awaited()
 
 
