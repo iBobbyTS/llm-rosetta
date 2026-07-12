@@ -23,8 +23,9 @@ from .stream_trace import StreamTraceConfig
 from .tool_profiles import (
     BUILTIN_TOOL_PROFILE,
     RESPONSES_PASS_THROUGH_TOOL_PROFILE,
-    normalize_tool_profiles,
+    normalize_tool_profile_documents,
     resolve_tool_profile,
+    resolve_tool_profile_inputs,
     validate_tool_profile_reference,
 )
 from .transport import ProviderInfo
@@ -500,7 +501,13 @@ class GatewayConfig:
         self.models, self.model_capabilities, self.model_upstream_names = (
             self._parse_models(self._expanded_raw_models, self._raw_providers)
         )
-        self.tool_profiles = normalize_tool_profiles(raw.get("tool_profiles"))
+        self.tool_profile_documents = normalize_tool_profile_documents(
+            raw.get("tool_profiles")
+        )
+        self.tool_profiles = {
+            name: profile["tools"]
+            for name, profile in self.tool_profile_documents.items()
+        }
         self.model_tool_profile_names = resolve_model_tool_profile_names(
             raw.get("model_groups", {}), self._raw_providers, self.tool_profiles
         )
@@ -857,6 +864,13 @@ class GatewayConfig:
             tool_profile_name=tool_profile_name,
             tool_profile=(
                 resolve_tool_profile(tool_profile_name, self.tool_profiles)
+                if tool_profile_name is not None
+                else {}
+            ),
+            tool_profile_inputs=(
+                resolve_tool_profile_inputs(
+                    tool_profile_name, self.tool_profile_documents
+                )
                 if tool_profile_name is not None
                 else {}
             ),

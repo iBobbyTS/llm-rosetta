@@ -38,10 +38,21 @@ Codex's standalone Search and Images clients use three additional JSON endpoints
 - `POST /v1/images/generations`
 - `POST /v1/images/edits`
 
-Images remain native pass-through endpoints: the gateway forwards them only
-when the request model resolves to an **OpenAI Responses (Tool Mapping only)**
-provider. The configured upstream model alias is applied, but the payload and
-JSON response otherwise bypass IR conversion.
+Images use the selected Profile's `image_gen.imagegen` state:
+
+- **Passthrough** forwards the endpoint only when the request model resolves to
+  an **OpenAI Responses (Tool Mapping only)** provider.
+- **Modified** sends generation and edit requests to the OpenAI Images API Base
+  URL configured on the Function card, using its Token as a Bearer credential.
+  This path is available to Tool Mapping only, Responses Rosetta, Chat,
+  Anthropic, and Google model groups.
+- **Disabled** rejects the Images endpoint.
+
+The request model must resolve to a model group selecting that Profile. The
+configured upstream model alias is applied, while the remaining OpenAI Images
+request and JSON response bypass IR conversion. Modified currently supports
+only the OpenAI `images/generations` and `images/edits` wire API; Rosetta does
+not translate vendor-specific image APIs.
 
 Standalone Search has an additional local bridge. When the selected Profile
 marks `web.run` as Modified, `/v1/alpha/search` executes the reliable subset

@@ -208,6 +208,26 @@ def test_catalog_defaults_and_namespace_image_policy():
     assert "hosted.image_generation" not in items
     image_policy = items["namespace.image_gen.imagegen"]["policy_id"]
     assert policies[image_policy]["default"] == "disabled"
+    assert policies[image_policy]["supported"] == [
+        "disabled",
+        "passthrough",
+        "modified",
+    ]
+    assert items["namespace.image_gen.imagegen"]["profile_inputs"] == [
+        {
+            "id": "base_url",
+            "label_i18n": "tools.input.image_gen.base_url",
+            "placeholder_i18n": "tools.input.image_gen.base_url_placeholder",
+            "default": "https://api.openai.com/v1",
+        },
+        {
+            "id": "token",
+            "label_i18n": "tools.input.image_gen.token",
+            "placeholder_i18n": "tools.input.image_gen.token_placeholder",
+            "type": "password",
+            "default": "",
+        },
+    ]
 
     for namespace_id in ("namespace.multi_agent_v1", "namespace.multi_agent_v2"):
         namespace = items[namespace_id]
@@ -410,9 +430,15 @@ def test_admin_tool_profile_crud_and_reference_guard(tmp_path):
         for profile in json.loads(getattr(response, "body"))["profiles"]
         if profile["id"] == "restricted"
     )
-    assert restricted["inputs"] == {}
+    expected_inputs = {
+        "namespace.image_gen.imagegen": {
+            "base_url": "https://api.openai.com/v1",
+            "token": "",
+        }
+    }
+    assert restricted["inputs"] == expected_inputs
     saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["tool_profiles"]["restricted"]["inputs"] == {}
+    assert saved["tool_profiles"]["restricted"]["inputs"] == expected_inputs
 
     response = asyncio.run(
         app._dispatch(

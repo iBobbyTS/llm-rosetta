@@ -135,7 +135,8 @@
       "default": "disabled",
       "supported": [
         "disabled",
-        "passthrough"
+        "passthrough",
+        "modified"
       ],
       "namespace_supported": [
         "disabled",
@@ -463,6 +464,21 @@
       "type": "function",
       "namespace_id": "namespace.image_gen",
       "policy_id": "image_generation",
+      "profile_inputs": [
+        {
+          "id": "base_url",
+          "label_i18n": "tools.input.image_gen.base_url",
+          "placeholder_i18n": "tools.input.image_gen.base_url_placeholder",
+          "default": "https://api.openai.com/v1"
+        },
+        {
+          "id": "token",
+          "label_i18n": "tools.input.image_gen.token",
+          "placeholder_i18n": "tools.input.image_gen.token_placeholder",
+          "type": "password",
+          "default": ""
+        }
+      ],
       "aliases": [
         "image_gen",
         "imagegen",

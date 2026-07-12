@@ -8,6 +8,13 @@ from typing import Any
 from codex_rosetta._vendor.httpserver import JSONResponse, Response
 from codex_rosetta.routing import is_openai_responses_passthrough
 
+from .codex_images import (
+    IMAGE_ENDPOINTS,
+    IMAGEGEN_PROFILE_ITEM_ID,
+    CodexImageConfigurationError,
+    image_trace_summary,
+    profile_image_provider,
+)
 from .codex_page import StaticPageClient
 from .codex_search import (
     CodexSearchExecutionError,
@@ -27,6 +34,60 @@ from .transport import UpstreamConnectionError, UpstreamTransport
 from .web_search import TavilySearchClient
 
 _BROWSER_USE_HINT = 'Consider "Browser Use" skill'
+
+
+def _native_auxiliary_endpoint_available(
+    *,
+    native_passthrough: bool,
+    upstream_path: str,
+    web_run_state: str,
+    image_tool_state: str,
+) -> bool:
+    if upstream_path in IMAGE_ENDPOINTS:
+        return native_passthrough and image_tool_state == "passthrough"
+    return native_passthrough and (
+        upstream_path != "alpha/search" or web_run_state == "passthrough"
+    )
+
+
+def _unavailable_auxiliary_message(
+    upstream_path: str,
+    *,
+    web_run_state: str,
+    image_tool_state: str,
+) -> str:
+    if upstream_path == "alpha/search" and web_run_state == "disabled":
+        return "web.run is disabled by the selected Tool Profile"
+    if upstream_path in IMAGE_ENDPOINTS and image_tool_state == "disabled":
+        return "image_gen.imagegen is disabled by the selected Tool Profile"
+    return (
+        f"POST /v1/{upstream_path} is only implemented for "
+        "OpenAI Responses (Tool Mapping only) providers"
+    )
+
+
+def _log_profile_image_request(
+    trace: StreamTraceLogger | None,
+    *,
+    enabled: bool,
+    upstream_path: str,
+    provider_info: Any,
+) -> None:
+    if enabled and trace is not None:
+        trace.log(
+            "codex_image_request",
+            image_trace_summary(upstream_path, provider_info),
+        )
+
+
+def _log_profile_image_response(
+    trace: StreamTraceLogger | None,
+    *,
+    enabled: bool,
+    status_code: int,
+) -> None:
+    if enabled and trace is not None:
+        trace.log("codex_image_response", {"status_code": status_code})
 
 
 async def handle_codex_auxiliary(
@@ -81,7 +142,11 @@ async def handle_codex_auxiliary(
 
     native_passthrough = is_openai_responses_passthrough(route)
     web_run_state = route_tool_state(route, "namespace.web.run", "modified")
+    image_tool_state = route_tool_state(route, IMAGEGEN_PROFILE_ITEM_ID, "disabled")
     web_run_mapping = web_run_state == "modified"
+    use_profile_images = (
+        upstream_path in IMAGE_ENDPOINTS and image_tool_state == "modified"
+    )
     use_local_search = (
         upstream_path == "alpha/search"
         and web_run_mapping
@@ -91,29 +156,43 @@ async def handle_codex_auxiliary(
             native_passthrough_available=False,
         )
     )
-    native_endpoint_available = native_passthrough and (
-        upstream_path != "alpha/search" or web_run_state == "passthrough"
+    native_endpoint_available = _native_auxiliary_endpoint_available(
+        native_passthrough=native_passthrough,
+        upstream_path=upstream_path,
+        web_run_state=web_run_state,
+        image_tool_state=image_tool_state,
     )
-    if not native_endpoint_available and not use_local_search:
-        if upstream_path == "alpha/search" and web_run_state == "disabled":
-            message = "web.run is disabled by the selected Tool Profile"
-        else:
-            message = (
-                f"POST /v1/{upstream_path} is only implemented for "
-                "OpenAI Responses (Tool Mapping only) providers"
-            )
+    if (
+        not native_endpoint_available
+        and not use_local_search
+        and not use_profile_images
+    ):
+        message = _unavailable_auxiliary_message(
+            upstream_path,
+            web_run_state=web_run_state,
+            image_tool_state=image_tool_state,
+        )
         return error_response_for_source(
             "openai_responses",
             501,
             _with_browser_use_hint(message),
         )
 
+    active_provider_info = provider_info
+    if use_profile_images:
+        try:
+            active_provider_info = profile_image_provider(
+                route,
+                proxy_url=config.proxy,
+            )
+        except CodexImageConfigurationError as exc:
+            return error_response_for_source("openai_responses", 400, str(exc))
     if route.upstream_model:
         body["model"] = route.upstream_model
 
-    resolved_model = route.upstream_model or model
+    resolved_model = str(body.get("model") or route.upstream_model or model)
     record_request_stat(resolved_model)
-    upstream_url = f"{provider_info.base_url}/{upstream_path}"
+    upstream_url = f"{active_provider_info.base_url}/{upstream_path}"
     transport: UpstreamTransport = request.app.transport
     extra_headers = build_upstream_extra_headers(request, request_id)
     trace = _create_auxiliary_trace(
@@ -137,8 +216,15 @@ async def handle_codex_auxiliary(
             )
             return response
 
+        _log_profile_image_request(
+            trace,
+            enabled=use_profile_images,
+            upstream_path=upstream_path,
+            provider_info=active_provider_info,
+        )
+
         response = await transport.send_passthrough(
-            provider_info,
+            active_provider_info,
             upstream_url,
             body,
             extra_headers=extra_headers,
@@ -146,6 +232,11 @@ async def handle_codex_auxiliary(
         status_code = response.status_code
         if response.is_error:
             error_detail = response.error_text
+        _log_profile_image_response(
+            trace,
+            enabled=use_profile_images,
+            status_code=response.status_code,
+        )
         return Response(
             body=response.raw_content,
             status_code=response.status_code,

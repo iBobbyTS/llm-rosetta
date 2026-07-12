@@ -77,11 +77,9 @@ def test_function_profile_inputs_support_multiple_text_and_password_values(monke
     tool_profiles_module.tool_profile_contract.cache_clear()
     try:
         contract = tool_profiles_module.tool_profile_contract()
-        assert contract["readonly"]["builtin"]["inputs"] == {
-            "function.update_plan": {
-                "endpoint": "https://example.test/v1",
-                "token": "",
-            }
+        assert contract["readonly"]["builtin"]["inputs"]["function.update_plan"] == {
+            "endpoint": "https://example.test/v1",
+            "token": "",
         }
         assert contract["input_definitions"]["function.update_plan"]["token"] == {
             "id": "token",
@@ -126,7 +124,17 @@ def test_gateway_config_resolves_group_profile_into_supported_route(api_type):
                 "api_type": api_type,
             }
         },
-        "tool_profiles": {"custom": {"tools": tools}},
+        "tool_profiles": {
+            "custom": {
+                "tools": tools,
+                "inputs": {
+                    "namespace.image_gen.imagegen": {
+                        "base_url": "https://images.example/v1",
+                        "token": "image-token",
+                    }
+                },
+            }
+        },
         "model_groups": {
             "Test": {
                 "provider": "test",
@@ -147,6 +155,10 @@ def test_gateway_config_resolves_group_profile_into_supported_route(api_type):
 
     assert route.tool_profile_name == "custom"
     assert route.tool_profile["function.update_plan"] == "disabled"
+    assert route.tool_profile_inputs["namespace.image_gen.imagegen"] == {
+        "base_url": "https://images.example/v1",
+        "token": "image-token",
+    }
     assert "tools" not in adapted
 
 

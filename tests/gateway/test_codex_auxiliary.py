@@ -14,6 +14,7 @@ from codex_rosetta.gateway.codex_auxiliary import handle_codex_auxiliary
 from codex_rosetta.gateway.codex_page import OpenedPage
 from codex_rosetta.gateway.config import GatewayConfig
 from codex_rosetta.gateway.stream_trace import StreamTraceConfig, StreamTraceState
+from codex_rosetta.gateway.tool_profiles import tool_profile_contract
 from codex_rosetta.gateway.transport import UpstreamConnectionError
 from codex_rosetta.gateway.transport._base import UpstreamResponse
 from codex_rosetta.gateway.web_search import WebSearchSettings
@@ -28,6 +29,9 @@ def _make_config(
     upstream_model: str | None = "gpt-image-2",
     tavily_api_key: str | None = None,
     tool_profile: str | None = None,
+    image_state: str | None = None,
+    image_base_url: str = "https://images.example/v1",
+    image_token: str = "image-token",
 ) -> GatewayConfig:
     provider_by_api_type = {
         "responses_passthrough": "openai",
@@ -39,6 +43,21 @@ def _make_config(
     model: dict[str, Any] = {}
     if upstream_model is not None:
         model["upstream_model"] = upstream_model
+    tool_profiles: dict[str, Any] = {}
+    if image_state is not None:
+        tools = dict(tool_profile_contract()["builtin"])
+        tools["namespace.image_gen"] = "expanded"
+        tools["namespace.image_gen.imagegen"] = image_state
+        tool_profile = "image-test"
+        tool_profiles[tool_profile] = {
+            "tools": tools,
+            "inputs": {
+                "namespace.image_gen.imagegen": {
+                    "base_url": image_base_url,
+                    "token": image_token,
+                }
+            },
+        }
     return GatewayConfig(
         {
             "providers": {
@@ -49,6 +68,7 @@ def _make_config(
                     "base_url": "https://upstream.example/v1",
                 }
             },
+            "tool_profiles": tool_profiles,
             "model_groups": {
                 "codex": {
                     "provider": "upstream",
@@ -140,10 +160,13 @@ def test_non_passthrough_modes_return_not_implemented(
     assert response.status_code == 501
     payload = json.loads(response.body)
     assert payload["error"]["type"] == "invalid_request_error"
-    assert (
-        "only implemented for OpenAI Responses (Tool Mapping only)"
-        in payload["error"]["message"]
-    )
+    if upstream_path in {"images/generations", "images/edits"}:
+        assert "image_gen.imagegen is disabled" in payload["error"]["message"]
+    else:
+        assert (
+            "only implemented for OpenAI Responses (Tool Mapping only)"
+            in payload["error"]["message"]
+        )
     assert payload["error"]["message"].endswith('Consider "Browser Use" skill')
     request.app.transport.send_passthrough.assert_not_awaited()
 
@@ -385,3 +408,100 @@ def test_tavily_configuration_does_not_intercept_image_endpoints() -> None:
 
     assert response.status_code == 202
     request.app.transport.send_passthrough.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "api_type",
+    ["responses_passthrough", "responses_rosetta", "chat", "anthropic", "google"],
+)
+@pytest.mark.parametrize("upstream_path", ["images/generations", "images/edits"])
+def test_modified_imagegen_uses_profile_openai_images_api(
+    api_type: str,
+    upstream_path: str,
+) -> None:
+    config = _make_config(
+        api_type,
+        image_state="modified",
+        upstream_model="gpt-image-2",
+    )
+    body = {
+        "model": "gateway-model",
+        "prompt": "draw a fox",
+        "images": [{"image_url": "data:image/png;base64,AAAA"}],
+    }
+    request = _make_request(body)
+
+    response = asyncio.run(handle_codex_auxiliary(request, config, upstream_path))
+
+    assert response.status_code == 202
+    provider_info, url, forwarded_body = (
+        request.app.transport.send_passthrough.call_args.args
+    )
+    assert provider_info.base_url == "https://images.example/v1"
+    assert provider_info.auth_headers() == {"Authorization": "Bearer image-token"}
+    assert url == f"https://images.example/v1/{upstream_path}"
+    assert forwarded_body == {
+        "model": "gpt-image-2",
+        "prompt": "draw a fox",
+        "images": [{"image_url": "data:image/png;base64,AAAA"}],
+    }
+
+
+@pytest.mark.parametrize(
+    ("base_url", "token", "expected"),
+    [
+        ("", "image-token", "requires a Base URL"),
+        ("https://images.example/v1", "", "requires a Token"),
+        ("ftp://images.example/v1", "image-token", "must start with http://"),
+    ],
+)
+def test_modified_imagegen_rejects_invalid_profile_configuration(
+    base_url: str,
+    token: str,
+    expected: str,
+) -> None:
+    config = _make_config(
+        "chat",
+        image_state="modified",
+        image_base_url=base_url,
+        image_token=token,
+    )
+    request = _make_request({"model": "gateway-model", "prompt": "draw a fox"})
+
+    response = asyncio.run(
+        handle_codex_auxiliary(request, config, "images/generations")
+    )
+
+    assert response.status_code == 400
+    assert expected in json.loads(response.body)["error"]["message"]
+    request.app.transport.send_passthrough.assert_not_awaited()
+
+
+def test_modified_imagegen_records_secret_free_gateway_log_stages(
+    tmp_path: Path,
+) -> None:
+    trace_path = tmp_path / "image-trace.jsonl"
+    config = _make_config("chat", image_state="modified")
+    request = _make_request({"model": "gateway-model", "prompt": "draw a fox"})
+    request.app.stream_trace_state = StreamTraceState(
+        StreamTraceConfig(enabled=True, path=str(trace_path))
+    )
+
+    response = asyncio.run(
+        handle_codex_auxiliary(request, config, "images/generations")
+    )
+
+    assert response.status_code == 202
+    trace_text = trace_path.read_text()
+    assert "image-token" not in trace_text
+    records = [json.loads(line) for line in trace_text.splitlines()]
+    assert [record["stage"] for record in records] == [
+        "codex_image_request",
+        "codex_image_response",
+    ]
+    assert records[0]["data"] == {
+        "base_url": "https://images.example/v1",
+        "endpoint": "images/generations",
+        "executor": "openai_images_api",
+    }
+    assert records[1]["data"] == {"status_code": 202}

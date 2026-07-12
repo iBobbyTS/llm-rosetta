@@ -75,4 +75,4 @@ multi_agent_v1.spawn_agent -> spawn_agent
 
 Function 目录项可以声明多组 `profile_inputs`。每组包含稳定 ID、本地化小标题、默认值，以及 `text` 或 `password` 输入类型。工具页面会按照目录中的声明顺序，在 Function 状态选择器下方渲染这些输入项。
 
-用户填写的值随 Profile 保存到 `inputs.<function-item-id>.<input-id>`。从当前 Profile 创建副本时会复制当前值；切换或重置 Profile 时会恢复已保存的值。只读的打包 Profile 会显示声明的默认值，但不能编辑。此输入机制只负责持久化 Function 专用设置；只有对应运行时功能显式读取设置后，它才会改变网关行为。
+用户填写的值随 Profile 保存到 `inputs.<function-item-id>.<input-id>`。从当前 Profile 创建副本时会复制当前值；切换或重置 Profile 时会恢复已保存的值。只读的打包 Profile 会显示声明的默认值，但不能编辑。输入项只有被对应运行时功能读取后才会生效；当前 `image_gen.imagegen` 在设为 Modified 时会读取其 Base URL 和 Token。

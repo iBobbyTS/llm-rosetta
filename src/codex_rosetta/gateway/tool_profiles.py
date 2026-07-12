@@ -320,6 +320,20 @@ def resolve_tool_profile(
         raise ValueError(f"unknown tool profile '{name}'") from exc
 
 
+def resolve_tool_profile_inputs(
+    name: str,
+    profiles: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, str]]:
+    """Resolve persisted Function-card input values for one Profile."""
+    readonly = tool_profile_contract()["readonly"]
+    profile = readonly.get(name, profiles.get(name))
+    if profile is None:
+        raise ValueError(f"unknown tool profile '{name}'")
+    return {
+        item_id: dict(values) for item_id, values in profile.get("inputs", {}).items()
+    }
+
+
 def validate_tool_profile_reference(
     value: Any,
     profiles: dict[str, dict[str, str]],

@@ -44,6 +44,7 @@ class ResolvedRoute:
         tool_profile_name: Selected tool-profile identifier, or ``None`` when
             tool profiles do not apply to the route.
         tool_profile: Effective catalog item states for the selected profile.
+        tool_profile_inputs: Function-card input values for the selected profile.
         responses_processing: Internal handling mode for same-format OpenAI
             Responses routes. This does not represent a distinct wire protocol.
     """
@@ -56,6 +57,7 @@ class ResolvedRoute:
     model_capabilities: list[str] = field(default_factory=lambda: ["text"])
     tool_profile_name: str | None = None
     tool_profile: dict[str, str] = field(default_factory=dict)
+    tool_profile_inputs: dict[str, dict[str, str]] = field(default_factory=dict)
     responses_processing: Literal["passthrough", "rosetta"] = "rosetta"
 
 

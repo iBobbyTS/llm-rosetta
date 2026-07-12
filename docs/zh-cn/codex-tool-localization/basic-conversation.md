@@ -38,9 +38,19 @@ Codex 的独立 Search 和 Images 客户端还会使用三个 JSON 端点：
 - `POST /v1/images/generations`
 - `POST /v1/images/edits`
 
-Images 仍是原生透传端点：只有当请求中的模型解析到 **OpenAI Responses
-(Tool Mapping only)** 供应商时，网关才会转发。网关会应用配置的上游模型别名，
-但请求载荷和 JSON 响应不会经过 IR 转换。
+Images 端点按照所选 Profile 中 `image_gen.imagegen` 的状态处理：
+
+- **Passthrough**：只有请求模型解析到 **OpenAI Responses (Tool Mapping
+  only)** 供应商时才透传。
+- **Modified**：把生成和编辑请求发送到 Function 卡片中配置的 OpenAI
+  Images API Base URL，并使用 Token 作为 Bearer 凭据。Tool Mapping only、
+  Responses Rosetta、Chat、Anthropic 和 Google 模型组均可使用此路径。
+- **Disabled**：拒绝 Images 端点请求。
+
+请求中的模型必须能够解析到选择该 Profile 的模型组。网关会应用配置的上游模型
+别名，其余 OpenAI Images 请求和 JSON 响应不经过 IR 转换。Modified 当前仅支持
+OpenAI `images/generations` 和 `images/edits` 线协议；Rosetta 不转换供应商私有的
+生图 API。
 
 独立 Search 还提供本地 bridge。当所选 Profile 把 `web.run` 设为 Modified
 时，`/v1/alpha/search` 会在本地执行可靠子集：`search_query` 使用配置的
