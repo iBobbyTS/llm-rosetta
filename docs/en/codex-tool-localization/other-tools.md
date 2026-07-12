@@ -68,3 +68,5 @@ The important behavior is that tool calls must survive the round trip:
 ## Tool Profile Scope
 
 **OpenAI Responses (Tool Mapping only)** supports Tool Profiles while keeping the rest of the Responses request and response on the direct path. The bundled **Responses pass through** Profile preserves incoming tools; **Responses web.run mapping** changes only `web.run` so `/v1/alpha/search` uses Rosetta's local mapping. Responses Rosetta, Chat, Anthropic, and Google model groups continue to support Profile selection and processing.
+
+The bundled Profiles manage current Codex image generation through `image_gen.imagegen`. They do not contain the obsolete hosted `image_generation` tool.

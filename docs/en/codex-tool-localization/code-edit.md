@@ -11,7 +11,7 @@ The gateway admin UI exposes a model-level section named `Tool Adaption for Code
 Current options:
 
 - `Localize code editing tools`: replace Codex-native editing tools with localized Chat tools for the upstream model.
-- `Remove image_generation`: remove the `image_generation` tool from the request for models that should not see it.
+- Tool Profiles manage the current `image_gen.imagegen` namespace tool. The obsolete hosted `image_generation` tool is not part of the bundled Profile catalog.
 - `Tool call mapping cache TTL`: how long persisted localized/native tool-call mappings remain valid.
 
 Only the configured model route is affected.

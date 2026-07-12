@@ -212,7 +212,7 @@ The following behavior can be automatically verified using the fixed Codex reque
   former 50 MB ceiling;
 - `/v1/models` current universal response, and future separately implemented Codex `ModelInfo` catalog contract;
 - Configuration/admin UI saving, defaults and runtime loading of Codex tool-adaptation switches.
-- Static tool-catalog contract: unique IDs, valid placement/policy references, required fixed tools, excluded dynamic tools, Built-in Profile defaults, supported states, and exact CLI/source metadata binding.
+- Static tool-catalog contract: unique IDs, valid placement/policy references, required fixed tools, excluded dynamic tools and obsolete hosted `image_generation`, current `image_gen.imagegen` coverage, Built-in Profile defaults, supported states, and exact CLI/source metadata binding.
 
 New fixture/component coverage in this round:
 

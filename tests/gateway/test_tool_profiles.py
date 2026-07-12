@@ -157,6 +157,8 @@ def test_responses_presets_are_read_only_and_only_mapping_profile_modifies_web_r
     items = tool_profile_contract()["readonly"]["responses_pass_through"]["tools"]
 
     assert pass_through == items
+    assert "hosted.image_generation" not in pass_through
+    assert "hosted.image_generation" not in web_run_mapping
     assert all(
         state == ("disabled" if item_id.startswith("injection.") else "passthrough")
         for item_id, state in pass_through.items()

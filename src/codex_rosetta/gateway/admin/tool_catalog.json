@@ -315,12 +315,6 @@
       ]
     },
     {
-      "id": "hosted.image_generation",
-      "name": "image_generation",
-      "type": "hosted",
-      "policy_id": "image_generation"
-    },
-    {
       "id": "namespace.multi_agent_v1",
       "name": "multi_agent_v1",
       "type": "namespace",
@@ -594,8 +588,7 @@
       {
         "id": "hosted",
         "item_ids": [
-          "hosted.web_search",
-          "hosted.image_generation"
+          "hosted.web_search"
         ]
       },
       {

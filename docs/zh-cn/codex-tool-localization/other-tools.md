@@ -68,3 +68,5 @@ multi_agent_v1.spawn_agent -> spawn_agent
 ## Tool Profile 作用范围
 
 **OpenAI Responses (Tool Mapping only)** 支持 Tool Profile，同时让 Responses 请求和响应的其余部分继续走直接路径。内置的 **Responses pass through** Profile 保持传入工具不变；**Responses web.run mapping** 只修改 `web.run`，让 `/v1/alpha/search` 使用 Rosetta 的本地映射。Responses Rosetta、Chat、Anthropic 和 Google 模型组仍支持 Profile 选择与处理。
+
+打包的 Profile 通过 `image_gen.imagegen` 管理当前 Codex 图片生成工具，不再包含已废弃的 Hosted `image_generation` 工具。

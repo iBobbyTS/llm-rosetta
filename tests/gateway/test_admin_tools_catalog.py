@@ -175,10 +175,7 @@ def test_catalog_contains_all_fixed_tools_and_excludes_dynamic_search():
         "apply_patch",
         "exec",
     }
-    assert {items[item_id]["name"] for item_id in groups["hosted"]} == {
-        "web_search",
-        "image_generation",
-    }
+    assert {items[item_id]["name"] for item_id in groups["hosted"]} == {"web_search"}
     assert {items[item_id]["name"] for item_id in groups["namespace"]} == set(
         EXPECTED_NAMESPACE_CHILDREN
     )
@@ -195,7 +192,7 @@ def test_catalog_contains_all_fixed_tools_and_excludes_dynamic_search():
     assert "mcp__" not in serialized
 
 
-def test_catalog_defaults_and_shared_image_policy():
+def test_catalog_defaults_and_namespace_image_policy():
     catalog, items, policies, _groups, _namespaces = _catalog_maps()
 
     assert catalog["metadata"]["schema_version"] == 1
@@ -208,8 +205,8 @@ def test_catalog_defaults_and_shared_image_policy():
     ]
 
     assert policies[items["custom.apply_patch"]["policy_id"]]["default"] == ("disabled")
-    image_policy = items["hosted.image_generation"]["policy_id"]
-    assert image_policy == items["namespace.image_gen.imagegen"]["policy_id"]
+    assert "hosted.image_generation" not in items
+    image_policy = items["namespace.image_gen.imagegen"]["policy_id"]
     assert policies[image_policy]["default"] == "disabled"
 
     for namespace_id in ("namespace.multi_agent_v1", "namespace.multi_agent_v2"):
