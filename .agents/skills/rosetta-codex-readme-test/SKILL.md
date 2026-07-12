@@ -25,6 +25,9 @@ Web Admin **Gateway Logs** page belongs on a RAM Disk.
 - Network-search suite: `tests/agent_workspace/network_search`; task `01`
   verifies a successful model-facing network search without command or browser
   fallbacks.
+- Context-compaction suite: `tests/agent_workspace/context_compaction`; task
+  `01` forces one tool result followed by a second model turn and diagnoses the
+  remote-compaction response contract.
 - Default third-party model: `deepseek-v4-flash`.
 - Native GPT comparison model: `gpt-5.6-terra`. Confirm the upstream route in
   the Rosetta trace; the Codex-facing alias alone is not evidence.
@@ -143,6 +146,50 @@ exists, stop and use another unused minute rather than adding a suffix.
    standalone `web.run` extension on that provider identity. Record this
    test-only identity override in the final report.
 
+   The context-compaction suite has a different required configuration. Use
+   the built-in provider id rather than defining `[model_providers.rosetta]`:
+
+   ```toml
+   model_provider = "openai"
+   model = "gpt-5.5"
+   openai_base_url = "http://127.0.0.1:18765/v1"
+   model_auto_compact_token_limit = 1000
+   sandbox_mode = "danger-full-access"
+   approval_policy = "never"
+   model_reasoning_effort = "medium"
+
+   [projects."<RUN_ROOT>/worktree"]
+   trust_level = "trusted"
+   ```
+
+   In the copied gateway config only, add a temporary `gpt-5.5` LLM model
+   group routed to the selected provider when that provider is not already in
+   a model group. For a TURNING run, preserve the copied `TURNING` provider and
+   route the model name unchanged. Pass the copied gateway client key to Codex
+   as `CODEX_API_KEY`; never print it or persist it outside the isolated run.
+   The low token limit is intentionally diagnostic and must not be reused for
+   normal agent tests.
+
+   To compare the same fixture with a custom Codex provider, keep the model,
+   Gateway provider, token limit, permissions, and task unchanged. Replace the
+   built-in provider selection with:
+
+   ```toml
+   model_provider = "custom"
+   model = "gpt-5.5"
+   model_auto_compact_token_limit = 1000
+
+   [model_providers.custom]
+   name = "custom"
+   wire_api = "responses"
+   requires_openai_auth = true
+   base_url = "http://127.0.0.1:18765/v1"
+   experimental_bearer_token = "<copied-gateway-client-key>"
+   ```
+
+   Use a separate timestamp run. This identity is expected to select local
+   model-summary compaction rather than remote v2.
+
 ## Run One Task
 
 1. Launch a separate gateway from the current checkout and copied config.
@@ -162,6 +209,9 @@ exists, stop and use another unused minute rather than adding a suffix.
 
 2. Read `TASK.md` as the exact prompt. Do not paraphrase or add hints. Read
    `expected.json` for the timeout and evidence contract, not as prompt text.
+   For context-compaction tasks, also read the suite's `EVALUATION.md`; it is
+   guidance for the parent agent and must not be inserted into the tested
+   model's prompt.
 
 3. Run Codex non-interactively with the isolated home and bounded duration:
 
@@ -208,6 +258,12 @@ Compare the evidence with `worktree/expected.json`:
   namespace or hosted search calls, `successful_search_result_required`
   requires a non-error result satisfying the task, and the command/browser
   maxima prohibit bypassing the search surface.
+- for context-compaction tasks, confirm that an outgoing Responses input item
+  has `type: "compaction_trigger"`, then count completed output items whose
+  item type is `compaction` or the Codex-compatible wire alias
+  `compaction_summary`. Classify the run using `diagnostic_outcomes` in
+  `expected.json`; reproducing the declared remote-compaction error is a valid
+  diagnostic result even though the agent does not reach its final marker.
 
 The outer evaluating agent decides success by the task's core objective, not by
 perfect compliance with every incidental instruction. Mark the task successful
@@ -238,6 +294,22 @@ call (`web.run`, `web_search`, or a localized bridge), the Codex-facing output
 item, and any separate HTTP request made by Codex or Rosetta. Inspect the
 gateway process and stream trace to record the actual destination host and port
 without exposing credentials.
+
+For context-compaction tests, distinguish a genuine request input item from
+the same string embedded in text. Record the provider id from the isolated
+Codex config, the Gateway provider and upstream model, the compact request's
+input item types, the compact response's output item types, and the exact
+bounded Codex error when present.
+
+After evaluating a context-compaction run, write the schema specified by the
+suite's `EVALUATION.md` to `RUN_ROOT/artifacts/evaluation.json`. Determine
+`compaction_method` from the request path and protocol evidence. For remote v2,
+require the trigger, exactly one accepted compaction output item, and a later
+installed `compaction` input. For local model-summary compaction, require a
+no-tools `request_kind: "compaction"` summarization turn, an ordinary summary
+message, and that summary installed in the later request. Both methods also
+require no compact-task error and the final marker. This method describes
+context compaction, not HTTP request compression.
 
 ## Real Provider Matrix
 
@@ -283,3 +355,10 @@ upstream model, and any warning affecting interpretation. Classify each run as
 `success`, `success with deviations`, or `failure`, and briefly separate minor
 deviations from failures of the core objective. State explicitly that the
 result measures tool-call behavior only.
+
+For context-compaction runs, the final report must additionally state
+`compaction_triggered`, `remote_compaction_trigger_observed`,
+`compaction_success`, `compaction_method`, the observed wire compaction or
+summary item type and count, whether the follow-up installed an opaque
+`compaction` input or a summary message, and any bounded compact-task error.
+These fields must agree with `RUN_ROOT/artifacts/evaluation.json`.

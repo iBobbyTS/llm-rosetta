@@ -14,6 +14,9 @@ handling rather than prose quality.
   polling a running process, and sending input to an existing process.
 - [`network_search`](network_search/README.md): selecting network search and
   receiving a usable result without shell or browser fallbacks.
+- [`context_compaction`](context_compaction/README.md): forcing a second
+  model turn across Codex remote compaction and recording whether an
+  OpenAI-identified provider returns a valid compaction item.
 
 ## Execution model
 

@@ -25,6 +25,13 @@ It verifies that the agent selects the model-facing search surface, receives a
 successful result containing an official Python documentation URL, and does not bypass the
 tool with a shell command or browser automation.
 
+The context-compaction suite is
+[`tests/agent_workspace/context_compaction`](../../tests/agent_workspace/context_compaction/README.md).
+It forces one command result followed by a second model turn while Codex uses
+an OpenAI-identified provider. Its result distinguishes a valid remote
+compaction response from the known zero-output-item failure; it does not score
+the generated summary.
+
 ## Runtime layout
 
 Every invocation uses one repository-local run root:
@@ -65,6 +72,20 @@ For network-search tasks, confirm at least one model-facing search call, a
 non-error search result satisfying the task, and the absence of prohibited
 command or browser calls. Record whether the model used a namespace function,
 a hosted tool, or a Rosetta-translated bridge.
+
+For context-compaction tasks, require a genuine `compaction_trigger` input item
+in the Gateway Logs trace. Classify the run as completed, error reproduced, or
+not triggered according to the suite README and retain the exact compact
+response item types. A source listing or log message containing the same text
+does not prove that Codex issued a compaction request. Count both the canonical
+`compaction` item and the accepted `compaction_summary` wire alias.
+The parent agent follows the suite's `EVALUATION.md`, writes
+`artifacts/evaluation.json`, and explicitly reports the end-to-end compaction
+result and Codex compaction method. Do not confuse context compaction with HTTP
+compression such as zstd.
+When comparing provider identities, `openai` is expected to select remote v2,
+while a provider whose id and display name are `custom` is expected to run a
+normal no-tools Responses turn that produces a local summary message.
 
 Responses Lite models use Codex's standalone `web.run` extension instead of a
 hosted Responses search tool. An isolated custom-provider test must retain its

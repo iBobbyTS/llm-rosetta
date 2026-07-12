@@ -1,0 +1,64 @@
+{
+  "id": "01",
+  "timeout_seconds": 120,
+  "success_marker": "RESULT:COMPACT_OK",
+  "required_runtime": {
+    "model": "gpt-5.5",
+    "gateway_provider": "TURNING",
+    "codex_model_provider": "openai",
+    "model_auto_compact_token_limit": 1000
+  },
+  "comparison_variants": {
+    "openai": {
+      "codex_model_provider": "openai",
+      "expected_compaction_method": "remote_v2_responses"
+    },
+    "custom": {
+      "codex_model_provider": "custom",
+      "expected_compaction_method": "local_model_summary"
+    }
+  },
+  "expected_native_pattern": {
+    "command_starts": 1,
+    "continuations_min": 0,
+    "continuations_max": 0,
+    "non_empty_writes": 0,
+    "same_session_required": false,
+    "compaction_requests_min": 1,
+    "compaction_trigger_required": true
+  },
+  "diagnostic_outcomes": {
+    "completed": {
+      "compaction_output_items": 1,
+      "accepted_compaction_item_types": [
+        "compaction",
+        "compaction_summary"
+      ],
+      "final_marker_required": true
+    },
+    "remote_compaction_error_reproduced": {
+      "error_pattern": "remote compaction v2 expected exactly one compaction output item",
+      "final_marker_required": false
+    }
+  },
+  "parent_agent_output": {
+    "artifact": "artifacts/evaluation.json",
+    "required_fields": [
+      "classification",
+      "compaction_triggered",
+      "remote_compaction_trigger_observed",
+      "compaction_success",
+      "compaction_method",
+      "wire_compaction_item_type",
+      "summary_output_item_type",
+      "accepted_compaction_item_count",
+      "followup_compaction_input_observed",
+      "followup_summary_message_observed",
+      "error",
+      "model",
+      "gateway_provider",
+      "codex_model_provider",
+      "thread_id"
+    ]
+  }
+}
