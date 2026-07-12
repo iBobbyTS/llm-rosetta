@@ -33,6 +33,16 @@ an OpenAI-identified provider. Its result distinguishes a valid remote
 compaction response from the known zero-output-item failure; it does not score
 the generated summary.
 
+The Namespace-tools suite is
+[`tests/agent_workspace/namespace_tools`](../../tests/agent_workspace/namespace_tools/README.md).
+It gives the agent a fixed sequence of direct calls to `clock.curr_time`,
+`memories.list`, `skills.list`, `collaboration.spawn_agent`, and
+`collaboration.wait_agent`. It tests Namespace exposure, Responses-to-Chat
+flattening/restoration, and local tool execution rather than planning or
+subagent quality. The suite enables `current_time_reminder`, `memories`, and
+`multi_agent_v2`, seeds an isolated memory root, and treats an unavailable
+app-server orchestrator skill provider as a real `skills` Namespace failure.
+
 The GPT relay provider-identity suite is
 [`tests/integration/gpt_relay`](../../tests/integration/gpt_relay/README.md).
 It sends the same real relay/model through non-OpenAI and `OpenAI` Codex
@@ -101,6 +111,15 @@ compression such as zstd.
 When comparing provider identities, `openai` is expected to select remote v2,
 while a provider whose id and display name are `custom` is expected to run a
 normal no-tools Responses turn that produces a local summary message.
+
+For Namespace-tool tasks, verify every required native Namespace call and
+successful result in the isolated rollout. Use Gateway Logs to record the
+model-facing call name: native Responses routes retain Namespace calls, while
+Responses-to-Chat routes expose unique flattened names such as
+`memories__list` and Rosetta must reconstruct the original Namespace before
+Codex executes it. A textual mention, a shell substitute, or a local file read
+does not count. The collaboration check requires both spawning a child and
+waiting until the child returns the fixed marker.
 
 Responses Lite models use Codex's standalone `web.run` extension instead of a
 hosted Responses search tool. An isolated custom-provider test must retain its
