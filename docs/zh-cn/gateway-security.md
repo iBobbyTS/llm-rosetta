@@ -35,6 +35,9 @@ Authorization: Bearer rsk-...
 `"unlimited"`，重新加载配置也会在不重启网关的情况下应用同一设置。公开的 Admin
 login/auth-check endpoint 和浏览器 `OPTIONS` 预检仍按设计保持无需认证；即使这些请求
 携带 body，也仍受同一 body deadline、已配置大小上限和 parser capacity 约束。
+经过认证且带有 `Content-Encoding: zstd` 的 `/v1` 请求会在解析 JSON 前自动解压。
+网关使用 WebUI 当前配置的同一个大小上限，分别检查压缩后的 wire body 和解压后的
+body；没有该编码的请求继续使用原有的未压缩路径。
 “不限制”会移除 Rosetta 实际可触发的 body 大小上限，但每个 body 仍会完整缓冲到内存，
 因此只应在可信且内存受控的部署中使用。
 

@@ -1010,6 +1010,13 @@ def create_app(config: GatewayConfig, config_path: str | None = None) -> App:
     app.before_body(auth_hook)
     app.before_request(auth_hook)
 
+    # Decode Codex's optional request compression only after authentication.
+    # The HTTP parser has already applied app.max_body_size to compressed bytes;
+    # this hook applies the same live limit to decoded bytes before JSON parsing.
+    from .inbound_content_encoding import decode_inbound_zstd
+
+    app.before_request(decode_inbound_zstd)
+
     # --- CORS ---
     # Admin API endpoints are restricted to same-origin by default.
     # /v1/* proxy endpoints remain open (Access-Control-Allow-Origin: *).

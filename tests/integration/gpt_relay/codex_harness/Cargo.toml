@@ -1,0 +1,30 @@
+[package]
+name = "gpt-relay-codex-harness"
+version = "0.1.0"
+edition = "2024"
+publish = false
+rust-version = "1.95"
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+codex-core = { path = "../../../../../openai-codex-src/codex-rs/core" }
+codex-features = { path = "../../../../../openai-codex-src/codex-rs/features" }
+codex-login = { path = "../../../../../openai-codex-src/codex-rs/login" }
+codex-model-provider-info = { path = "../../../../../openai-codex-src/codex-rs/model-provider-info" }
+codex-models-manager = { path = "../../../../../openai-codex-src/codex-rs/models-manager" }
+codex-protocol = { path = "../../../../../openai-codex-src/codex-rs/protocol" }
+core_test_support = { path = "../../../../../openai-codex-src/codex-rs/core/tests/common" }
+reqwest = "0.12"
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
+
+[patch.crates-io]
+tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186" }
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }
+
+[patch."ssh://git@github.com/openai-oss-forks/tungstenite-rs.git"]
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }

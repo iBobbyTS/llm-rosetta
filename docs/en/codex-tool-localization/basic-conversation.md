@@ -21,7 +21,7 @@ Only Responses pass-through and Responses-to-Chat conversion are currently guara
 
 ## Responses Pass-Through
 
-For same-protocol OpenAI Responses routes configured as **Pass through**, the gateway does not decode and re-encode the request body. It forwards the original request and streams raw upstream SSE bytes back to Codex.
+For same-protocol OpenAI Responses routes configured as **Pass through**, the gateway normally does not decode and re-encode the request body. It forwards the original request and streams raw upstream SSE bytes back to Codex. The transport-level exception is an authenticated request with `Content-Encoding: zstd`: Rosetta decodes it under the configured pre/post-decompression size limits, removes the encoding header, and then preserves the decoded JSON fields through pass-through handling.
 
 This is important because Codex relies on fields that are not part of a minimal cross-provider IR, including:
 

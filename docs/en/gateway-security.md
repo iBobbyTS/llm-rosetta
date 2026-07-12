@@ -42,6 +42,10 @@ or `"unlimited"`; a config reload applies the same setting without restarting
 the gateway. Public Admin login/auth-check endpoints and browser `OPTIONS`
 preflight remain intentionally unauthenticated; any body they carry is still
 covered by the same body deadline, configured size limit, and parser capacity.
+Authenticated `/v1` requests with `Content-Encoding: zstd` are decoded before
+JSON parsing. The configured body limit is enforced independently on both the
+compressed wire body and the decompressed body, using the same current WebUI
+setting; requests without that encoding keep the existing uncompressed path.
 The unlimited setting removes Rosetta's practical body-size ceiling but still
 buffers each body in memory, so use it only on a trusted, memory-controlled
 deployment.

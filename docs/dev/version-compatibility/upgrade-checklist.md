@@ -329,6 +329,12 @@ Select a model by debugging target, don't just look at the Codex-facing alias:
 
 - HTTP SSE is the current basic must-test path;
 - WebSocket, Responses Lite, and remote compact can only be declared supported after being explicitly enabled;
+- When provider-name identity, auth classification, request compression,
+  internal item metadata, sequential reasoning-summary delivery, or compact
+  fallback changes, rerun `tests/integration/gpt_relay/` C0-C5 against one
+  representative real relay/model. Record `OpenAI` and non-OpenAI results
+  separately; synthetic backend-auth cells are wire-compatibility evidence,
+  not native relay authentication support;
 - If these capabilities are not implemented, it must be physically confirmed that Codex will fall back to HTTP/SSE safely;
 - Actually create an upstream current limit, authentication failure or interruption, and confirm that Codex can display understandable errors and will not enter infinite retry/repeat tool execution.
 

@@ -32,6 +32,16 @@ an OpenAI-identified provider. Its result distinguishes a valid remote
 compaction response from the known zero-output-item failure; it does not score
 the generated summary.
 
+The GPT relay provider-identity suite is
+[`tests/integration/gpt_relay`](../../tests/integration/gpt_relay/README.md).
+It sends the same real relay/model through non-OpenAI and `OpenAI` Codex
+provider identities, then compares sequential reasoning-summary delivery,
+internal item metadata, Zstd request compression, and current-model compact
+fallback. Synthetic Codex-backend header auth is used only to activate the
+Codex-side Zstd/fallback gates; the capture proxy replaces authentication and
+still requires the selected real relay to complete the request. Results label
+that distinction explicitly and never count a mock response as relay evidence.
+
 ## Runtime layout
 
 Every invocation uses one repository-local run root:

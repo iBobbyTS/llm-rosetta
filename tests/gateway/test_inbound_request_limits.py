@@ -9,6 +9,7 @@ import time
 from typing import Any, cast
 
 import pytest
+from compression import zstd
 
 from codex_rosetta.gateway.app import create_app
 from codex_rosetta.gateway.config import GatewayConfig
@@ -203,6 +204,84 @@ def test_valid_gateway_key_allows_body_read_and_dispatch() -> None:
 
         assert b" 200 " in response.split(b"\r\n", 1)[0]
         assert b'"size": 2' in response
+        assert running.app.active_request_parses == 0
+
+
+def test_authenticated_zstd_body_is_decoded_before_dispatch() -> None:
+    with _RunningGateway() as running:
+        body = zstd.compress(b"{}")
+        response = _exchange(
+            running.address,
+            b"POST /v1/socket-test HTTP/1.1\r\n"
+            b"Host: localhost\r\n"
+            b"Authorization: Bearer test-gateway-key\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Encoding: zstd\r\n"
+            + f"Content-Length: {len(body)}\r\n\r\n".encode()
+            + body,
+        )
+
+        assert b" 200 " in response.split(b"\r\n", 1)[0]
+        assert b'"size": 2' in response
+        assert running.app.active_request_parses == 0
+
+
+def test_invalid_gateway_key_is_rejected_before_zstd_decode() -> None:
+    with _RunningGateway() as running:
+        body = b"not-zstd"
+        response = _exchange(
+            running.address,
+            b"POST /v1/socket-test HTTP/1.1\r\n"
+            b"Host: localhost\r\n"
+            b"Authorization: Bearer invalid\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Encoding: zstd\r\n"
+            + f"Content-Length: {len(body)}\r\n\r\n".encode()
+            + body,
+        )
+
+        assert b" 401 " in response.split(b"\r\n", 1)[0]
+        assert b"invalid_api_key" in response
+        assert b"Invalid Zstd request body" not in response
+        assert running.app.active_request_parses == 0
+
+
+def test_zstd_decoded_body_uses_same_live_limit_as_compressed_body() -> None:
+    with _RunningGateway() as running:
+        running.app.max_body_size = 32
+        body = zstd.compress(b"a" * 33)
+        assert len(body) <= running.app.max_body_size
+        response = _exchange(
+            running.address,
+            b"POST /v1/socket-test HTTP/1.1\r\n"
+            b"Host: localhost\r\n"
+            b"Authorization: Bearer test-gateway-key\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Encoding: zstd\r\n"
+            + f"Content-Length: {len(body)}\r\n\r\n".encode()
+            + body,
+        )
+
+        assert b" 413 " in response.split(b"\r\n", 1)[0]
+        assert b"too large after Zstd decompression" in response
+        assert running.app.active_request_parses == 0
+
+
+def test_zstd_compressed_body_uses_existing_live_limit_before_decode() -> None:
+    with _RunningGateway() as running:
+        running.app.max_body_size = 32
+        response = _exchange(
+            running.address,
+            b"POST /v1/socket-test HTTP/1.1\r\n"
+            b"Host: localhost\r\n"
+            b"Authorization: Bearer test-gateway-key\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Encoding: zstd\r\n"
+            b"Content-Length: 33\r\n\r\n",
+        )
+
+        assert b" 413 " in response.split(b"\r\n", 1)[0]
+        assert b"Request body too large (33 bytes)" in response
         assert running.app.active_request_parses == 0
 
 
