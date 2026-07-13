@@ -3,6 +3,7 @@
 ## Compatibility
 
 - [Codex version compatibility](version-compatibility.md)
+- [Codex model catalog field reference](codex-model-catalog.md)
 
 ## Current Protocol Support
 

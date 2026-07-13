@@ -3,6 +3,7 @@
 ## 兼容性
 
 - [Codex 版本兼容性](version-compatibility.md)
+- [Codex 模型目录字段参考](codex-model-catalog.md)
 
 ## 当前协议支持状态
 

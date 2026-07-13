@@ -6,6 +6,7 @@ lives in [`docs/en`](../en/README.md) and [`docs/zh-cn`](../zh-cn/README.md).
 ## Compatibility
 
 - [Codex source compatibility](version-compatibility/README.md)
+- [Codex model catalog field reference](../en/codex-model-catalog.md)
 - [Compatibility points](version-compatibility/compatibility-points.md)
 - [Upgrade checklist](version-compatibility/upgrade-checklist.md)
 - [Upgrade reports](version-compatibility/reports/README.md)

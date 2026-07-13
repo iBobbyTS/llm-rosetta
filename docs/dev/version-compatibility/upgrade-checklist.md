@@ -11,7 +11,7 @@ The upgrade must be completed in the following order, and the latter step cannot
 3. Record the target Codex release and new source commit, then run the contract diff;
 4. Classify every item in `compatibility-points.md` as **high-confidence unchanged**, **possibly unchanged**, or **changed**;
 5. Define repair plans for changed items and manual-review/live-test plans for possibly unchanged items;
-6. Review and refresh `src/codex_rosetta/gateway/admin/tool_catalog.json` against the target tool specifications and bundled extensions, including its CLI/source metadata binding;
+6. Review the complete Codex model catalog contract and refresh `docs/en/codex-model-catalog.md` plus its Chinese counterpart when fields, defaults, bundled values, consumers, or third-party guidance changed; then review and refresh `src/codex_rosetta/gateway/admin/tool_catalog.json` against the target tool specifications and bundled extensions, including its CLI/source metadata binding;
 7. Complete repairs and run all automated checks, including compatibility-specific tests, lint, and the full non-integration test suite;
 8. Run real API tests for every possibly unchanged or changed compatibility point. Use `gpt-5.6-terra` to observe native Codex/GPT request shapes and low-cost `deepseek-v4-flash` by default for third-party conversion debugging; record substitutions and reasons;
 9. After every gate passes, update the contract baseline, upgrade report, documentation, and package version, and record the exact source commit.
@@ -79,7 +79,9 @@ Key points to confirm:
 - tool type, grammar, call/output item of `apply_patch`;
 - reasoning effort, summary, encrypted content and response headers;
 - History and window generation after compact, resume, fork, subagent;
-- `ModelInfo` new fields, enum/default and unknown model fallback.
+- `ModelInfo` and nested-struct fields, enum wire values, serde rename/default/skip behavior, instruction-template precedence, unknown-model fallback, and every runtime consumer;
+- The complete bundled `models.json` key set and per-model values, including keys ignored by the current client and valid defaulted fields omitted from the JSON;
+- Whether catalog-selected tool surfaces changed, especially `web.run` versus hosted `web_search` and collaboration v2 versus `multi_agent_v1`.
 
 ## 3. Compare Rosetta ownership boundaries
 
@@ -142,7 +144,8 @@ The following checks can be made into automatic diff/snapshot jobs for commits b
 - Export and compare `ResponseItem`, `ResponseInputItem`, `MessagePhase` and SSE event names;
 - Export and compare the tool schema of function/custom/namespace/tool_search/web_search;
 - Export and compare `apply_patch` freeform grammar and call/output wire shape;
-- Export and compare `ModelInfo` fields, enum values, default values and bundled model configurations;
+- Export and compare `ModelInfo` and nested-struct fields, enum wire values, serde rename/default/skip behavior, instruction-template precedence, unknown-model fallback, and runtime consumers;
+- Export and compare the complete bundled `models.json` key set and per-model values, including ignored keys and omitted fields that receive defaults;
 - Monitor the header/body key of `x-codex-*` and session/thread/window/turn metadata;
 - Monitor endpoint, feature flag and fallback changes of `/responses`, Responses WebSocket, `/responses/compact` and Responses Lite.
 
@@ -174,7 +177,7 @@ Three categories of results must be retained each time a check is performed:
 
 You can't incorporate "probably no changes" into the pass, and you can't omit these three categories just because unified diff is empty. The automated final exit code only expresses whether there is a blocking change/extraction error and does not replace the review of the second category.
 
-Still to be implemented: field types, serde rename/default/skip strategy, SSE match arm digest, full generic tool schema, tool_search defaults, bundled model capability subset, and model fallback initializer. Therefore, the current baseline only proves that the above extracted collection has no drift, and cannot claim that all projects in Section A have been completed.
+Still to be implemented: field types, nested model-catalog structs, serde rename/default/skip strategy, instruction-template precedence, full bundled model values and consumer mapping, SSE match arm digest, full generic tool schema, tool_search defaults, and model fallback initializer. The extractor currently covers the `ModelInfo` field set, key model enums, and a Responses Lite capability subset only. Therefore, the current baseline cannot claim complete model-catalog compatibility.
 
 #### B. Fixture and unit/component testing
 
@@ -212,7 +215,7 @@ The following behavior can be automatically verified using the fixed Codex reque
 - Inbound request-body default, fixed tiers, Admin persistence/hot reload,
   rollback, unlimited mapping, and a real Codex image-history request above the
   former 50 MB ceiling;
-- `/v1/models` current universal response, and future separately implemented Codex `ModelInfo` catalog contract;
+- `/v1/models` current OpenAI-style response remains distinct from Codex's dynamic `ModelInfo` catalog endpoint; statically verify the complete bundled catalog/schema contract without treating the gateway route as that endpoint;
 - Configuration/admin UI saving, defaults and runtime loading of Codex tool-adaptation switches.
 - Static tool-catalog contract: unique IDs, valid placement/policy references, required fixed tools, Function/Hosted input IDs/types/defaults/localization keys, excluded dynamic tools and obsolete hosted `image_generation`, current `image_gen.imagegen` coverage, Chat Default Profile defaults, supported states, and exact CLI/source metadata binding.
 
@@ -319,8 +322,10 @@ Select a model by debugging target, don't just look at the Codex-facing alias:
 - `request_user_input`, Goal/Plan and Desktop/runtime-only tools can be called according to the real schema;
 - plugin/MCP namespace finds the tool through `tool_search`, actually calls it and consumes the result;
 - `multi_agent_v1` and `multi_agent_v2/collaboration` provided by the version can spawn, communicate, wait and return results, and parent/window/thread does not cross talk;
+- For a new third-party alias, test collaboration v2 before retaining legacy `multi_agent_v1`; use v1 only when the newer lifecycle is demonstrably unreliable for that model;
 - When model catalog enables code mode, actually verify `exec/wait` and nested tool continuation; especially check that the payload received by `exec` is custom/raw-source, not function/JSON payload, and confirm that third-party models will recover with visible tool errors when they misuse the freeform tool and will not be fatal;
 - When web search is enabled, the model can initiate a search, read the results, and proceed to generate the final answer.
+- For a new third-party alias, test standalone `web.run` search/open before retaining legacy hosted `web_search`; verify the actual surface in Gateway Logs.
 
 #### D. Reasoning, History and Recovery
 
