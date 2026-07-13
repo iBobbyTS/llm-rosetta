@@ -71,6 +71,16 @@ def _app_request(
     )
 
 
+def test_create_app_stores_resolved_codex_home(tmp_path):
+    codex_home = tmp_path / "codex-home"
+
+    app: Any = app_module.create_app(
+        GatewayConfig(_gateway_config()), codex_home=str(codex_home)
+    )
+
+    assert app.codex_home == str(codex_home)
+
+
 @pytest.fixture(autouse=True)
 def _authenticated_principal():
     token = api_key_principal_var.set("test-client")

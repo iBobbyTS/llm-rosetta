@@ -24,7 +24,7 @@ from .auth import (
     api_key_principal_var,
     create_auth_hook,
 )
-from .config import GatewayConfig
+from .config import GatewayConfig, resolve_codex_home
 from .codex_auxiliary import handle_codex_auxiliary as _handle_codex_auxiliary
 from .codex_search_references import CodexSearchReferenceStore
 from .cors import apply_cors_headers, is_admin_origin_allowed, is_admin_path
@@ -968,7 +968,12 @@ def _flush_now(app: App) -> None:
 # ---------------------------------------------------------------------------
 
 
-def create_app(config: GatewayConfig, config_path: str | None = None) -> App:
+def create_app(
+    config: GatewayConfig,
+    config_path: str | None = None,
+    *,
+    codex_home: str | None = None,
+) -> App:
     """Create the httpserver application."""
     from .transport import HttpTransport
 
@@ -987,6 +992,7 @@ def create_app(config: GatewayConfig, config_path: str | None = None) -> App:
         max_concurrent_request_parses=_INBOUND_MAX_CONCURRENT_REQUEST_PARSES,
     )
     setattr(app, "gateway_config", config)
+    setattr(app, "codex_home", resolve_codex_home(codex_home))
     app.admin_cors_origins = tuple(config.admin_cors_origins)  # type: ignore
 
     # --- Routes ---

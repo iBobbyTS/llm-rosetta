@@ -40,6 +40,8 @@ logger = logging.getLogger("codex-rosetta-gateway")
 CONFIG_FILENAME = "config.jsonc"
 DEFAULT_CONFIG_DIR = os.path.expanduser("~/.config/codex-rosetta-gateway")
 CONFIG_DIRS_TO_TRY = [DEFAULT_CONFIG_DIR]
+CODEX_HOME_ENV = "CODEX_HOME"
+DEFAULT_CODEX_HOME = os.path.expanduser("~/.codex")
 
 API_TYPE_TO_PROVIDER_TYPE: dict[str, str] = {
     "responses_passthrough": "openai_responses",
@@ -444,6 +446,18 @@ def load_config_raw(path: str) -> ConfigDocument:
 def config_path_for_dir(config_dir: str) -> str:
     """Return the gateway config file path inside *config_dir*."""
     return os.path.join(config_dir, CONFIG_FILENAME)
+
+
+def resolve_codex_home(explicit_path: str | None = None) -> str:
+    """Resolve Codex Home from CLI override, environment, or its default."""
+    raw_path = (
+        explicit_path
+        if explicit_path is not None
+        else os.environ.get(CODEX_HOME_ENV, DEFAULT_CODEX_HOME)
+    )
+    if not raw_path.strip():
+        raise ValueError("Codex Home path must not be empty")
+    return os.path.abspath(os.path.expanduser(raw_path))
 
 
 def discover_config(explicit_dir: str | None = None) -> str | None:

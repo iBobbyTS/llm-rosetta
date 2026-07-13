@@ -17,12 +17,15 @@ from codex_rosetta.gateway.cli import (
     _empty_config_template,
 )
 from codex_rosetta.gateway.config import (
+    CODEX_HOME_ENV,
     CONFIG_DIRS_TO_TRY,
+    DEFAULT_CODEX_HOME,
     DEFAULT_CONFIG_DIR,
     GatewayConfig,
     config_path_for_dir,
     discover_config,
     load_config,
+    resolve_codex_home,
 )
 
 
@@ -36,6 +39,27 @@ def test_default_config_search_only_uses_xdg_directory() -> None:
 
 def test_discover_config_resolves_explicit_directory() -> None:
     assert discover_config("/tmp/gateway") == "/tmp/gateway/config.jsonc"
+
+
+def test_resolve_codex_home_uses_cli_environment_and_default_precedence(
+    tmp_path, monkeypatch
+) -> None:
+    env_home = tmp_path / "from-env"
+    cli_home = tmp_path / "from-cli"
+    monkeypatch.setenv(CODEX_HOME_ENV, str(env_home))
+
+    assert resolve_codex_home() == str(env_home)
+    assert resolve_codex_home(str(cli_home)) == str(cli_home)
+
+    monkeypatch.delenv(CODEX_HOME_ENV)
+    assert resolve_codex_home() == DEFAULT_CODEX_HOME
+
+
+def test_resolve_codex_home_rejects_empty_value(monkeypatch) -> None:
+    monkeypatch.setenv(CODEX_HOME_ENV, "")
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        resolve_codex_home()
 
 
 def test_discover_config_checks_config_jsonc_inside_default_directory(

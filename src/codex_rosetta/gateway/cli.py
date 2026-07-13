@@ -15,6 +15,7 @@ from codex_rosetta import __version__
 
 from .banner import print_banner
 from .config import (
+    CODEX_HOME_ENV,
     CONFIG_DIRS_TO_TRY,
     DEFAULT_CONFIG_DIR,
     DEFAULT_REQUEST_BODY_LIMIT_MB,
@@ -25,6 +26,7 @@ from .config import (
     load_config,
     load_config_raw,
     provider_supports_tool_profiles,
+    resolve_codex_home,
     write_config,
 )
 from .logging import get_logger, setup_logging
@@ -303,6 +305,11 @@ def main() -> None:
         version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
+        "--codex-home",
+        default=None,
+        help="Codex Home directory (default: $CODEX_HOME or ~/.codex)",
+    )
+    parser.add_argument(
         "--no-banner",
         action="store_true",
         help="Suppress the startup banner",
@@ -396,6 +403,12 @@ def main() -> None:
     if not args.no_banner:
         print_banner()
 
+    try:
+        codex_home = resolve_codex_home(args.codex_home)
+    except ValueError as exc:
+        parser.error(str(exc))
+    os.environ[CODEX_HOME_ENV] = codex_home
+
     config_dir = args.config or DEFAULT_CONFIG_DIR
     config_path = config_path_for_dir(config_dir)
     if not os.path.isfile(config_path):
@@ -422,13 +435,14 @@ def main() -> None:
         logger.info("Starting codex-rosetta gateway on %s:%d", host, port)
     logger.info("Configured providers: %s", list(config.providers.keys()))
     logger.info("Configured models: %s", list(config.models.keys()))
+    logger.info("Codex Home: %s", codex_home)
     if config.log_bodies:
         logger.info(
             "Request/response body logging enabled on the dedicated DEBUG body "
             "logger (configured API tokens are redacted)"
         )
 
-    app = create_app(config, config_path=config_path)
+    app = create_app(config, config_path=config_path, codex_home=codex_home)
 
     from .app import run_gateway
 

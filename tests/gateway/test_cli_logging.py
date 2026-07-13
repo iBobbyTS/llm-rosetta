@@ -38,6 +38,9 @@ def test_main_passes_selected_log_level_to_logging_setup(
         log_bodies=False,
     )
     selected_levels: list[str] = []
+    app_kwargs: list[dict[str, object]] = []
+    codex_home = tmp_path / "codex-home"
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "original-codex-home"))
 
     monkeypatch.setattr(
         cli.sys,
@@ -47,6 +50,8 @@ def test_main_passes_selected_log_level_to_logging_setup(
             "--no-banner",
             "--config",
             str(tmp_path),
+            "--codex-home",
+            str(codex_home),
             *log_level_args,
         ],
     )
@@ -58,7 +63,11 @@ def test_main_passes_selected_log_level_to_logging_setup(
         "setup_logging",
         lambda *, log_level: selected_levels.append(log_level),
     )
-    monkeypatch.setattr(gateway_app, "create_app", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        gateway_app,
+        "create_app",
+        lambda *_args, **kwargs: app_kwargs.append(kwargs) or object(),
+    )
 
     async def fake_run_gateway(*_args, **_kwargs) -> None:
         return None
@@ -68,6 +77,8 @@ def test_main_passes_selected_log_level_to_logging_setup(
     cli.main()
 
     assert selected_levels == [expected_level]
+    assert app_kwargs[0]["codex_home"] == str(codex_home)
+    assert cli.os.environ["CODEX_HOME"] == str(codex_home)
 
 
 @pytest.mark.parametrize("explicit_config", [False, True])
@@ -77,6 +88,7 @@ def test_main_initializes_missing_config_and_continues_startup(
     explicit_config: bool,
 ) -> None:
     config_dir = tmp_path / ("explicit" if explicit_config else "default")
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-home"))
     argv = ["codex-rosetta-gateway", "--no-banner"]
     if explicit_config:
         argv.extend(["--config", str(config_dir)])

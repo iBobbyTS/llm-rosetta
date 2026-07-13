@@ -6,3 +6,4 @@ codex-rosetta[gateway]
 # Usage:
 #   codex-rosetta-gateway --config /path/to/config-directory
 #   python -m codex_rosetta.gateway --config /path/to/config-directory
+# Optional Codex Home: set CODEX_HOME or pass --codex-home /path/to/codex-home

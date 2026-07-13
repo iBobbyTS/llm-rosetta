@@ -141,7 +141,8 @@ exists, stop and use another unused minute rather than adding a suffix.
    must not be written to the RAM Disk:
 
    ```bash
-   codex-rosetta-gateway --config "$RUN_ROOT/gateway" --host 127.0.0.1 --port 18765 --no-banner \
+   codex-rosetta-gateway --config "$RUN_ROOT/gateway" --codex-home "$RUN_ROOT/codex_home" \
+     --host 127.0.0.1 --port 18765 --no-banner \
      >"$RUN_ROOT/gateway/stdout.log" 2>"$RUN_ROOT/gateway/stderr.log" &
    GATEWAY_PID=$!
    printf '%s\n' "$GATEWAY_PID" >"$RUN_ROOT/gateway/pid"
