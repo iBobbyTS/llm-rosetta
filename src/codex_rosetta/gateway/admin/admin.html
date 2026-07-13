@@ -618,6 +618,13 @@ body { padding-bottom: 26px; }
             </select>
             <div style="font-size:11px;color:var(--text-dim);margin-top:6px" data-i18n="label.requestBodyLimitHint">Limits each inbound request before it is buffered. Unlimited may allow one client to exhaust gateway memory.</div>
           </div>
+          <div style="margin-top:14px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input id="localModeEnabled" type="checkbox" style="width:auto">
+              <span data-i18n="label.localMode">Local mode</span>
+            </label>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:6px" data-i18n="label.localModeHint">Automatically maintains the Codex model catalog for models configured in this gateway.</div>
+          </div>
           <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <button class="btn btn-sm" onclick="runNetDiag()" data-i18n="diag.runDiag">Network Diagnostics</button>
             <div class="net-diag" id="netDiagResults"></div>
@@ -1165,6 +1172,10 @@ const I18N = {
     'label.requestBodyLimit':'Maximum Request Body',
     'label.requestBodyLimitHint':'Limits each inbound request before it is buffered. Unlimited may allow one client to exhaust gateway memory.',
     'label.unlimited':'Unlimited',
+    'label.localMode':'Local mode',
+    'label.localModeHint':'Automatically maintains the Codex model catalog for models configured in this gateway.',
+    'confirm.localMode':'Local mode will write model_catalog.json under {codex_home} and set model_catalog_json in config.toml.{existing} Continue?',
+    'confirm.localModeExisting':' The existing model_catalog_json setting will be cleared.',
     'label.streamTraceEnabled':'Enable stream trace JSONL',
     'label.streamTraceHint':'Records upstream chunks, IR events, and downstream SSE events for matching streaming requests.',
     'label.streamTracePath':'Trace File Path',
@@ -1355,6 +1366,10 @@ const I18N = {
     'label.requestBodyLimit':'\u6700\u5927\u8bf7\u6c42\u4f53',
     'label.requestBodyLimitHint':'\u5728\u7f13\u51b2\u524d\u9650\u5236\u6bcf\u4e2a\u5165\u7ad9\u8bf7\u6c42\u3002\u4e0d\u9650\u5236\u53ef\u80fd\u4f7f\u5355\u4e2a\u5ba2\u6237\u7aef\u8017\u5c3d\u7f51\u5173\u5185\u5b58\u3002',
     'label.unlimited':'\u4e0d\u9650\u5236',
+    'label.localMode':'\u672c\u5730\u6a21\u5f0f',
+    'label.localModeHint':'\u81ea\u52a8\u4e3a\u914d\u7f6e\u5230\u7f51\u5173\u7684\u6a21\u578b\u7ef4\u62a4 Codex \u6a21\u578b\u76ee\u5f55\u3002',
+    'confirm.localMode':'\u672c\u5730\u6a21\u5f0f\u4f1a\u5728{codex_home}\u4e0b\u5199\u5165model_catalog.json\u5e76\u5728config.toml\u91cc\u5199\u5165model_catalog_json\u3002{existing}\u662f\u5426\u7ee7\u7eed\u3002',
+    'confirm.localModeExisting':'\u5df2\u6709\u7684\u4f1a\u88ab\u6e05\u9664\u3002',
     'label.streamTraceEnabled':'\u542f\u7528\u6d41\u5f0f trace JSONL',
     'label.streamTraceHint':'\u8bb0\u5f55\u5339\u914d\u7684\u6d41\u5f0f\u8bf7\u6c42\u7684\u4e0a\u6e38 chunk\u3001IR event \u548c\u4e0b\u6e38 SSE event\u3002',
     'label.streamTracePath':'Trace \u6587\u4ef6\u8def\u5f84',
@@ -2656,6 +2671,7 @@ async function loadConfig() {
     document.getElementById('configPath').textContent = configData.config_path || '';
     document.getElementById('globalProxy').value = (configData.server && configData.server.proxy) || '';
     document.getElementById('requestBodyLimitMb').value = String((configData.server && configData.server.request_body_limit_mb) || 128);
+    document.getElementById('localModeEnabled').checked = !configData.server || configData.server.local_mode !== false;
     renderStreamTraceSettings();
     renderProviders();
     renderModels();
@@ -2677,7 +2693,19 @@ async function saveServerSettings() {
   const proxy = document.getElementById('globalProxy').value.trim();
   const rawRequestBodyLimit = document.getElementById('requestBodyLimitMb').value;
   const request_body_limit_mb = rawRequestBodyLimit === 'unlimited' ? 'unlimited' : Number(rawRequestBodyLimit);
-  const res = await api.put('/admin/api/config/server', {proxy, request_body_limit_mb});
+  const local_mode = document.getElementById('localModeEnabled').checked;
+  const server = (configData && configData.server) || {};
+  const body = {proxy, request_body_limit_mb, local_mode};
+  if (local_mode && server.local_mode_confirmed !== true) {
+    const existing = configData.model_catalog_configured === true ? t('confirm.localModeExisting') : '';
+    const message = t('confirm.localMode', {codex_home: configData.codex_home, existing});
+    if (!window.confirm(message)) {
+      document.getElementById('localModeEnabled').checked = server.local_mode !== false;
+      return;
+    }
+    body.local_mode_confirmed = true;
+  }
+  const res = await api.put('/admin/api/config/server', body);
   if (res.ok) { showToast(t('toast.serverSaved')); loadConfig(); }
   else { showToast(res.error || 'Failed', 'error'); }
 }

@@ -30,6 +30,10 @@ from .config import (
     write_config,
 )
 from .logging import get_logger, setup_logging
+from .local_mode import (
+    CodexLocalModeTransaction,
+    config_toml_has_model_catalog,
+)
 from .providers import (
     get_default_api_key_env,
     get_default_base_url,
@@ -85,6 +89,8 @@ def _secure_server_template() -> dict[str, Any]:
     return {
         "host": "127.0.0.1",
         "port": 8765,
+        "local_mode": True,
+        "local_mode_confirmed": False,
         "request_body_limit_mb": DEFAULT_REQUEST_BODY_LIMIT_MB,
         "admin_password": secrets.token_urlsafe(32),
         "credential_visible": False,
@@ -275,6 +281,147 @@ def _cmd_add_model_group(args: argparse.Namespace) -> None:
     print(f"Added {args.type} model group '{args.name}' to {path}")
 
 
+def _cmd_clear_local_mode(args: argparse.Namespace) -> None:
+    """Disable local mode and remove only the files/settings managed by Rosetta."""
+    try:
+        codex_home = resolve_codex_home(args.codex_home)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    config_path = _config_path_for_write(args.config)
+    data, path = _load_or_create_config(config_path)
+    server = data.setdefault("server", {})
+    server["local_mode"] = False
+    transaction = CodexLocalModeTransaction.clear(codex_home)
+    try:
+        write_config(path, data, activate=transaction.apply)
+    except Exception as exc:
+        try:
+            transaction.rollback()
+        except Exception as rollback_exc:
+            print(
+                f"Error: failed to clear local mode and rollback failed: {rollback_exc}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(f"Error: failed to clear local mode: {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Disabled local mode in {path}")
+    print(f"Cleared Rosetta-managed Codex catalog settings under {codex_home}")
+
+
+def _confirm_local_mode(codex_home: str) -> bool:
+    message = (
+        f"Local mode will write model_catalog.json under {codex_home} and set "
+        "model_catalog_json in config.toml."
+    )
+    if config_toml_has_model_catalog(codex_home):
+        message += " Existing model_catalog_json settings will be cleared."
+    answer = input(f"{message} Continue? [y/N] ").strip().lower()
+    return answer in {"y", "yes"}
+
+
+def _configure_local_mode_startup(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    config_path: str,
+    codex_home: str,
+) -> None:
+    """Persist first-run state and synchronize Codex files before startup."""
+    raw_config = load_config_raw(config_path)
+    server = raw_config.setdefault("server", {})
+    config_changed = False
+    if args.local_mode:
+        config_changed = server.get("local_mode") is not True
+        server["local_mode"] = True
+
+    try:
+        GatewayConfig.from_raw_with_env(raw_config)
+    except (KeyError, TypeError, ValueError) as exc:
+        parser.error(f"invalid config: {exc}")
+
+    local_mode_enabled = server.get("local_mode", True)
+    local_mode_confirmed = server.get("local_mode_confirmed", False)
+    if args.confirm_clear_existing_catalog and not local_mode_confirmed:
+        server["local_mode_confirmed"] = True
+        local_mode_confirmed = True
+        config_changed = True
+
+    if local_mode_enabled and not local_mode_confirmed:
+        if not sys.stdin.isatty():
+            parser.error(
+                "local mode requires first-run confirmation in a non-interactive "
+                "environment; pass --confirm-clear-existing-catalog or disable "
+                "server.local_mode"
+            )
+        else:
+            accepted = _confirm_local_mode(codex_home)
+
+        if not accepted:
+            server["local_mode"] = False
+            write_config(config_path, raw_config)
+            print("Local mode was disabled; Codex Home was not modified.")
+            return
+        server["local_mode"] = True
+        server["local_mode_confirmed"] = True
+        local_mode_confirmed = True
+        config_changed = True
+
+    if not local_mode_enabled:
+        if config_changed:
+            write_config(config_path, raw_config)
+        return
+    if not local_mode_confirmed:
+        return
+
+    transaction = CodexLocalModeTransaction.sync(codex_home, raw_config)
+    try:
+        if config_changed:
+            write_config(config_path, raw_config, activate=transaction.apply)
+        else:
+            transaction.apply()
+    except Exception as exc:
+        try:
+            transaction.rollback()
+        except Exception as rollback_exc:
+            parser.error(
+                f"failed to update Codex local mode and rollback failed: {rollback_exc}"
+            )
+        parser.error(f"failed to update Codex local mode: {exc}")
+
+
+def _dispatch_command(
+    args: argparse.Namespace,
+    add_parser: argparse.ArgumentParser,
+    local_mode_parser: argparse.ArgumentParser,
+) -> bool:
+    """Run a non-server CLI action and report whether startup should stop."""
+    if args.edit:
+        _open_in_editor(args.config)
+        return True
+    if args.command == "init":
+        _cmd_init(args)
+        return True
+    if args.command == "add":
+        if args.add_type == "provider":
+            _cmd_add_provider(args)
+        elif args.add_type == "model-group":
+            _cmd_add_model_group(args)
+        elif args.add_type == "model":
+            _cmd_add_model(args)
+        else:
+            add_parser.print_help()
+        return True
+    if args.command == "local-mode":
+        if args.local_mode_command == "clear":
+            _cmd_clear_local_mode(args)
+        else:
+            local_mode_parser.print_help()
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
@@ -308,6 +455,19 @@ def main() -> None:
         "--codex-home",
         default=None,
         help="Codex Home directory (default: $CODEX_HOME or ~/.codex)",
+    )
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help="Enable local mode persistently in config.jsonc",
+    )
+    parser.add_argument(
+        "--confirm-clear-existing-catalog",
+        action="store_true",
+        help=(
+            "Confirm that local mode may replace existing model_catalog_json "
+            "settings; also enables non-interactive first startup"
+        ),
     )
     parser.add_argument(
         "--no-banner",
@@ -375,28 +535,18 @@ def main() -> None:
     model_parser.add_argument("name", help="Model name (e.g. gpt-4o)")
     model_parser.add_argument("--group", required=True, help="Target model group")
 
+    local_mode_parser = sub.add_parser(
+        "local-mode", help="Manage Codex local-mode files and configuration"
+    )
+    local_mode_sub = local_mode_parser.add_subparsers(dest="local_mode_command")
+    local_mode_sub.add_parser(
+        "clear",
+        help="Disable local mode and clear its managed catalog and TOML setting",
+    )
+
     args = parser.parse_args()
 
-    # --- edit mode ---
-    if args.edit:
-        _open_in_editor(args.config)
-        return
-
-    # --- init subcommand ---
-    if args.command == "init":
-        _cmd_init(args)
-        return
-
-    # --- add subcommand ---
-    if args.command == "add":
-        if args.add_type == "provider":
-            _cmd_add_provider(args)
-        elif args.add_type == "model-group":
-            _cmd_add_model_group(args)
-        elif args.add_type == "model":
-            _cmd_add_model(args)
-        else:
-            sub.choices["add"].print_help()
+    if _dispatch_command(args, add_parser, local_mode_parser):
         return
 
     # --- normal server startup ---
@@ -414,19 +564,28 @@ def main() -> None:
     if not os.path.isfile(config_path):
         _create_initial_config(config_path)
 
-    raw_config = load_config(config_path)
+    _configure_local_mode_startup(parser, args, config_path, codex_home)
+
+    runtime_config = load_config(config_path)
 
     # CLI --proxy overrides config-level server.proxy
     if args.proxy:
-        raw_config.setdefault("server", {})["proxy"] = args.proxy
+        runtime_config.setdefault("server", {})["proxy"] = args.proxy
 
-    config = GatewayConfig(raw_config)
+    config = GatewayConfig(runtime_config)
 
     setup_logging(log_level=args.log_level)
 
     host = args.host or config.host
     port = args.port or config.port
     socket_path = args.socket or config.socket
+
+    if config.local_mode and host.strip().lower() not in {"127.0.0.1", "localhost"}:
+        print(
+            "Remote use of this gateway requires manually configuring "
+            "config.toml and model_catalog_json.",
+            file=sys.stderr,
+        )
 
     logger.info("Config loaded from %s", config_path)
     if socket_path:

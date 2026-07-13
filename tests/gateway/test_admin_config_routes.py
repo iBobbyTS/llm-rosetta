@@ -838,6 +838,155 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
     assert route.tool_profile
 
 
+def test_local_mode_model_save_syncs_catalog_and_disable_clears_it(tmp_path):
+    config = _config_data()
+    config["server"].update({"local_mode": True, "local_mode_confirmed": True})
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    codex_home = tmp_path / "codex"
+    codex_home.mkdir()
+    initial_config = GatewayConfig(config)
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        codex_home=str(codex_home),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app, path_params={"name": "OpenAI"})
+    request.json = lambda: {
+        "provider": "openai",
+        "type": "llm",
+        "tool_profile": "builtin",
+        "models": {"third-party-model": {"capabilities": ["text"]}},
+    }
+
+    response = _run(put_model_group(request))
+
+    assert response.status_code == 200
+    catalog = json.loads(
+        (codex_home / "model_catalog.json").read_text(encoding="utf-8")
+    )
+    custom = next(
+        model for model in catalog["models"] if model["slug"] == "third-party-model"
+    )
+    assert custom["display_name"] == custom["description"] == "third-party-model"
+    assert str(codex_home / "model_catalog.json") in (
+        codex_home / "config.toml"
+    ).read_text(encoding="utf-8")
+
+    delete_request = SimpleNamespace(app=app, path_params={"name": "OpenAI"})
+    delete_response = _run(delete_model_group(delete_request))
+    assert delete_response.status_code == 200
+    catalog_after_delete = json.loads(
+        (codex_home / "model_catalog.json").read_text(encoding="utf-8")
+    )
+    assert "third-party-model" not in {
+        model["slug"] for model in catalog_after_delete["models"]
+    }
+    assert len(catalog_after_delete["models"]) == 8
+
+    disable_request = SimpleNamespace(app=app)
+    disable_request.json = lambda: {"local_mode": False}
+    disable_response = _run(put_server_settings(disable_request))
+
+    assert disable_response.status_code == 200
+    assert not (codex_home / "model_catalog.json").exists()
+    assert "model_catalog_json" not in (codex_home / "config.toml").read_text(
+        encoding="utf-8"
+    )
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["server"]["local_mode"] is False
+
+
+def test_enabling_local_mode_through_admin_requires_explicit_confirmation(tmp_path):
+    config = _config_data()
+    config["server"].update({"local_mode": False, "local_mode_confirmed": False})
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    codex_home = tmp_path / "codex"
+    initial_config = GatewayConfig(config)
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        codex_home=str(codex_home),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app)
+    request.json = lambda: {"local_mode": True}
+
+    rejected = _run(put_server_settings(request))
+
+    assert rejected.status_code == 400
+    assert (
+        json.loads(config_path.read_text(encoding="utf-8"))["server"]["local_mode"]
+        is False
+    )
+
+    request.json = lambda: {
+        "local_mode": True,
+        "local_mode_confirmed": True,
+    }
+    accepted = _run(put_server_settings(request))
+
+    assert accepted.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["server"]["local_mode"] is True
+    assert saved["server"]["local_mode_confirmed"] is True
+    assert (codex_home / "model_catalog.json").is_file()
+
+
+def test_local_mode_sync_failure_rolls_back_admin_config_and_codex_files(
+    tmp_path, monkeypatch
+):
+    from codex_rosetta.gateway import local_mode
+
+    config = _config_data()
+    config["server"].update({"local_mode": True, "local_mode_confirmed": True})
+    config_path = tmp_path / "config.jsonc"
+    original_config = json.dumps(config)
+    config_path.write_text(original_config, encoding="utf-8")
+    codex_home = tmp_path / "codex"
+    codex_home.mkdir()
+    config_toml = codex_home / "config.toml"
+    config_toml.write_text('model = "original"\n', encoding="utf-8")
+    initial_config = GatewayConfig(config)
+    app = SimpleNamespace(
+        config_path=str(config_path),
+        codex_home=str(codex_home),
+        gateway_config=initial_config,
+        stream_trace_state=StreamTraceState(initial_config.stream_trace),
+        auth_state=None,
+    )
+    request = SimpleNamespace(app=app, path_params={"name": "OpenAI"})
+    request.json = lambda: {
+        "provider": "openai",
+        "type": "llm",
+        "tool_profile": "builtin",
+        "models": {"new-model": {"capabilities": ["text"]}},
+    }
+    real_atomic_write = local_mode._atomic_write_bytes
+    failed = False
+
+    def fail_once(path: str, content: bytes) -> None:
+        nonlocal failed
+        if path == str(config_toml) and not failed:
+            failed = True
+            raise OSError("simulated Codex config failure")
+        real_atomic_write(path, content)
+
+    monkeypatch.setattr(local_mode, "_atomic_write_bytes", fail_once)
+
+    response = _run(put_model_group(request))
+
+    assert response.status_code == 500
+    assert json.loads(config_path.read_text(encoding="utf-8")) == config
+    assert config_toml.read_text(encoding="utf-8") == 'model = "original"\n'
+    assert not (codex_home / "model_catalog.json").exists()
+    assert "new-model" not in app.gateway_config.models
+
+
 def test_delete_model_group_removes_group_and_runtime_models(tmp_path):
     """Deleting a model group removes its expanded model routes."""
     config = _config_data()
@@ -997,6 +1146,27 @@ def test_admin_html_exposes_request_body_limit_options():
         assert f'<option value="{value}">{value} MB</option>' in html
     assert '<option value="unlimited"' in html
     assert "request_body_limit_mb" in html
+
+
+def test_admin_html_exposes_confirmed_local_mode_setting():
+    html_path = (
+        Path(__file__).parents[2]
+        / "src"
+        / "codex_rosetta"
+        / "gateway"
+        / "admin"
+        / "admin.html"
+    )
+    html = html_path.read_text(encoding="utf-8")
+
+    assert 'id="localModeEnabled"' in html
+    assert "configData.server.local_mode !== false" in html
+    assert "server.local_mode_confirmed !== true" in html
+    assert "configData.codex_home" in html
+    assert "configData.model_catalog_configured === true" in html
+    assert "body.local_mode_confirmed = true" in html
+    assert "'label.localMode':'Local mode'" in html
+    assert "'confirm.localModeExisting':" in html
 
 
 def test_admin_html_assumes_all_llm_models_support_tools():

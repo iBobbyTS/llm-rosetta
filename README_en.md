@@ -50,6 +50,48 @@ errors. In stats mode, warnings and errors start on a new line; the counters
 resume on the next request. Use the WebUI **Request Log** for complete request
 history and **Gateway Logs** for streaming trace diagnostics.
 
+### Local Mode
+
+Local mode is enabled by default. It uses the model presets bundled with this
+project, automatically matches models configured in the gateway, and injects
+them into Codex by maintaining `<codex-home>/model_catalog.json` and the
+`model_catalog_json` setting in `<codex-home>/config.toml`. Model changes made
+in the WebUI are synchronized to both the gateway configuration and this Codex
+model catalog. Restart Codex after changing models so it reloads the catalog.
+
+The first time local mode is enabled, the gateway asks before replacing an
+existing `model_catalog_json` setting. To enable it persistently from the CLI,
+including in an interactive environment, run:
+
+```bash
+codex-rosetta-gateway --local-mode
+```
+
+For unattended startup, explicitly approve catalog replacement:
+
+```bash
+codex-rosetta-gateway --confirm-clear-existing-catalog
+```
+
+`--confirm-clear-existing-catalog` records consent but does not enable a
+previously disabled local mode. Combine it with `--local-mode` when both actions
+are required.
+
+Once `--local-mode` has been used, the enabled state is stored in the gateway
+configuration and remains on for later starts without that option. To disable
+local mode, remove Rosetta's managed catalog, and clear `model_catalog_json`
+from Codex `config.toml`, run:
+
+```bash
+codex-rosetta-gateway local-mode clear
+```
+
+The target Codex Home comes from `--codex-home`, then `CODEX_HOME`, and defaults
+to `~/.codex`. When local mode is enabled with a non-loopback gateway host, the
+gateway warns that remote clients must configure their own `config.toml` and
+`model_catalog_json` manually; local mode only updates the selected Codex Home
+on the gateway machine.
+
 ## Codex Model Names and Built-in Roles
 
 Avoid exposing third-party model names such as `deepseek-v4-pro` or `glm-5.2`

@@ -14,6 +14,7 @@ from ...config import (
     load_config,
     write_config,
 )
+from ...local_mode import CodexLocalModeTransaction
 
 _ENV_VAR_RE = re.compile(r"^\$\{.+\}$")
 
@@ -343,6 +344,40 @@ def _rollback_gateway_activation(
         state.rollback_update(value)
 
 
+def _prepare_local_mode_transaction(
+    request: Any,
+    new_config: GatewayConfig,
+    data: dict[str, Any],
+) -> CodexLocalModeTransaction | None:
+    codex_home = getattr(request.app, "codex_home", None)
+    if not codex_home:
+        return None
+    if new_config.local_mode and new_config.local_mode_confirmed:
+        return CodexLocalModeTransaction.sync(codex_home, data)
+    if not new_config.local_mode:
+        return CodexLocalModeTransaction.clear(codex_home)
+    return None
+
+
+def _rollback_config_updates(
+    request: Any,
+    activation_rollback: _GatewayActivationRollback | None,
+    local_mode_transaction: CodexLocalModeTransaction | None,
+) -> list[str]:
+    errors: list[str] = []
+    if activation_rollback is not None:
+        try:
+            _rollback_gateway_activation(request, activation_rollback)
+        except Exception as exc:
+            errors.append(f"config activation rollback failed: {exc}")
+    if local_mode_transaction is not None:
+        try:
+            local_mode_transaction.rollback()
+        except Exception as exc:
+            errors.append(f"Codex local-mode rollback failed: {exc}")
+    return errors
+
+
 def _commit_gateway_config(
     request: Any,
     config_path: str,
@@ -370,6 +405,16 @@ def _commit_gateway_config(
             {"error": f"Failed to prepare config: {exc}"}, status_code=500
         )
 
+    try:
+        local_mode_transaction = _prepare_local_mode_transaction(
+            request, new_config, data
+        )
+    except Exception as exc:
+        return None, JSONResponse(
+            {"error": f"Failed to prepare Codex local mode: {exc}"},
+            status_code=500,
+        )
+
     server = data.get("server")
     if isinstance(server, dict) and "admin_cors_origins" in server:
         server["admin_cors_origins"] = list(new_config.admin_cors_origins)
@@ -380,23 +425,38 @@ def _commit_gateway_config(
     def _activate() -> None:
         nonlocal activation_rollback, activation_started
         activation_started = True
-        activation_rollback = _activate_gateway_config(request, new_config, prepared)
+        if local_mode_transaction is not None:
+            local_mode_transaction.apply()
+        try:
+            activation_rollback = _activate_gateway_config(
+                request, new_config, prepared
+            )
+        except BaseException:
+            if local_mode_transaction is not None:
+                local_mode_transaction.rollback()
+            raise
 
     try:
         write_config(config_path, data, activate=_activate)
     except ConfigConflictError as exc:
-        if activation_rollback is not None:
-            _rollback_gateway_activation(request, activation_rollback)
+        rollback_errors = _rollback_config_updates(
+            request, activation_rollback, local_mode_transaction
+        )
+        if rollback_errors:
+            return None, JSONResponse(
+                {"error": "Failed to rollback: " + "; ".join(rollback_errors)},
+                status_code=500,
+            )
         return None, JSONResponse({"error": str(exc)}, status_code=409)
     except Exception as exc:
-        if activation_rollback is not None:
-            try:
-                _rollback_gateway_activation(request, activation_rollback)
-            except Exception as rollback_exc:
-                return None, JSONResponse(
-                    {"error": f"Failed to rollback config activation: {rollback_exc}"},
-                    status_code=500,
-                )
+        rollback_errors = _rollback_config_updates(
+            request, activation_rollback, local_mode_transaction
+        )
+        if rollback_errors:
+            return None, JSONResponse(
+                {"error": "Failed to rollback: " + "; ".join(rollback_errors)},
+                status_code=500,
+            )
         action = "activate" if activation_started else "write"
         return None, JSONResponse(
             {"error": f"Failed to {action} config: {exc}"}, status_code=500

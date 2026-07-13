@@ -41,6 +41,43 @@ token 发送。详见[网关安全与认证](docs/zh-cn/gateway-security.md)。
 codex-rosetta-gateway --host 127.0.0.1 -v
 ```
 
+### 本地模式
+
+本地模式默认开启。它使用项目内预设的模型配置，自动匹配配置进网关的模型并注入
+Codex，具体通过维护 `<codex-home>/model_catalog.json` 以及
+`<codex-home>/config.toml` 中的 `model_catalog_json` 实现。在 WebUI 中修改模型时，
+网关配置和 Codex 模型目录会同步更新。模型发生变化后需要重启 Codex，Codex 才会
+重新加载目录。
+
+第一次开启本地模式时，网关会先询问是否允许替换已有的 `model_catalog_json`
+配置。可以通过 CLI 显式开启并持久化该状态，交互环境同样支持：
+
+```bash
+codex-rosetta-gateway --local-mode
+```
+
+非交互启动时，需要显式确认允许替换目录配置：
+
+```bash
+codex-rosetta-gateway --confirm-clear-existing-catalog
+```
+
+`--confirm-clear-existing-catalog` 只记录确认，不会单独开启已关闭的本地模式。如果
+需要同时开启本地模式和跳过确认，请与 `--local-mode` 一起使用。
+
+使用过 `--local-mode` 后，开启状态会写入网关配置，后续启动即使不再传入该参数也
+会保持开启。若要关闭本地模式、删除 Rosetta 管理的目录并从 Codex
+`config.toml` 中清除 `model_catalog_json`，运行：
+
+```bash
+codex-rosetta-gateway local-mode clear
+```
+
+目标 Codex Home 依次由 `--codex-home`、`CODEX_HOME` 决定，缺省为 `~/.codex`。
+本地模式开启且网关监听地址不是 `127.0.0.1` 或 `localhost` 时，网关会提示：
+“远程使用这个网关必须手动配置config.toml和model_catalog_json。”本地模式只会
+修改网关所在机器上选定的 Codex Home，远程 Codex 客户端仍需手动配置。
+
 ## Codex 模型名称与内置功能模型
 
 不建议把 `deepseek-v4-pro`、`glm-5.2` 等第三方模型名直接暴露给 Codex。

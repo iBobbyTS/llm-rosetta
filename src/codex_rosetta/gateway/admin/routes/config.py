@@ -16,6 +16,7 @@ from ...config import (
     provider_supports_tool_profiles,
 )
 from ...providers import known_provider_types
+from ...local_mode import config_toml_has_model_catalog
 from ...stream_trace import DEFAULT_MAX_CHARS
 from ...tool_profiles import (
     normalize_tool_profile_input_overrides,
@@ -64,6 +65,32 @@ def _mask_server_config(value: Any) -> dict[str, Any]:
     if "web_search" in server:
         server["web_search"] = _mask_web_search_config(server["web_search"])
     return server
+
+
+def _apply_local_mode_server_settings(
+    server: dict[str, Any], body: dict[str, Any]
+) -> Response | None:
+    if "local_mode" not in body:
+        return None
+    local_mode = body["local_mode"]
+    if not isinstance(local_mode, bool):
+        return JSONResponse(
+            {"error": "'local_mode' must be a boolean"}, status_code=400
+        )
+    if local_mode and not bool(server.get("local_mode_confirmed", False)):
+        if body.get("local_mode_confirmed") is not True:
+            return JSONResponse(
+                {
+                    "error": (
+                        "Enabling local mode for the first time requires "
+                        "explicit confirmation"
+                    )
+                },
+                status_code=400,
+            )
+        server["local_mode_confirmed"] = True
+    server["local_mode"] = local_mode
+    return None
 
 
 def _get_gateway_config(request: Any) -> GatewayConfig | None:
@@ -315,9 +342,16 @@ async def get_config(request: Any) -> Response:
     config: GatewayConfig = request.app.gateway_config
     server = _mask_server_config(raw.get("server", {}))
     server.setdefault("request_body_limit_mb", config.request_body_limit_config_value)
+    server.setdefault("local_mode", config.local_mode)
+    server.setdefault("local_mode_confirmed", config.local_mode_confirmed)
+    codex_home = getattr(request.app, "codex_home", "")
     return JSONResponse(
         {
             "config_path": config_path,
+            "codex_home": codex_home,
+            "model_catalog_configured": bool(
+                codex_home and config_toml_has_model_catalog(codex_home)
+            ),
             "providers": masked_providers,
             "models": models_normalized,
             "model_groups": model_groups,
@@ -663,6 +697,10 @@ async def put_server_settings(request: Any) -> Response:
 
     if "request_body_limit_mb" in body:
         server["request_body_limit_mb"] = body["request_body_limit_mb"]
+
+    local_mode_error = _apply_local_mode_server_settings(server, body)
+    if local_mode_error is not None:
+        return local_mode_error
 
     if "stream_trace" in body:
         stream_trace = body.get("stream_trace") or {}

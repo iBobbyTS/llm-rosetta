@@ -118,6 +118,19 @@ def _minimal_raw(**server_overrides) -> dict:
     return raw
 
 
+def test_local_mode_defaults_to_enabled_and_unconfirmed() -> None:
+    config = GatewayConfig(_minimal_raw())
+
+    assert config.local_mode is True
+    assert config.local_mode_confirmed is False
+
+
+@pytest.mark.parametrize("field", ["local_mode", "local_mode_confirmed"])
+def test_local_mode_config_fields_require_booleans(field: str) -> None:
+    with pytest.raises(ValueError, match=field):
+        GatewayConfig(_minimal_raw(**{field: "yes"}))
+
+
 class TestAdminPasswordUnresolvedEnvVar:
     """admin_password must not contain unresolved ${...} placeholders."""
 

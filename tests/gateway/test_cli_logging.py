@@ -36,6 +36,7 @@ def test_main_passes_selected_log_level_to_logging_setup(
         providers={},
         models={},
         log_bodies=False,
+        local_mode=True,
     )
     selected_levels: list[str] = []
     app_kwargs: list[dict[str, object]] = []
@@ -52,12 +53,22 @@ def test_main_passes_selected_log_level_to_logging_setup(
             str(tmp_path),
             "--codex-home",
             str(codex_home),
+            "--confirm-clear-existing-catalog",
             *log_level_args,
         ],
     )
     monkeypatch.setattr(cli, "discover_config", lambda _path: str(config_path))
     monkeypatch.setattr(cli, "load_config", lambda _path: {})
-    monkeypatch.setattr(cli, "GatewayConfig", lambda _raw: config)
+
+    class FakeGatewayConfig:
+        def __new__(cls, _raw):
+            return config
+
+        @classmethod
+        def from_raw_with_env(cls, _raw):
+            return config
+
+    monkeypatch.setattr(cli, "GatewayConfig", FakeGatewayConfig)
     monkeypatch.setattr(
         cli,
         "setup_logging",
@@ -89,7 +100,11 @@ def test_main_initializes_missing_config_and_continues_startup(
 ) -> None:
     config_dir = tmp_path / ("explicit" if explicit_config else "default")
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-home"))
-    argv = ["codex-rosetta-gateway", "--no-banner"]
+    argv = [
+        "codex-rosetta-gateway",
+        "--no-banner",
+        "--confirm-clear-existing-catalog",
+    ]
     if explicit_config:
         argv.extend(["--config", str(config_dir)])
     else:

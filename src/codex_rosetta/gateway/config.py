@@ -76,6 +76,18 @@ DEFAULT_REQUEST_BODY_LIMIT_MB = 128
 UNLIMITED_REQUEST_BODY_LIMIT = "unlimited"
 
 
+def normalize_local_mode_settings(server: Any) -> tuple[bool, bool]:
+    """Return validated local-mode enablement and first-run confirmation."""
+    mapping = server if isinstance(server, dict) else {}
+    enabled = mapping.get("local_mode", True)
+    confirmed = mapping.get("local_mode_confirmed", False)
+    if not isinstance(enabled, bool):
+        raise ValueError("config: server.local_mode must be a boolean")
+    if not isinstance(confirmed, bool):
+        raise ValueError("config: server.local_mode_confirmed must be a boolean")
+    return enabled, confirmed
+
+
 def normalize_request_body_limit_mb(value: Any) -> int | None:
     """Validate the configured inbound request-body limit.
 
@@ -539,6 +551,9 @@ class GatewayConfig:
         self.port: int = _server.get("port", 8765)
         self.proxy: str | None = _server.get("proxy")
         self.socket: str | None = _server.get("socket")
+        self.local_mode, self.local_mode_confirmed = normalize_local_mode_settings(
+            _server
+        )
         self.credential_visible: bool = _server.get("credential_visible", False)
         self.request_body_limit_mb = normalize_request_body_limit_mb(
             _server.get("request_body_limit_mb", DEFAULT_REQUEST_BODY_LIMIT_MB)
