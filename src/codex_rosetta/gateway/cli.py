@@ -16,6 +16,7 @@ from codex_rosetta import __version__
 
 from .banner import print_banner
 from .config import (
+    DEFAULT_CONFIG_PATH,
     DEFAULT_REQUEST_BODY_LIMIT_MB,
     PATHS_TO_TRY,
     GatewayConfig,
@@ -124,7 +125,7 @@ def _write_jsonc(path: str, data: dict[str, Any]) -> None:
 
 def _cmd_init(args: argparse.Namespace) -> None:
     """Create a template config.jsonc at the XDG default location."""
-    config_path = args.config or PATHS_TO_TRY[1]  # XDG: ~/.config/…
+    config_path = args.config or DEFAULT_CONFIG_PATH
     if os.path.isfile(config_path):
         print(f"Config already exists at {config_path}", file=sys.stderr)
         print("Use --edit / -e to modify it, or remove it first.", file=sys.stderr)
@@ -179,7 +180,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
 
 
 def _cmd_add_provider(args: argparse.Namespace) -> None:
-    config_path = discover_config(args.config) or PATHS_TO_TRY[0]
+    config_path = discover_config(args.config) or DEFAULT_CONFIG_PATH
     data, path = _load_or_create_config(config_path)
 
     name: str = args.name
@@ -215,7 +216,7 @@ def _cmd_add_provider(args: argparse.Namespace) -> None:
 
 
 def _cmd_add_model(args: argparse.Namespace) -> None:
-    config_path = discover_config(args.config) or PATHS_TO_TRY[0]
+    config_path = discover_config(args.config) or DEFAULT_CONFIG_PATH
     data, path = _load_or_create_config(config_path)
 
     group_name: str = args.group
@@ -232,7 +233,7 @@ def _cmd_add_model(args: argparse.Namespace) -> None:
 
 def _cmd_add_model_group(args: argparse.Namespace) -> None:
     """Add an empty model group owned by one provider."""
-    config_path = discover_config(args.config) or PATHS_TO_TRY[0]
+    config_path = discover_config(args.config) or DEFAULT_CONFIG_PATH
     data, path = _load_or_create_config(config_path)
     providers = data.get("providers", {})
     if args.provider not in providers:

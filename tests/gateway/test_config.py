@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from argparse import Namespace
 
@@ -11,9 +12,34 @@ import pytest
 from codex_rosetta.gateway.cli import (
     _cmd_add_model,
     _cmd_add_model_group,
+    _cmd_init,
     _empty_config_template,
 )
-from codex_rosetta.gateway.config import GatewayConfig, load_config
+from codex_rosetta.gateway.config import (
+    DEFAULT_CONFIG_PATH,
+    PATHS_TO_TRY,
+    GatewayConfig,
+    load_config,
+)
+
+
+def test_default_config_search_only_uses_xdg_path() -> None:
+    expected = os.path.expanduser("~/.config/codex-rosetta-gateway/config.jsonc")
+
+    assert DEFAULT_CONFIG_PATH == expected
+    assert PATHS_TO_TRY == [expected]
+
+
+def test_init_uses_the_single_default_config_path(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "xdg" / "config.jsonc"
+    monkeypatch.setattr(
+        "codex_rosetta.gateway.cli.DEFAULT_CONFIG_PATH", str(config_path)
+    )
+
+    _cmd_init(Namespace(config=None))
+
+    assert config_path.is_file()
+    assert load_config(str(config_path))["tool_profiles"] == {}
 
 
 def _secure_server(**overrides) -> dict:

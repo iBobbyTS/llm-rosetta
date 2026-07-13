@@ -34,14 +34,11 @@ from .transport import ProviderInfo
 logger = logging.getLogger("codex-rosetta-gateway")
 
 # ---------------------------------------------------------------------------
-# Config file search paths (checked in order)
+# Config file search path
 # ---------------------------------------------------------------------------
 
-PATHS_TO_TRY = [
-    "./config.jsonc",
-    os.path.expanduser("~/.config/codex-rosetta-gateway/config.jsonc"),
-    os.path.expanduser("~/.codex-rosetta-gateway/config.jsonc"),
-]
+DEFAULT_CONFIG_PATH = os.path.expanduser("~/.config/codex-rosetta-gateway/config.jsonc")
+PATHS_TO_TRY = [DEFAULT_CONFIG_PATH]
 
 API_TYPE_TO_PROVIDER_TYPE: dict[str, str] = {
     "responses_passthrough": "openai_responses",
