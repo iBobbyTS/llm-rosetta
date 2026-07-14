@@ -1,0 +1,22 @@
+{
+  "id": "06",
+  "timeout_seconds": 120,
+  "success_marker": "RESULT:VIEW_IMAGE_RECOGNITION_OK|top_left=red|top_right=green|bottom_left=blue|bottom_right=yellow",
+  "failure_marker": "RESULT:VIEW_IMAGE_RECOGNITION_FAILED",
+  "required_upstream_model": "qwen3.7-plus",
+  "expected_native_pattern": {
+    "model_facing_view_image_calls": 1,
+    "nested_view_image_calls": 1,
+    "path": "fixtures/vision_quadrants.png",
+    "detail": "original",
+    "image_result_required": true,
+    "recognized_quadrants": {
+      "top_left": "red",
+      "top_right": "green",
+      "bottom_left": "blue",
+      "bottom_right": "yellow"
+    },
+    "fallback_file_calls_max": 0,
+    "gateway_log_evidence_required": true
+  }
+}

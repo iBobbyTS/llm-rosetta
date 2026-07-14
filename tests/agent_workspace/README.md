@@ -26,9 +26,9 @@ handling rather than prose quality.
   message, follow-up, and interrupt.
 - [`builtin_tools`](builtin_tools/README.md): fixed OpenAI-identified,
   `gpt-5.6-sol`-equivalent Code Mode scenarios for top-level `wait`, projected
-  plan/file/image tools, and the three-tool Goal lifecycle. It also records why
-  `request_user_input` cannot be driven by the current non-interactive
-  `codex exec` runner.
+  plan/file/image tools, the three-tool Goal lifecycle, and actual upstream
+  visual recognition. It also records why `request_user_input` cannot be
+  driven by the current non-interactive `codex exec` runner.
 
 When no suite is specified, start with `command_execution/01`. Suite README
 and EVALUATION files, rather than the runner skill, define task order, Codex

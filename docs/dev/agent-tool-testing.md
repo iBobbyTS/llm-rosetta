@@ -62,7 +62,10 @@ It fixes the provider display name to `OpenAI` and the model catalog shape to
 two projected `update_plan` calls, one grouped localized file workflow
 (`Glob`, `Grep`, `Read`, projected `apply_patch`, `Edit`, and create-file
 `Write`), projected `view_image`, and one grouped
-`get_goal`/`create_goal`/`update_goal` lifecycle.
+`get_goal`/`create_goal`/`update_goal` lifecycle. A separate visual-recognition
+task verifies that projected `view_image` returns real image content to a
+vision-capable upstream model rather than only proving that Codex can open the
+fixture.
 The network-search suite's second task covers `web.run` search-reference
 `open`, plus the current explicit Not Implemented results for `find` and
 `click`.

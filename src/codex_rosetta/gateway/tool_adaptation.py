@@ -586,6 +586,7 @@ def translate_localized_tool_call_part(
                 capabilities=capabilities or NativeToolCapabilities(),
                 read_cache=read_cache,
                 use_apply_patch=use_apply_patch,
+                apply_patch_exec_projection=(exec_projections or {}).get("apply_patch"),
             )
     except ValueError as exc:
         if projection is not None:
@@ -934,6 +935,7 @@ def _localized_call_to_native(
     capabilities: NativeToolCapabilities,
     read_cache: ReadOutputCache | None = None,
     use_apply_patch: bool = DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
+    apply_patch_exec_projection: ExecToolProjection | None = None,
 ) -> tuple[str, Any, str]:
     if localized_name == "Bash":
         command = _required_string(localized_input, "command", tool_name="Bash")
@@ -984,6 +986,7 @@ def _localized_call_to_native(
             capabilities=capabilities,
             read_cache=read_cache,
             use_apply_patch=use_apply_patch,
+            apply_patch_exec_projection=apply_patch_exec_projection,
         )
 
     if localized_name == "Write":
@@ -992,6 +995,15 @@ def _localized_call_to_native(
                 "apply_patch",
                 {"input": generated_patch_for_write(localized_input)},
                 "custom",
+            )
+        if (
+            use_apply_patch
+            and capabilities.has_custom_exec
+            and apply_patch_exec_projection is not None
+        ):
+            return _localized_apply_patch_to_exec(
+                generated_patch_for_write(localized_input),
+                apply_patch_exec_projection,
             )
         if not use_apply_patch and capabilities.has_exec_command:
             return (
@@ -1026,6 +1038,7 @@ def _localized_edit_to_native(
     capabilities: NativeToolCapabilities,
     read_cache: ReadOutputCache | None = None,
     use_apply_patch: bool = DEFAULT_USE_APPLY_PATCH_FOR_CODE_EDITS,
+    apply_patch_exec_projection: ExecToolProjection | None = None,
 ) -> tuple[str, Any, str]:
     if localized_input.get("replace_all"):
         return (
@@ -1069,6 +1082,11 @@ def _localized_edit_to_native(
         raise ValueError("Edit requires exec_command support.")
     patch = generated_patch_for_edit(file_path, old_string, new_string)
     if not capabilities.has_custom_apply_patch:
+        if capabilities.has_custom_exec and apply_patch_exec_projection is not None:
+            return _localized_apply_patch_to_exec(
+                patch,
+                apply_patch_exec_projection,
+            )
         if capabilities.has_exec_command:
             return (
                 "exec_command",
@@ -1089,6 +1107,23 @@ def _localized_edit_to_native(
     return (
         "apply_patch",
         {"input": patch},
+        "custom",
+    )
+
+
+def _localized_apply_patch_to_exec(
+    patch: str,
+    projection: ExecToolProjection,
+) -> tuple[str, dict[str, str], str]:
+    """Route a localized edit through Code Mode's nested apply_patch tool."""
+    return (
+        "exec",
+        {
+            "input": build_exec_script(
+                projection,
+                {projection.input_field: patch},
+            )
+        },
         "custom",
     )
 

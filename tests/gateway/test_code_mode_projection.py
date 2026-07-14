@@ -338,6 +338,68 @@ def test_projected_call_translates_to_custom_exec_and_round_trips_mapping():
     assert restored == translated.mapping
 
 
+def test_localized_edit_uses_projected_apply_patch_with_custom_exec():
+    projection = exec_tool_projections_for_route(_route())["apply_patch"]
+    translated = translate_localized_tool_call_part(
+        {
+            "type": "tool_call",
+            "tool_call_id": "call_edit",
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "fixtures/alpha.txt",
+                "old_string": "status=original",
+                "new_string": "status=edited",
+            },
+        },
+        capabilities=NativeToolCapabilities(
+            has_custom_apply_patch=False,
+            has_custom_exec=True,
+        ),
+        exec_projections={"apply_patch": projection},
+    )
+
+    assert translated is not None
+    assert translated.part["tool_name"] == "exec"
+    assert translated.part["tool_type"] == "custom"
+    script = translated.part["tool_input"]["input"]
+    assert script.startswith("const result = await tools.apply_patch(")
+    assert "*** Update File: fixtures/alpha.txt" in script
+    assert "-status=original" in script
+    assert "+status=edited" in script
+    assert script.endswith("text(result);\n")
+    assert translated.mapping.localized_name == "Edit"
+
+
+def test_localized_write_uses_projected_apply_patch_with_custom_exec():
+    projection = exec_tool_projections_for_route(_route())["apply_patch"]
+    translated = translate_localized_tool_call_part(
+        {
+            "type": "tool_call",
+            "tool_call_id": "call_write",
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "fixtures/created.txt",
+                "content": "CREATED_BY_WRITE\n",
+            },
+        },
+        capabilities=NativeToolCapabilities(
+            has_custom_apply_patch=False,
+            has_custom_exec=True,
+        ),
+        exec_projections={"apply_patch": projection},
+    )
+
+    assert translated is not None
+    assert translated.part["tool_name"] == "exec"
+    assert translated.part["tool_type"] == "custom"
+    script = translated.part["tool_input"]["input"]
+    assert script.startswith("const result = await tools.apply_patch(")
+    assert "*** Add File: fixtures/created.txt" in script
+    assert "+CREATED_BY_WRITE" in script
+    assert script.endswith("text(result);\n")
+    assert translated.mapping.localized_name == "Write"
+
+
 def test_view_image_projection_uses_image_output_helper():
     projection = exec_tool_projections_for_route(_route())["view_image"]
 

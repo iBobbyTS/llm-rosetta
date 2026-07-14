@@ -35,6 +35,10 @@ evidence.
   return its image output through Code Mode.
 - `05`: call `get_goal`, `create_goal`, and `update_goal` in one fresh-thread
   lifecycle.
+- `06`: call projected `view_image` on a deterministic four-quadrant PNG and
+  verify that the actual `qwen3.7-plus` upstream identifies all four colors and
+  positions. Use the `gpt-5.6-sol`-equivalent Codex-facing catalog entry while
+  Gateway Logs prove the Qwen upstream.
 
 Run every task separately. State created by the plan, file-editing, or Goal
 scenario must not leak into another run.

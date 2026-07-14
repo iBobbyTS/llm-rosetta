@@ -69,6 +69,16 @@ Require the ordered native sequence `get_goal`, `create_goal`, `get_goal`,
 token budget may be supplied, and the final update status must be `complete`.
 All calls must belong to the same fresh thread.
 
+### `06` / visual recognition
+
+Require one model-facing projected `view_image` call, one reconstructed
+`tools.view_image(...)` call inside native custom `exec`, and a successful
+image result for `fixtures/vision_quadrants.png`. Gateway Logs must prove the
+actual upstream is `qwen3.7-plus`. The exact success marker must identify red
+top-left, green top-right, blue bottom-left, and yellow bottom-right. Reading
+or inspecting the file through any other tool is a failure even if the marker
+is correct.
+
 ## Required result file
 
 Write `artifacts/evaluation.json` with this shape:
@@ -76,8 +86,8 @@ Write `artifacts/evaluation.json` with this shape:
 ```json
 {
   "classification": "success | success with deviations | failure",
-  "task_id": "01 through 05",
-  "target_scope": "wait | update_plan | localized_file_workflow | view_image | goal_lifecycle",
+  "task_id": "01 through 06",
+  "target_scope": "wait | update_plan | localized_file_workflow | view_image | goal_lifecycle | visual_recognition",
   "model": "Codex-facing model alias",
   "model_catalog_equivalent_to": "gpt-5.6-sol",
   "provider_identity": "isolated provider id",
