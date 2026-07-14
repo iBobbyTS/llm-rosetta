@@ -33,6 +33,14 @@ _MANAGED_MODEL_PROVIDER_ASSIGNMENT_RE = re.compile(
     r"^[ \t]*(?:model_provider|[\"']model_provider[\"'])[ \t]*=[ \t]*"
     r"(?:\"codex_rosetta\"|'codex_rosetta')[ \t]*(?:#.*)?(?:\r?\n|$)"
 )
+_COMMENTED_MODEL_CATALOG_ASSIGNMENT_RE = re.compile(
+    r"^(?P<indent>[ \t]*)#[ \t]*(?:model_catalog_json|[\"']model_catalog_json[\"'])"
+    r"[ \t]*=[^\r\n]*(?:\r?\n|$)"
+)
+_COMMENTED_MODEL_PROVIDER_ASSIGNMENT_RE = re.compile(
+    r"^(?P<indent>[ \t]*)#[ \t]*(?:model_provider|[\"']model_provider[\"'])"
+    r"[ \t]*=[^\r\n]*(?:\r?\n|$)"
+)
 _TABLE_HEADER_RE = re.compile(r"^[ \t]*\[\[?.*?\]\]?[ \t]*(?:#.*)?(?:\r?\n|$)")
 _CODEX_PROVIDER_TABLE_RE = re.compile(
     r"^[ \t]*\[\[?[ \t]*(?:model_providers|[\"']model_providers[\"'])"
@@ -151,6 +159,28 @@ def _root_model_provider_assignment_lines(text: str, *, managed_only: bool) -> s
             assignments.add(index)
         multiline_state = _multiline_state_after_line(line, multiline_state)
     return assignments
+
+
+def _commented_root_assignment_lines(text: str) -> dict[str, int]:
+    """Return the first reusable commented local-mode assignment per field."""
+    lines = text.splitlines(keepends=True)
+    headers = _active_table_headers(text)
+    root_end = headers[0] if headers else len(lines)
+    matches: dict[str, int] = {}
+    multiline_state: str | None = None
+    patterns = (
+        ("model_catalog_json", _COMMENTED_MODEL_CATALOG_ASSIGNMENT_RE),
+        ("model_provider", _COMMENTED_MODEL_PROVIDER_ASSIGNMENT_RE),
+    )
+    for index in range(root_end):
+        line = lines[index]
+        if multiline_state is None:
+            for field, pattern in patterns:
+                if field not in matches and pattern.match(line):
+                    matches[field] = index
+                    break
+        multiline_state = _multiline_state_after_line(line, multiline_state)
+    return matches
 
 
 def _codex_provider_table_lines(text: str) -> set[int]:
@@ -424,10 +454,14 @@ def _edit_config_toml(
         )
     )
     assignments.update(_codex_provider_table_lines(text))
+    commented = (
+        _commented_root_assignment_lines(text) if model_catalog_path is not None else {}
+    )
+    lines = text.splitlines(keepends=True)
     cleaned = "".join(
         line
-        for index, line in enumerate(text.splitlines(keepends=True))
-        if index not in assignments
+        for index, line in enumerate(lines)
+        if index not in assignments and index not in commented.values()
     )
     if model_catalog_path is None:
         return cleaned
@@ -441,10 +475,31 @@ def _edit_config_toml(
         raise ValueError("local mode requires a non-empty Codex gateway API key")
 
     newline = "\r\n" if "\r\n" in text else "\n"
-    root = (
-        f"model_catalog_json = {json.dumps(model_catalog_path)}{newline}"
-        f'model_provider = "{CODEX_PROVIDER_ID}"{newline}'
-    )
+    replacements = {
+        "model_catalog_json": (
+            f"model_catalog_json = {json.dumps(model_catalog_path)}{newline}"
+        ),
+        "model_provider": f'model_provider = "{CODEX_PROVIDER_ID}"{newline}',
+    }
+    if commented:
+        by_index = {index: field for field, index in commented.items()}
+        rebuilt: list[str] = []
+        for index, line in enumerate(lines):
+            field = by_index.get(index)
+            if field is not None:
+                indent = line[: len(line) - len(line.lstrip(" \t"))]
+                rebuilt.append(indent + replacements[field])
+            elif index not in assignments:
+                rebuilt.append(line)
+        missing = "".join(
+            replacement
+            for field, replacement in replacements.items()
+            if field not in commented
+        )
+        cleaned = missing + "".join(rebuilt)
+        root = ""
+    else:
+        root = "".join(replacements.values())
     base = (root + cleaned).rstrip(" \t\r\n")
     provider = newline.join(
         (

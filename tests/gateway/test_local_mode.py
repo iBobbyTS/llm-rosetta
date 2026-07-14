@@ -243,6 +243,54 @@ def test_sync_replaces_catalog_setting_and_preserves_other_toml(tmp_path: Path) 
     assert not Path(catalog_path(str(codex_home))).exists()
 
 
+def test_sync_uncomments_existing_local_mode_assignments_in_place(
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex"
+    codex_home.mkdir()
+    config_toml = codex_home / "config.toml"
+    config_toml.write_text(
+        '# model_catalog_json = "/stale/catalog.json"\n'
+        'model = "gpt-5.6-sol"\n'
+        '# model_provider = "other"\n\n'
+        "[features]\n"
+        "multi_agent_v2 = true\n",
+        encoding="utf-8",
+    )
+
+    transaction = _sync_transaction(codex_home)
+    transaction.apply()
+
+    updated = config_toml.read_text(encoding="utf-8")
+    expected_catalog = str(codex_home / "model_catalog.json")
+    assert updated.startswith(f'model_catalog_json = "{expected_catalog}"\n')
+    assert 'model = "gpt-5.6-sol"\nmodel_provider = "codex_rosetta"\n' in updated
+    assert "# model_catalog_json" not in updated
+    assert "# model_provider" not in updated
+    assert updated.count("model_catalog_json =") == 1
+    assert updated.count("model_provider =") == 1
+
+
+def test_sync_only_uncomments_assignment_that_already_exists(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    codex_home.mkdir()
+    config_toml = codex_home / "config.toml"
+    config_toml.write_text(
+        '# model_provider = "codex_rosetta"\nmodel = "gpt-5.6-sol"\n',
+        encoding="utf-8",
+    )
+
+    transaction = _sync_transaction(codex_home)
+    transaction.apply()
+
+    updated = config_toml.read_text(encoding="utf-8")
+    assert updated.startswith(
+        f'model_catalog_json = "{codex_home / "model_catalog.json"}"\n'
+        'model_provider = "codex_rosetta"\n'
+        'model = "gpt-5.6-sol"\n'
+    )
+
+
 def test_sync_overwrites_selected_provider_but_preserves_other_provider_params(
     tmp_path: Path,
 ) -> None:
