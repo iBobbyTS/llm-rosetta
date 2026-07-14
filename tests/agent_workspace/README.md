@@ -29,6 +29,10 @@ handling rather than prose quality.
   plan/file/image tools, the three-tool Goal lifecycle, and actual upstream
   visual recognition. It also records why `request_user_input` cannot be
   driven by the current non-interactive `codex exec` runner.
+- [`image_generation`](image_generation/README.md): a gated visual-model
+  scenario that generates an image, opens the saved artifact through projected
+  `view_image`, and leaves semantic agreement with the requested scene to the
+  outer developer or agent evaluator.
 
 When no suite is specified, start with `command_execution/01`. Suite README
 and EVALUATION files, rather than the runner skill, define task order, Codex

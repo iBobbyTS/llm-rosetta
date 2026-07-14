@@ -1,7 +1,7 @@
 # Agent 实机工具测试结果
 
-本文档记录截至 2026-07-13 已完成隔离 Agent 实机测试的各工具最终状态。被测 Codex
-工具行为以 Codex 0.144.1 为基准。
+本文档记录截至 2026-07-14 已完成隔离 Agent 实机测试的各工具最终状态。大多数被测
+Codex 工具行为以 Codex 0.144.1 为基准；生图一行明确记录 Codex 0.144.4 的结果。
 
 每一行只记录工具的最终状态。如果修复后的测试成功，最终状态以修复后的结果为准；
 如果没有修复后复测，则使用最后一次已记录结果。
@@ -33,6 +33,7 @@
 | `Write` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | 模型侧新建文件调用成功重建为原生补丁执行。 |
 | `apply_patch` | **仅内部成功，不向模型暴露** | `gpt-5.6-sol → deepseek-v4-flash` | Chat Default 已隐藏直接工具；Rosetta 仍在内部使用 Codex 的实际声明翻译 `Edit` 和 `Write`。 |
 | `view_image` | **成功** | `gpt-5.6-sol → qwen3.7-plus` | Qwen 收到原生图片结果，并正确识别测试图的全部色块位置。纯文本 DeepSeek 上游能执行调用，但不能完成视觉识别。 |
+| `image_gen.imagegen` | **失败：未暴露** | `qwen3.7-plus → qwen3.7-plus` | Codex 0.144.4 本地模式运行中，Codex 源请求没有带生图工具，因此 Rosetta 没有可投影的实时声明。Qwen 从未收到该工具，所以这不是 Qwen 能力失败的证据。 |
 | `get_goal` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | 成功返回原生 Goal 状态。 |
 | `create_goal` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | 成功创建 Goal，且没有错误设置 token budget。 |
 | `update_goal` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | 成功把已创建 Goal 更新为 `complete`。 |
@@ -87,7 +88,6 @@
 - 上表以外的 Memories 和 Skills 操作；
 - 其他 `web.run` 命令，例如 `image_query`、`finance`、`weather`、`sports`、
   `time` 和 `screenshot`；
-- `image_gen.imagegen`；
 - GitHub、MCP、App 和 Connector Namespace 工具；
 - 默认禁用的旧工具面，例如 `shell_command` 和 `multi_agent_v1`。
 
@@ -100,3 +100,4 @@
 - [Namespace 工具](../../../tests/agent_workspace/namespace_tools/README.md)
 - [Collaboration 工具](../../../tests/agent_workspace/subagent_tools/README.md)
 - [内置 Code Mode 工具](../../../tests/agent_workspace/builtin_tools/README.md)
+- [生图与视觉检查](../../../tests/agent_workspace/image_generation/README.md)

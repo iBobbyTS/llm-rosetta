@@ -1,8 +1,9 @@
 # Real-Agent Tool Test Results
 
 This document records the final observed status of each tool covered by the
-isolated real-agent tests available on 2026-07-13. The Codex-facing behavior is
-based on Codex 0.144.1.
+isolated real-agent tests available on 2026-07-14. Most Codex-facing behavior
+was tested with Codex 0.144.1; the image-generation row records a Codex 0.144.4
+run explicitly.
 
 Each row reports only the final tool status. When a later test verified a
 repair, the repaired result supersedes the earlier failure. If no repair test
@@ -37,6 +38,7 @@ identity is taken from Gateway Logs.
 | `Write` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | The model-facing create-file call was reconstructed as native patch execution. |
 | `apply_patch` | **Success internally; not model-facing** | `gpt-5.6-sol → deepseek-v4-flash` | Chat Default now hides the direct tool. Its actual Codex declaration remains available internally for `Edit` and `Write` translation. |
 | `view_image` | **Success** | `gpt-5.6-sol → qwen3.7-plus` | Qwen received the native image result and correctly identified all fixture quadrants. The text-only DeepSeek upstream could execute the call but could not perform visual recognition. |
+| `image_gen.imagegen` | **Failed: not exposed** | `qwen3.7-plus → qwen3.7-plus` | In the Codex 0.144.4 local-mode run, the Codex source request omitted image generation and Rosetta therefore had no live declaration to project. Qwen never received the tool, so this is not evidence of a Qwen capability failure. |
 | `get_goal` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | The native Goal state was returned. |
 | `create_goal` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | A Goal was created without an unintended token budget. |
 | `update_goal` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | The created Goal was updated to `complete`. |
@@ -94,7 +96,6 @@ The existing result set does not establish a final status for:
 - Memories and Skills operations other than the rows above;
 - other `web.run` commands such as `image_query`, `finance`, `weather`,
   `sports`, `time`, and `screenshot`;
-- `image_gen.imagegen`;
 - GitHub, MCP, App, and Connector Namespace tools;
 - disabled legacy surfaces such as `shell_command` and `multi_agent_v1`.
 
@@ -107,3 +108,4 @@ These entries are **not tested**, rather than failed.
 - [Namespace tools](../../../tests/agent_workspace/namespace_tools/README.md)
 - [Collaboration tools](../../../tests/agent_workspace/subagent_tools/README.md)
 - [Built-in Code Mode tools](../../../tests/agent_workspace/builtin_tools/README.md)
+- [Image generation and visual inspection](../../../tests/agent_workspace/image_generation/README.md)

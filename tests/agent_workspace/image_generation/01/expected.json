@@ -1,0 +1,35 @@
+{
+  "id": "01",
+  "timeout_seconds": 300,
+  "result_prefix": "RESULT:IMAGE_GENERATION_DESCRIPTION|",
+  "failure_marker": "RESULT:IMAGE_GENERATION_FAILED",
+  "required_upstream_model": "qwen3.7-plus",
+  "mandatory_prerequisites": {
+    "view_image_transport": "passed",
+    "visual_recognition": "passed",
+    "vision_capable_model": true,
+    "image_generation_profile_configured": true
+  },
+  "expected_native_pattern": {
+    "model_facing_image_generation_calls": 1,
+    "nested_image_generation_calls": 1,
+    "prompt": "草坪上一只狗在跑",
+    "referenced_image_paths_omitted": true,
+    "num_last_images_to_include_omitted": true,
+    "generation_endpoint": "images/generations",
+    "saved_artifact_required": true,
+    "model_facing_view_image_calls": 1,
+    "nested_view_image_calls": 1,
+    "view_image_detail": "original",
+    "view_image_must_use_saved_artifact": true,
+    "image_result_required": true,
+    "human_semantic_judgment_required": true,
+    "required_description_concepts": [
+      "dog",
+      "grass_or_lawn",
+      "running"
+    ],
+    "fallback_file_command_browser_calls_max": 0,
+    "gateway_log_evidence_required": true
+  }
+}

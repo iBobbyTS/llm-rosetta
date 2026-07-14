@@ -66,6 +66,17 @@ two projected `update_plan` calls, one grouped localized file workflow
 task verifies that projected `view_image` returns real image content to a
 vision-capable upstream model rather than only proving that Codex can open the
 fixture.
+
+The image-generation suite is
+[`tests/agent_workspace/image_generation`](../../tests/agent_workspace/image_generation/README.md).
+It may run only after projected `view_image` transport and deterministic visual
+recognition have passed for the same visual model and route. The task generates
+the exact scene `草坪上一只狗在跑`, uses the saved result path for one projected
+`view_image` call, and asks the tested model for a one-sentence Chinese visual
+description. The outer developer or development agent, not the tested model,
+decides whether that description contains a dog, grass or a lawn, and running.
+The suite also requires a Profile-configured OpenAI-compatible Images endpoint;
+it does not measure artistic quality.
 The network-search suite's second task covers `web.run` search-reference
 `open`, plus the current explicit Not Implemented results for `find` and
 `click`.
