@@ -16,6 +16,7 @@ from codex_rosetta.gateway.code_mode_projection import (
 from codex_rosetta.gateway.tool_adaptation import (
     CodexToolLocalizationStore,
     EXEC_PROJECTIONS_KEY,
+    LOCALIZATION_CAPABILITIES_KEY,
     LocalizedToolCallStreamTransformer,
     NativeToolCapabilities,
     localize_code_editing_chat_request,
@@ -360,8 +361,9 @@ def test_request_projection_preserves_direct_tools_and_records_only_added_tools(
     assert set(adapted[EXEC_PROJECTIONS_KEY]) == set(projections)
 
 
-def test_request_projection_keeps_exec_when_no_visible_definition_can_be_parsed():
+def test_disabled_exec_container_is_hidden_when_no_child_can_be_parsed():
     body = {
+        "tool_choice": {"type": "function", "function": {"name": "exec"}},
         "tools": [
             {
                 "type": "function",
@@ -371,7 +373,7 @@ def test_request_projection_keeps_exec_when_no_visible_definition_can_be_parsed(
                     "parameters": {},
                 },
             }
-        ]
+        ],
     }
 
     adapted = localize_code_editing_chat_request(
@@ -380,9 +382,12 @@ def test_request_projection_keeps_exec_when_no_visible_definition_can_be_parsed(
         native_tool_names=frozenset(),
         injected_tool_names=frozenset(),
         exec_projections=exec_tool_projections_for_route(_route()),
+        hide_exec_container=True,
     )
 
-    assert adapted == body
+    assert adapted["tools"] == []
+    assert adapted["tool_choice"] == "auto"
+    assert adapted[LOCALIZATION_CAPABILITIES_KEY]["has_custom_exec"] is True
 
 
 def test_projected_call_translates_to_custom_exec_and_round_trips_mapping():

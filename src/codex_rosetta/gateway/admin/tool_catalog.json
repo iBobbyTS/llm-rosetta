@@ -12,7 +12,8 @@
     "name": "Chat Default",
     "tools": {
       "namespace.multi_agent_v1": "disabled",
-      "custom.apply_patch": "disabled"
+      "custom.apply_patch": "disabled",
+      "custom.exec": "disabled"
     },
     "inputs": {
       "function.request_user_input": {
@@ -128,6 +129,15 @@
         "modified"
       ],
       "disabled_scope": "direct_model_exposure_only"
+    },
+    {
+      "id": "internal_exec_container",
+      "default": "disabled",
+      "supported": [
+        "disabled",
+        "passthrough",
+        "modified"
+      ]
     },
     {
       "id": "image_generation",
@@ -397,10 +407,11 @@
       "id": "custom.exec",
       "name": "exec",
       "type": "custom",
-      "policy_id": "targeted_chat_guidance",
-      "description_i18n": "tools.description.append_guidance",
+      "policy_id": "internal_exec_container",
+      "internal_container_when_disabled": true,
+      "description_i18n": "tools.description.exec_disabled",
       "description_visible_when": [
-        "modified"
+        "disabled"
       ],
       "profile_inputs": [
         {

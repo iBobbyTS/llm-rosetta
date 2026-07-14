@@ -245,6 +245,7 @@ def test_catalog_defaults_and_namespace_image_policy():
     assert catalog["builtin_profile"]["tools"] == {
         "namespace.multi_agent_v1": "disabled",
         "custom.apply_patch": "disabled",
+        "custom.exec": "disabled",
     }
     assert "namespace.mcp_github" not in catalog["builtin_profile"]["inputs"]
     assert catalog["preset_profiles"] == []
@@ -332,7 +333,6 @@ def test_catalog_defaults_and_namespace_image_policy():
         "namespace.multi_agent_v2.wait_agent",
         "hosted.web_search",
         "namespace.web.run",
-        "custom.exec",
     }
     assert {
         item_id
@@ -361,6 +361,15 @@ def test_catalog_defaults_and_namespace_image_policy():
     assert builtin["function.exec_command"] == "passthrough"
     assert builtin["function.write_stdin"] == "passthrough"
     assert builtin["custom.apply_patch"] == "disabled"
+    assert builtin["custom.exec"] == "disabled"
+    assert items["custom.exec"]["internal_container_when_disabled"] is True
+    assert items["custom.exec"]["description_i18n"] == (
+        "tools.description.exec_disabled"
+    )
+    assert items["custom.exec"]["description_visible_when"] == ["disabled"]
+    assert tool_profile_contract()["internal_containers_when_disabled"] == frozenset(
+        {"custom.exec"}
+    )
     assert builtin["function.shell_command"] == "disabled"
     for item_id in ("function.create_goal", "function.update_goal"):
         assert "description_i18n" not in items[item_id]

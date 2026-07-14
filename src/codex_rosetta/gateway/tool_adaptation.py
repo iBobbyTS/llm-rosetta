@@ -370,6 +370,7 @@ def localize_code_editing_chat_request(
     injected_tool_names: frozenset[str] = LOCALIZED_CODE_TOOL_NAMES,
     exec_projections: dict[str, ExecToolProjection] | None = None,
     profile_route: Any | None = None,
+    hide_exec_container: bool = False,
 ) -> dict[str, Any]:
     """Replace Codex-native edit tools with Claude-Code-like Chat tools."""
     adapted = dict(body)
@@ -398,14 +399,17 @@ def localize_code_editing_chat_request(
             requested_projections,
             profile_route,
         )
-        model_tools, removed_projected_containers = _hide_successfully_projected_exec(
-            preserved_tools, projected_tools
+        model_tools, removed_projected_containers = _hide_exec_projection_container(
+            preserved_tools,
+            projected_tools,
+            hide_when_empty=hide_exec_container,
         )
 
         if (
             removed_native
             or injected_tool_names
             or active_projections
+            or removed_projected_containers
             or LOCALIZED_CODE_TOOL_NAMES.intersection(existing_names)
         ):
             localized_tools = [
@@ -448,12 +452,15 @@ def localize_code_editing_chat_request(
     return adapted
 
 
-def _hide_successfully_projected_exec(
+def _hide_exec_projection_container(
     preserved_tools: list[Any],
     projected_tools: dict[str, dict[str, Any]],
+    *,
+    hide_when_empty: bool,
 ) -> tuple[list[Any], frozenset[str]]:
-    """Hide the parent exec only after at least one visible projection succeeds."""
-    if not projected_tools:
+    """Hide an internal exec container after projection or by Profile contract."""
+    has_exec = any(_chat_tool_name(tool) == "exec" for tool in preserved_tools)
+    if not has_exec or (not projected_tools and not hide_when_empty):
         return preserved_tools, frozenset()
     return (
         [tool for tool in preserved_tools if _chat_tool_name(tool) != "exec"],

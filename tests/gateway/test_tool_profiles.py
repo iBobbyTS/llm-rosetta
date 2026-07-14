@@ -66,7 +66,8 @@ def test_builtin_profile_covers_catalog_with_type_specific_states():
     assert contract["builtin"]["namespace.image_gen.imagegen"] == "disabled"
     assert contract["builtin"]["namespace.multi_agent_v1"] == "disabled"
     assert "namespace.mcp_github" not in contract["builtin"]
-    assert contract["builtin"]["custom.exec"] == "modified"
+    assert contract["builtin"]["custom.exec"] == "disabled"
+    assert contract["internal_containers_when_disabled"] == frozenset({"custom.exec"})
     assert contract["builtin"]["namespace.multi_agent_v2.spawn_agent"] == "modified"
     assert contract["supported"]["namespace.multi_agent_v2.spawn_agent"] == (
         "disabled",
@@ -360,6 +361,21 @@ def test_exec_projection_internal_when_disabled_must_be_boolean(monkeypatch):
         tool_profiles_module.tool_profile_contract.cache_clear()
 
 
+def test_internal_container_when_disabled_must_be_boolean(monkeypatch):
+    catalog = copy.deepcopy(load_tool_catalog())
+    item = next(item for item in catalog["items"] if item["id"] == "custom.exec")
+    item["internal_container_when_disabled"] = "true"
+    monkeypatch.setattr(tool_profiles_module, "load_tool_catalog", lambda: catalog)
+    tool_profiles_module.tool_profile_contract.cache_clear()
+    try:
+        with pytest.raises(
+            ValueError, match="internal_container_when_disabled must be boolean"
+        ):
+            tool_profiles_module.tool_profile_contract()
+    finally:
+        tool_profiles_module.tool_profile_contract.cache_clear()
+
+
 @pytest.mark.parametrize(
     "api_type", ["responses_rosetta", "chat", "anthropic", "google"]
 )
@@ -644,6 +660,33 @@ def test_modified_custom_exec_profile_appends_raw_javascript_guidance():
     assert adapted["input"][0]["tools"][0]["description"] == (
         "Run JavaScript.\n\nPass raw JavaScript source only."
     )
+
+
+def test_disabled_custom_exec_survives_only_for_responses_to_chat_conversion():
+    body = {
+        "tools": [
+            {
+                "type": "custom",
+                "name": "exec",
+                "description": "Run JavaScript.",
+                "format": {"type": "grammar"},
+            }
+        ]
+    }
+    profile = _profile(**{"custom.exec": "disabled"})
+
+    chat_adapted = _apply_tool_adaptation(body, _route(profile))
+    responses_route = ResolvedRoute(
+        source_provider="openai_responses",
+        target_provider="openai_responses",
+        provider_name="test",
+        tool_profile_name="custom",
+        tool_profile=profile,
+    )
+    responses_adapted = _apply_tool_adaptation(body, responses_route)
+
+    assert chat_adapted is body
+    assert "tools" not in responses_adapted
 
 
 def test_modified_web_search_profile_only_changes_description_from_its_input():

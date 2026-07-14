@@ -79,6 +79,7 @@ from .tool_adaptation import (
 )
 from .tool_profiles import (
     apply_profile_tool_mutations,
+    is_internal_container_when_disabled,
     route_tool_state,
     tool_catalog_lookups,
 )
@@ -602,7 +603,10 @@ def _filter_profile_tool(
     if item_id is None:
         return tool, set()
     name = _tool_identifier(tool)
-    if route_tool_state(route, item_id) == "disabled":
+    if route_tool_state(route, item_id) == "disabled" and not (
+        route.target_provider == "openai_chat"
+        and is_internal_container_when_disabled(route, item_id)
+    ):
         return None, {name} if isinstance(name, str) else set()
     if isinstance(tool, dict) and tool.get("type") == "namespace":
         adapted, removed = _filter_profile_namespace_children(tool, item_id, route)
@@ -714,6 +718,9 @@ def _apply_converted_request_tool_adaptation(
             injected_tool_names=injected_local_tool_names(route),
             exec_projections=exec_tool_projections_for_route(route),
             profile_route=route,
+            hide_exec_container=is_internal_container_when_disabled(
+                route, "custom.exec"
+            ),
         )
     return body
 

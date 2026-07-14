@@ -570,6 +570,29 @@ def _validate_description_visibility_contract(
         )
 
 
+def _internal_containers_when_disabled_contract(
+    catalog: dict[str, Any], supported: dict[str, tuple[str, ...]]
+) -> frozenset[str]:
+    """Validate tools retained only for internal conversion while Disabled."""
+    internal: set[str] = set()
+    for item in catalog["items"]:
+        item_id = item["id"]
+        value = item.get("internal_container_when_disabled", False)
+        if not isinstance(value, bool):
+            raise ValueError(
+                f"catalog item {item_id!r} internal_container_when_disabled "
+                "must be boolean"
+            )
+        if not value:
+            continue
+        if "disabled" not in supported[item_id]:
+            raise ValueError(
+                f"catalog item {item_id!r} internal container requires Disabled support"
+            )
+        internal.add(item_id)
+    return frozenset(internal)
+
+
 def _build_preset_profile(
     preset: dict[str, Any],
     catalog: dict[str, Any],
@@ -628,6 +651,9 @@ def tool_profile_contract() -> dict[str, Any]:
         catalog, input_definitions, supported
     )
     exec_projections = _exec_projection_contract(catalog, supported)
+    internal_containers_when_disabled = _internal_containers_when_disabled_contract(
+        catalog, supported
+    )
     builtin_inputs = _normalize_profile_input_values(
         builtin_profile.pop("inputs", {}),
         input_definitions,
@@ -660,6 +686,7 @@ def tool_profile_contract() -> dict[str, Any]:
         "input_definitions": input_definitions,
         "profile_mutations": profile_mutations,
         "exec_projections": exec_projections,
+        "internal_containers_when_disabled": internal_containers_when_disabled,
         "namespace_children": namespace_children,
         "readonly": {profile["id"]: profile for profile in profiles},
     }
@@ -905,6 +932,14 @@ def route_tool_state(route: Any, item_id: str, default: str = "passthrough") -> 
     if not profile:
         return default
     return profile.get(item_id, default)
+
+
+def is_internal_container_when_disabled(route: Any, item_id: str) -> bool:
+    """Return whether a Disabled tool must survive until conversion finishes."""
+    return (
+        route_tool_state(route, item_id) == "disabled"
+        and item_id in tool_profile_contract()["internal_containers_when_disabled"]
+    )
 
 
 def apply_profile_tool_mutations(
