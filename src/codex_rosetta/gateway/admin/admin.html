@@ -439,13 +439,17 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
 .tool-filter-btn.active { background:var(--accent);border-color:var(--accent);color:#fff; }
 .tools-notice { padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);color:var(--text-dim);font-size:12px;line-height:1.5; }
 .tools-meta { color:var(--text-dim);font:12px var(--mono);margin-top:8px; }
+.tool-catalog-layout { display:grid;grid-template-columns:minmax(0,3fr) minmax(260px,1fr);align-items:start;gap:14px; }
 .tool-catalog-groups { display:grid;gap:14px; }
 .tool-group { border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);overflow:hidden; }
 .tool-group-title { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600; }
 .tool-group-count { color:var(--text-dim);font-size:11px;font-weight:400; }
 .tool-list { display:grid; }
-.tool-card-grid { grid-template-columns:repeat(4,minmax(0,1fr));align-items:start;gap:10px;padding:12px; }
-.tool-item { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 10px;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg); }
+.tool-card-grid { grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:10px;padding:12px; }
+.tool-item { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 10px;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);cursor:pointer; }
+.tool-item:hover, .tool-namespace-head:hover { border-color:color-mix(in srgb,var(--accent) 55%,var(--border)); }
+.tool-item.selected, .tool-namespace-head.selected { border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent); }
+.tool-item:focus-visible, .tool-namespace-head:focus-visible { outline:2px solid var(--accent);outline-offset:2px; }
 .tool-state-select { max-width:130px;min-width:105px;padding:4px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:999px;color:var(--text);font-size:10px; }
 .tool-state-select:disabled { opacity:.75;cursor:not-allowed; }
 .tool-item.nested { background:var(--bg-card); }
@@ -458,6 +462,14 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
 .tool-profile-textarea { min-height:96px;line-height:1.45;resize:vertical;white-space:pre-wrap; }
 .tool-profile-textarea[readonly] { cursor:text; }
 .tool-profile-input:disabled { opacity:.75;cursor:not-allowed; }
+.tool-detail-panel { position:sticky;top:12px;display:grid;gap:12px;min-width:0;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card); }
+.tool-detail-header { display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--border); }
+.tool-detail-heading { min-width:0;display:grid;gap:3px; }
+.tool-detail-kicker { color:var(--text-dim);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em; }
+.tool-detail-name { min-width:0;font:13px var(--mono);font-weight:600;overflow-wrap:anywhere; }
+.tool-detail-body { display:grid;gap:10px;min-width:0; }
+.tool-detail-empty { color:var(--text-dim);font-size:11px;line-height:1.5; }
+.tool-detail-panel .tool-description, .tool-detail-panel .tool-profile-inputs { grid-column:auto; }
 .tool-badges { display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end; }
 .tool-badge { display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:2px 7px;font-size:10px;line-height:1.4;color:var(--text-dim);background:var(--bg);white-space:nowrap; }
 .tool-badge.kind { color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border)); }
@@ -469,11 +481,11 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
 .tool-route-default.has-fallback { color:var(--orange); }
 .tool-namespace { border-bottom:1px solid var(--border); }
 .tool-namespace:last-child { border-bottom:none; }
-.tool-namespace-head { display:grid;grid-template-columns:auto minmax(160px,1fr) auto minmax(260px,1.4fr);gap:10px;align-items:center;padding:9px 12px; }
+.tool-namespace-head { display:grid;grid-template-columns:auto minmax(160px,1fr) auto minmax(260px,1.4fr);gap:10px;align-items:center;padding:9px 12px;border:1px solid transparent;cursor:pointer; }
 .tool-namespace-toggle { width:24px;height:24px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);cursor:pointer;line-height:1; }
 .tool-namespace-toggle:hover { border-color:var(--accent); }
 .tool-namespace-details { display:grid;gap:8px;padding:0 12px 10px 46px; }
-.tool-namespace-children { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:start;gap:10px;padding:12px;border-top:1px solid var(--border);background:var(--bg); }
+.tool-namespace-children { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:10px;padding:12px;border-top:1px solid var(--border);background:var(--bg); }
 .tool-namespace-children[hidden] { display:none; }
 .tool-catalog-status { padding:28px;text-align:center;color:var(--text-dim);font-size:13px; }
 .tool-catalog-status.error { color:var(--red); }
@@ -514,6 +526,9 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .section-header { flex-wrap: wrap; gap: 8px; }
+  .tool-catalog-layout { grid-template-columns:1fr; }
+  .tool-catalog-groups { grid-column:1;grid-row:2; }
+  .tool-detail-panel { position:static;grid-column:1;grid-row:1; }
   .tool-card-grid, .tool-namespace-children { grid-template-columns:1fr; }
   .tool-badges, .tool-policy { justify-content:flex-start; }
   .tool-route-defaults { text-align:left; }
@@ -522,6 +537,7 @@ th.sortable.desc::after { content:'\25BC';opacity:.8; }
 }
 
 @media (min-width: 769px) and (max-width: 1100px) {
+  .tool-catalog-layout { grid-template-columns:minmax(0,2fr) minmax(240px,1fr); }
   .tool-card-grid, .tool-namespace-children { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 
@@ -720,7 +736,10 @@ body { padding-bottom: 26px; }
         <button type="button" class="tool-filter-btn" data-tool-filter="rosetta_injection" onclick="setToolCatalogFilter('rosetta_injection')" data-i18n="tools.filter.rosetta_injection">Rosetta Injection</button>
       </div>
       <div class="tool-catalog-status" id="toolCatalogStatus" data-i18n="tools.loading">Loading tool catalog...</div>
-      <div class="tool-catalog-groups" id="toolCatalogGroups" hidden></div>
+      <div class="tool-catalog-layout" id="toolCatalogLayout" hidden>
+        <div class="tool-catalog-groups" id="toolCatalogGroups"></div>
+        <aside class="tool-detail-panel" id="toolDetailPanel" aria-live="polite"></aside>
+      </div>
     </div>
   </div>
 
@@ -1569,6 +1588,7 @@ let toolSelectedProfile = 'builtin';
 let toolProfileDraft = {};
 let toolProfileInputDraft = {};
 let toolProfileDirty = false;
+let selectedToolDetailId = null;
 const expandedToolNamespaces = new Set();
 
 // Apply saved theme now that state vars are declared
@@ -1614,6 +1634,7 @@ const api = {
 // ===================== Read-only Tools Catalog =====================
 function setToolCatalogFilter(filter) {
   toolCatalogFilter = filter;
+  selectedToolDetailId = null;
   renderToolCatalog();
 }
 
@@ -1634,11 +1655,11 @@ async function loadToolCatalog() {
   }
   toolCatalogError = '';
   const status = document.getElementById('toolCatalogStatus');
-  const groups = document.getElementById('toolCatalogGroups');
+  const layout = document.getElementById('toolCatalogLayout');
   status.className = 'tool-catalog-status';
   status.textContent = t('tools.loading');
   status.hidden = false;
-  groups.hidden = true;
+  layout.hidden = true;
   try {
     [toolCatalogData, toolProfilesData] = await Promise.all([
       api.get('/admin/api/tools/catalog'),
@@ -1869,20 +1890,49 @@ function renderToolProfileInputs(item) {
   return groups ? `<div class="tool-profile-inputs">${groups}</div>` : '';
 }
 
-function renderToolItem(item, policies, nested=false) {
+function toolDetailKeyHandler(event, itemId) {
+  if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return;
+  event.preventDefault();
+  selectToolDetail(itemId);
+}
+
+function selectToolDetail(itemId) {
+  selectedToolDetailId = itemId;
+  renderToolDetail();
+}
+
+function renderToolDetail() {
+  const panel = document.getElementById('toolDetailPanel');
+  if (!panel || !toolCatalogData) return;
+  const index = toolCatalogIndex();
+  const item = index.items.get(selectedToolDetailId);
+  document.querySelectorAll('[data-tool-id]').forEach(element => {
+    const selected = element.dataset.toolId === selectedToolDetailId;
+    element.classList.toggle('selected', selected);
+    element.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+  if (!item) {
+    panel.innerHTML = `<div class="tool-detail-empty">${esc(t('tools.detail.select'))}</div>`;
+    return;
+  }
   const showDescription = item.description_i18n && isToolCardContentVisible(item.id, item.description_visible_when);
   const description = showDescription ? `<div class="tool-description">${esc(t(item.description_i18n))}</div>` : '';
-  return `<div class="tool-item${nested ? ' nested' : ''}" data-tool-id="${escAttr(item.id)}"><div class="tool-name">${esc(item.name)}</div>${renderToolStateSelect(item)}${description}${renderToolProfileInputs(item)}</div>`;
+  const inputs = renderToolProfileInputs(item);
+  const body = description + inputs || `<div class="tool-detail-empty">${esc(t('tools.detail.none'))}</div>`;
+  panel.innerHTML = `<div class="tool-detail-header"><div class="tool-detail-heading"><span class="tool-detail-kicker">${esc(t('tools.detail.title'))}</span><span class="tool-detail-name">${esc(item.name)}</span></div>${renderToolKindBadge(item)}</div><div class="tool-detail-body">${body}</div>`;
+}
+
+function renderToolItem(item, policies, nested=false) {
+  const selected = item.id === selectedToolDetailId ? ' selected' : '';
+  return `<div class="tool-item${nested ? ' nested' : ''}${selected}" data-tool-id="${escAttr(item.id)}" role="button" tabindex="0" aria-pressed="${selected ? 'true' : 'false'}" onclick="selectToolDetail(${handlerArg(item.id)})" onkeydown="toolDetailKeyHandler(event, ${handlerArg(item.id)})"><div class="tool-name">${esc(item.name)}</div>${renderToolStateSelect(item)}</div>`;
 }
 
 function renderToolNamespace(namespaceItem, childIds, index) {
   const children = childIds.map(id => index.items.get(id)).filter(Boolean);
   const isExpanded = expandedToolNamespaces.has(namespaceItem.id);
-  const showDescription = namespaceItem.description_i18n && isToolCardContentVisible(namespaceItem.id, namespaceItem.description_visible_when);
-  const description = showDescription ? `<div class="tool-description">${esc(t(namespaceItem.description_i18n))}</div>` : '';
-  const details = description + renderToolProfileInputs(namespaceItem);
+  const selected = namespaceItem.id === selectedToolDetailId ? ' selected' : '';
   const childrenHtml = children.map(item => renderToolItem(item, index.policies, true)).join('');
-  return `<div class="tool-namespace" data-namespace-id="${escAttr(namespaceItem.id)}"><div class="tool-namespace-head"><button type="button" class="tool-namespace-toggle" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="tool-children-${escAttr(namespaceItem.id)}" onclick="toggleToolNamespace(${handlerArg(namespaceItem.id)})">${isExpanded ? '&#9662;' : '&#9656;'}</button><div class="tool-name">${esc(namespaceItem.name)}</div><div class="tool-badges">${renderToolKindBadge(namespaceItem)}</div><div class="tool-policy">${renderToolStateSelect(namespaceItem)}</div></div>${details ? `<div class="tool-namespace-details">${details}</div>` : ''}<div class="tool-namespace-children" id="tool-children-${escAttr(namespaceItem.id)}"${isExpanded ? '' : ' hidden'}>${childrenHtml}</div></div>`;
+  return `<div class="tool-namespace" data-namespace-id="${escAttr(namespaceItem.id)}"><div class="tool-namespace-head${selected}" data-tool-id="${escAttr(namespaceItem.id)}" role="button" tabindex="0" aria-pressed="${selected ? 'true' : 'false'}" onclick="selectToolDetail(${handlerArg(namespaceItem.id)})" onkeydown="toolDetailKeyHandler(event, ${handlerArg(namespaceItem.id)})"><button type="button" class="tool-namespace-toggle" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="tool-children-${escAttr(namespaceItem.id)}" onclick="event.stopPropagation(); toggleToolNamespace(${handlerArg(namespaceItem.id)})">${isExpanded ? '&#9662;' : '&#9656;'}</button><div class="tool-name">${esc(namespaceItem.name)}</div><div class="tool-badges">${renderToolKindBadge(namespaceItem)}</div><div class="tool-policy">${renderToolStateSelect(namespaceItem)}</div></div><div class="tool-namespace-children" id="tool-children-${escAttr(namespaceItem.id)}"${isExpanded ? '' : ' hidden'}>${childrenHtml}</div></div>`;
 }
 
 function renderToolGroup(groupId, itemIds, index) {
@@ -1913,9 +1963,10 @@ function renderNamespaceGroup(index) {
 
 function renderToolCatalog() {
   const status = document.getElementById('toolCatalogStatus');
+  const layout = document.getElementById('toolCatalogLayout');
   const groupsEl = document.getElementById('toolCatalogGroups');
   const meta = document.getElementById('toolCatalogMeta');
-  if (!status || !groupsEl || !meta) return;
+  if (!status || !layout || !groupsEl || !meta) return;
 
   document.querySelectorAll('[data-tool-filter]').forEach(button => {
     button.classList.toggle('active', button.dataset.toolFilter === toolCatalogFilter);
@@ -1925,7 +1976,7 @@ function renderToolCatalog() {
     status.className = 'tool-catalog-status error';
     status.textContent = t('tools.error', {error: toolCatalogError});
     status.hidden = false;
-    groupsEl.hidden = true;
+    layout.hidden = true;
     meta.textContent = '';
     return;
   }
@@ -1933,7 +1984,7 @@ function renderToolCatalog() {
     status.className = 'tool-catalog-status';
     status.textContent = t('tools.loading');
     status.hidden = false;
-    groupsEl.hidden = true;
+    layout.hidden = true;
     return;
   }
 
@@ -1963,7 +2014,17 @@ function renderToolCatalog() {
 
   const html = sections.filter(Boolean).join('');
   groupsEl.innerHTML = html;
-  groupsEl.hidden = !html;
+  layout.hidden = !html;
+  if (html) {
+    const visibleIds = [...groupsEl.querySelectorAll('[data-tool-id]')].map(element => element.dataset.toolId);
+    if (!visibleIds.includes(selectedToolDetailId)) {
+      selectedToolDetailId = visibleIds.find(id => {
+        const item = index.items.get(id);
+        return item && ((item.description_i18n && isToolCardContentVisible(item.id, item.description_visible_when)) || renderToolProfileInputs(item));
+      }) || visibleIds[0] || null;
+    }
+    renderToolDetail();
+  }
   status.className = 'tool-catalog-status';
   status.textContent = t('tools.empty');
   status.hidden = Boolean(html);

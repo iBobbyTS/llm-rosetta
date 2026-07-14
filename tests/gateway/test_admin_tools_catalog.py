@@ -501,6 +501,10 @@ def test_admin_tools_view_has_profile_editor_and_all_filters():
     assert "item.description_i18n" in html
     assert "item.profile_inputs" in html
     assert "renderToolProfileInputs(item)" in html
+    assert 'id="toolCatalogLayout"' in page
+    assert 'id="toolDetailPanel"' in page
+    assert "selectToolDetail(itemId)" in html
+    assert "toolDetailKeyHandler(event, itemId)" in html
     assert "['function', 'custom', 'hosted', 'namespace'].includes(item.type)" in html
     assert "updateToolProfileInput" in html
     assert "saveToolProfileBtn').disabled = !toolProfileDirty" in html
@@ -524,7 +528,7 @@ def test_admin_tools_view_has_profile_editor_and_all_filters():
     assert "item.description_visible_when" in html
     assert "renderToolNamespace(item, placement.child_ids, index)" in html
     assert "toolPolicyLabel(item, state)" in html
-    assert "description + renderToolProfileInputs(namespaceItem)" in html
+    assert "renderToolProfileInputs(namespaceItem)" not in html
     assert "isToolCardContentVisible" in html
     assert "renderToolCatalog();" in html
     assert "${esc(option.label)}" in html

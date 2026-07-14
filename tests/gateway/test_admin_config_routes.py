@@ -1079,7 +1079,7 @@ def test_admin_html_confirmation_button_triggers_action():
 
 
 def test_admin_html_renders_tools_as_compact_cards():
-    """Non-namespace tools render as four-column cards with only current state."""
+    """Tools render in a three-column grid beside one shared detail column."""
     html_path = (
         Path(__file__).parents[2]
         / "src"
@@ -1095,12 +1095,20 @@ def test_admin_html_renders_tools_as_compact_cards():
         ) : html.index("function renderToolNamespace(namespaceItem, childIds, index)")
     ]
 
-    assert ".tool-card-grid { grid-template-columns:repeat(4,minmax(0,1fr))" in html
+    assert (
+        ".tool-catalog-layout { display:grid;grid-template-columns:minmax(0,3fr) minmax(260px,1fr)"
+        in html
+    )
+    assert ".tool-card-grid { grid-template-columns:repeat(3,minmax(0,1fr))" in html
     assert "renderToolStateSelect(item)" in render_item
+    assert "renderToolProfileInputs(item)" not in render_item
+    assert "item.description_i18n" not in render_item
     assert "renderToolKindBadge(item)" not in render_item
     assert "renderToolPolicy(item, policy)" not in render_item
     assert '<div class="tool-list tool-card-grid">${cards}</div>' in html
     assert '<div class="tool-list">${namespaces}</div>' in html
+    assert 'id="toolDetailPanel"' in html
+    assert "function renderToolDetail()" in html
     assert "${esc(t('tools.default'))}:" not in render_item
 
 
