@@ -302,6 +302,7 @@ def test_catalog_defaults_and_namespace_image_policy():
     assert catalog["builtin_profile"]["name"] == "Chat Default"
     assert catalog["builtin_profile"]["tools"] == {
         "namespace.multi_agent_v1": "disabled",
+        "namespace.image_gen.imagegen": "modified",
         "custom.apply_patch": "disabled",
         "custom.exec": "disabled",
     }

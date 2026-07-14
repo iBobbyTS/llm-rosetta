@@ -184,7 +184,7 @@ def test_responses_passthrough_forwards_each_endpoint(upstream_path: str) -> Non
 def test_non_passthrough_modes_return_not_implemented(
     api_type: str, upstream_path: str
 ) -> None:
-    config = _make_config(api_type)
+    config = _make_config(api_type, image_state="disabled")
     request = _make_request({"model": "gateway-model", "prompt": "test"})
 
     response = asyncio.run(handle_codex_auxiliary(request, config, upstream_path))

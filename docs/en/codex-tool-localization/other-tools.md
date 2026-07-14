@@ -49,7 +49,7 @@ Chat Default marks the parent `exec` tool Disabled for model exposure. On a Resp
 
 For Exec Expansion cards, **Pass through** means representation-only adaptation: expose the current declaration as a normal Chat Function and translate its call back to `exec`, without appending any catalog text. Chat Default uses this state for `exec_command`, `write_stdin`, `update_plan`, `view_image`, `get_goal`, Clock, Memories, and Skills. **Modified** is retained where the Profile changes model-visible guidance or behavior: `create_goal` and `update_goal` append guidance, while `web.run` uses the selected Tavily-backed Rosetta search mapping.
 
-Chat Default keeps `image_gen__imagegen` Disabled until a copied Profile sets that Function to Modified and supplies the required image endpoint credentials.
+Chat Default keeps `image_gen__imagegen` Modified and exposes editable Base URL and Token fields. Once those credentials are saved, Rosetta projects the Function to the upstream model and handles the resulting OpenAI-style image generation or edit request through `/v1/images/generations` or `/v1/images/edits`. Leave the Token blank until image generation is intentionally configured.
 
 Calls to projected Functions are rebuilt as deterministic JavaScript calls on the nested `tools` object and returned to Codex as `custom_tool_call` calls to `exec`. The exact Chat-to-Codex call mapping is stored in the existing encrypted tool-history cache, so a subsequent request within its 24-hour TTL restores the original Chat Function and arguments before it is sent upstream. `view_image` forwards its result through `image(...)`, `image_gen.imagegen` uses `generatedImage(...)`, and text-bearing projected tools use `text(...)`.
 

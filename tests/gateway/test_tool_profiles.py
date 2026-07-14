@@ -63,7 +63,7 @@ def test_builtin_profile_covers_catalog_with_type_specific_states():
     ):
         assert contract["builtin"][item_id] == "passthrough"
     assert contract["builtin"]["namespace.web.run"] == "modified"
-    assert contract["builtin"]["namespace.image_gen.imagegen"] == "disabled"
+    assert contract["builtin"]["namespace.image_gen.imagegen"] == "modified"
     assert contract["builtin"]["namespace.multi_agent_v1"] == "disabled"
     assert "namespace.mcp_github" not in contract["builtin"]
     assert contract["builtin"]["custom.exec"] == "disabled"

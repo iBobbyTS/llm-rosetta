@@ -12,6 +12,7 @@
     "name": "Chat Default",
     "tools": {
       "namespace.multi_agent_v1": "disabled",
+      "namespace.image_gen.imagegen": "modified",
       "custom.apply_patch": "disabled",
       "custom.exec": "disabled"
     },

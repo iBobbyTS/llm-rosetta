@@ -138,6 +138,7 @@ def test_chat_default_retains_apply_patch_as_an_internal_exec_projection():
         "create_goal",
         "exec_command",
         "get_goal",
+        "image_gen-imagegen",
         "memories-add_ad_hoc_note",
         "memories-list",
         "memories-read",
