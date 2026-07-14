@@ -362,6 +362,19 @@ def test_catalog_defaults_and_namespace_image_policy():
     assert builtin["function.write_stdin"] == "passthrough"
     assert builtin["custom.apply_patch"] == "disabled"
     assert builtin["function.shell_command"] == "disabled"
+    for item_id in ("function.create_goal", "function.update_goal"):
+        assert "description_i18n" not in items[item_id]
+        assert "description_visible_when" not in items[item_id]
+        assert items[item_id]["profile_inputs"] == [
+            {
+                "id": "guidance",
+                "label_i18n": "tools.input.appended_description_guidance",
+                "type": "textarea",
+                "default": "",
+                "visible_when": ["modified"],
+                "readonly": True,
+            }
+        ]
     for item_id in (
         "function.exec_command",
         "function.write_stdin",
@@ -493,6 +506,9 @@ def test_admin_tools_view_has_profile_editor_and_all_filters():
     assert "currentToolProfile()?.readonly || namespaceDisabled" in html
     assert "input.type === 'password'" in html
     assert "input.type === 'select'" in html
+    assert "input.type === 'textarea'" in html
+    assert '<textarea class="tool-profile-input tool-profile-textarea"' in html
+    assert "input.readonly ? ' readonly' : ''" in html
     assert "option.value === value" in html
     assert "input.visible_when" in html
     assert "!input.ui_hidden" in html

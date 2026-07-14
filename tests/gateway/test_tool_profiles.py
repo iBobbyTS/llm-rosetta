@@ -291,6 +291,14 @@ def test_bundled_profile_input_override_changes_fields_but_not_tool_states():
             {"type": "text", "visible_when": "disabled"},
             "visible_when must be a list of strings",
         ),
+        (
+            {"type": "textarea", "readonly": "true"},
+            "readonly must be boolean",
+        ),
+        (
+            {"type": "text", "readonly": True},
+            "readonly is only supported for type 'textarea'",
+        ),
     ],
 )
 def test_function_profile_select_definition_validation(

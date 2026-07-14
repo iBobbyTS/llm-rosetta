@@ -324,10 +324,6 @@
       "name": "create_goal",
       "type": "function",
       "policy_id": "targeted_chat_guidance",
-      "description_i18n": "tools.description.exec_projection_guidance",
-      "description_visible_when": [
-        "modified"
-      ],
       "exec_projection": {
         "chat_name": "create_goal",
         "nested_name": "create_goal"
@@ -335,12 +331,13 @@
       "profile_inputs": [
         {
           "id": "guidance",
-          "label_i18n": "tools.input.guidance",
+          "label_i18n": "tools.input.appended_description_guidance",
+          "type": "textarea",
           "default": "",
           "visible_when": [
             "modified"
           ],
-          "ui_hidden": true
+          "readonly": true
         }
       ],
       "profile_mutations": [
@@ -355,10 +352,6 @@
       "name": "update_goal",
       "type": "function",
       "policy_id": "targeted_chat_guidance",
-      "description_i18n": "tools.description.exec_projection_guidance",
-      "description_visible_when": [
-        "modified"
-      ],
       "exec_projection": {
         "chat_name": "update_goal",
         "nested_name": "update_goal"
@@ -366,12 +359,13 @@
       "profile_inputs": [
         {
           "id": "guidance",
-          "label_i18n": "tools.input.guidance",
+          "label_i18n": "tools.input.appended_description_guidance",
+          "type": "textarea",
           "default": "",
           "visible_when": [
             "modified"
           ],
-          "ui_hidden": true
+          "readonly": true
         }
       ],
       "profile_mutations": [

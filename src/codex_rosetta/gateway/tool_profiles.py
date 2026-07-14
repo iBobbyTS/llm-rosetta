@@ -108,6 +108,7 @@ def _normalize_profile_input_definition(
         "options",
         "visible_when",
         "ui_hidden",
+        "readonly",
     }
     if unsupported:
         raise ValueError(
@@ -141,10 +142,10 @@ def _normalize_profile_input_definition(
             f"default exceeds {MAX_TOOL_PROFILE_INPUT_LENGTH} characters"
         )
     input_type = value.get("type", "text")
-    if input_type not in {"text", "password", "select"}:
+    if input_type not in {"text", "password", "select", "textarea"}:
         raise ValueError(
             f"catalog item {item_id!r} profile input {input_id!r} "
-            "type must be 'text', 'password', or 'select'"
+            "type must be 'text', 'password', 'select', or 'textarea'"
         )
     options = value.get("options")
     if input_type == "select":
@@ -183,7 +184,31 @@ def _normalize_profile_input_definition(
         )
     if ui_hidden:
         value = dict(value, ui_hidden=True)
+    value = _normalize_profile_input_readonly(item_id, input_id, value, input_type)
     return input_id, dict(value, default=default, type=input_type)
+
+
+def _normalize_profile_input_readonly(
+    item_id: str,
+    input_id: str,
+    value: dict[str, Any],
+    input_type: str,
+) -> dict[str, Any]:
+    """Validate read-only presentation for a catalog textarea input."""
+    readonly = value.get("readonly", False)
+    if not isinstance(readonly, bool):
+        raise ValueError(
+            f"catalog item {item_id!r} profile input {input_id!r} "
+            "readonly must be boolean"
+        )
+    if readonly and input_type != "textarea":
+        raise ValueError(
+            f"catalog item {item_id!r} profile input {input_id!r} "
+            "readonly is only supported for type 'textarea'"
+        )
+    if readonly:
+        return dict(value, readonly=True)
+    return value
 
 
 def _profile_input_contract(
