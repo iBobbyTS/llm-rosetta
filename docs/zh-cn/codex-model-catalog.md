@@ -16,6 +16,11 @@
 
 打包目录目前包含八个条目：`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`、`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.2` 和 `codex-auto-review`。本文特意不包含本地自定义的目录条目。
 
+只有网关未配置任何模型时，本地模式才会写入全部八个打包条目。只要配置了至少一个
+模型，生成的目录就只包含已配置的 LLM 名称；Embedding 模型始终不会加入，因此只
+配置 Embedding 时会生成空的 Codex 目录。已配置名称与八个打包 slug 之一相同时，会
+在解析后的 JSON 值层面原样复用该条目。
+
 本地模式还会配置 Codex 使用 Rosetta，而不只是写入模型目录。它选择自定义 Provider
 ID `codex_rosetta`，但生成的 Provider `name` 会严格写成 `OpenAI`。这个区别是有意
 的：Codex 把 `model_provider` 当作 ID 解析，而 `provider.is_openai()` 检查的是已选

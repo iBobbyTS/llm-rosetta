@@ -316,7 +316,7 @@ def _model_presets(terra: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
-    """Build a Codex catalog from the bundled presets and configured LLM aliases."""
+    """Build a Codex catalog from configured LLMs or the bundled defaults."""
     bundled = _catalog_resource()
     base_models = copy.deepcopy(bundled["models"])
     by_slug = {
@@ -329,30 +329,35 @@ def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("bundled Codex model catalog has no gpt-5.6-terra preset")
     presets = _model_presets(terra)
 
-    custom_names: set[str] = set()
+    configured_names: set[str] = set()
+    has_configured_models = False
     model_groups = raw_config.get("model_groups", {})
     if isinstance(model_groups, dict):
         for group in model_groups.values():
-            if not isinstance(group, dict) or group.get("type") != "llm":
+            if not isinstance(group, dict):
                 continue
             models = group.get("models", {})
             if not isinstance(models, dict):
                 continue
-            custom_names.update(
-                name
-                for name in models
-                if isinstance(name, str) and name and name not in by_slug
-            )
+            valid_names = {name for name in models if isinstance(name, str) and name}
+            has_configured_models = has_configured_models or bool(valid_names)
+            if group.get("type") != "llm":
+                continue
+            configured_names.update(valid_names)
 
-    for name in sorted(custom_names):
-        model = copy.deepcopy(presets.get(name, terra))
-        if name not in presets:
+    if not has_configured_models:
+        return {"models": base_models}
+
+    selected_models: list[dict[str, Any]] = []
+    for name in sorted(configured_names):
+        model = copy.deepcopy(by_slug.get(name) or presets.get(name) or terra)
+        if name not in by_slug and name not in presets:
             model["slug"] = name
             model["display_name"] = name
             model["description"] = name
-        base_models.append(model)
+        selected_models.append(model)
 
-    return {"models": base_models}
+    return {"models": selected_models}
 
 
 def catalog_path(codex_home: str) -> str:

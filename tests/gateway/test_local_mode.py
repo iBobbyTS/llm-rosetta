@@ -33,7 +33,7 @@ def _sync_transaction(
     )
 
 
-def test_catalog_keeps_bundled_models_and_clones_terra_for_custom_llms() -> None:
+def test_catalog_uses_only_configured_llms_and_clones_terra_for_custom_names() -> None:
     raw = {
         "model_groups": {
             "llm": {
@@ -55,7 +55,11 @@ def test_catalog_keeps_bundled_models_and_clones_terra_for_custom_llms() -> None
     models = catalog["models"]
     slugs = [model["slug"] for model in models]
 
-    assert slugs[:8] == [
+    assert slugs == ["alpha-model", "gpt-5.6-sol", "zeta-model"]
+    assert "embedding-only" not in slugs
+
+    bundled = build_model_catalog({})["models"]
+    assert [model["slug"] for model in bundled] == [
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -65,17 +69,44 @@ def test_catalog_keeps_bundled_models_and_clones_terra_for_custom_llms() -> None
         "gpt-5.2",
         "codex-auto-review",
     ]
-    assert slugs[8:] == ["alpha-model", "zeta-model"]
-    assert slugs.count("gpt-5.6-sol") == 1
-    assert "embedding-only" not in slugs
 
-    terra = next(model for model in models if model["slug"] == "gpt-5.6-terra")
+    terra = next(model for model in bundled if model["slug"] == "gpt-5.6-terra")
     custom = next(model for model in models if model["slug"] == "alpha-model")
     assert custom["slug"] == custom["display_name"] == custom["description"]
     assert custom["slug"] == "alpha-model"
     for key, value in terra.items():
         if key not in {"slug", "display_name", "description"}:
             assert custom[key] == value
+
+
+def test_catalog_preserves_official_bundled_entries_for_configured_slugs() -> None:
+    raw = {
+        "model_groups": {
+            "llm": {
+                "type": "llm",
+                "models": {"gpt-5.5": {}, "gpt-5.6-terra": {}},
+            }
+        }
+    }
+
+    defaults = {model["slug"]: model for model in build_model_catalog({})["models"]}
+    configured = build_model_catalog(raw)["models"]
+
+    assert [model["slug"] for model in configured] == ["gpt-5.5", "gpt-5.6-terra"]
+    assert configured == [defaults["gpt-5.5"], defaults["gpt-5.6-terra"]]
+
+
+def test_catalog_does_not_fall_back_to_defaults_for_embedding_only_config() -> None:
+    raw = {
+        "model_groups": {
+            "embedding": {
+                "type": "embedding",
+                "models": {"text-embedding": {}},
+            }
+        }
+    }
+
+    assert build_model_catalog(raw) == {"models": []}
 
 
 def test_catalog_materializes_named_third_party_presets_from_terra() -> None:
