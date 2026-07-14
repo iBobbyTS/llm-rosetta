@@ -25,6 +25,14 @@ The bundled catalog currently contains eight entries:
 `gpt-5.4-mini`, `gpt-5.2`, and `codex-auto-review`. Local custom catalog
 entries are intentionally excluded from this reference.
 
+Rosetta also packages Terra-derived presets for `deepseek-v4-pro`,
+`deepseek-v4-flash`, `glm-5.2`, `qwen3.7-plus`, `qwen3.7-max`,
+`mimo-v2.5-flash`, `mimo-v2.5-pro`, `minimax-m3`, and `kimi-k2.7-code`.
+These are materialized only when the exact alias exists in an LLM model group;
+they are not part of the eight-entry upstream catalog. Each preset retains the
+Terra instruction structure with its model identity replaced and declares its
+own context, modalities, reasoning levels, and explicitly selected Codex capabilities.
+
 The bundled JSON uses 41 distinct keys. `ModelInfo` also accepts
 `effective_context_window_percent`, which all bundled entries omit and
 therefore receive the default value `95`. This reference consequently covers

@@ -60,6 +60,126 @@ def test_catalog_keeps_bundled_models_and_clones_terra_for_custom_llms() -> None
             assert custom[key] == value
 
 
+def test_catalog_materializes_named_third_party_presets_from_terra() -> None:
+    expected = {
+        "deepseek-v4-pro": (
+            "DeepSeek V4 Pro",
+            "Stronger version of DeepSeek V4",
+            "DeepSeek V4 Pro",
+            1_000_000,
+            ["text"],
+            ["high", "max"],
+        ),
+        "deepseek-v4-flash": (
+            "DeepSeek V4 Flash",
+            "Cheaper version of DeepSeek V4",
+            "DeepSeek V4 Flash",
+            1_000_000,
+            ["text"],
+            ["high", "max"],
+        ),
+        "glm-5.2": (
+            "GLM 5.2",
+            "Flagship model by Z.ai",
+            "GLM 5.2 by z.ai(智谱)",
+            1_000_000,
+            ["text"],
+            ["high", "max"],
+        ),
+        "qwen3.7-plus": (
+            "Qwen 3.7 Plus",
+            "Multi-modal Qwen 3.7",
+            "Qwen 3.7 Plus by Alibaba",
+            1_000_000,
+            ["text", "image"],
+            ["low", "medium", "high", "xhigh", "max"],
+        ),
+        "qwen3.7-max": (
+            "Qwen 3.7 Max",
+            "Stronger Qwen 3.7 (without multi-modal)",
+            "Qwen 3.7 Max by Alibaba",
+            1_000_000,
+            ["text"],
+            ["low", "medium", "high", "xhigh", "max"],
+        ),
+        "mimo-v2.5-flash": (
+            "MiMo V2.5 Flash",
+            "Cheaper version of MiMo V2.5 by Xiaomi, best for working not coding",
+            "MiMo V2.5 Flash by Xiaomi",
+            1_000_000,
+            ["text", "image"],
+            ["high"],
+        ),
+        "mimo-v2.5-pro": (
+            "MiMo V2.5 Pro",
+            "Stronger version of MiMo V2.5 by Xiaomi, best for working not coding",
+            "MiMo V2.5 Pro by Xiaomi",
+            1_000_000,
+            ["text", "image"],
+            ["high"],
+        ),
+        "minimax-m3": (
+            "MiniMax M3",
+            "MiniMax M3, best for working not coding",
+            "MiniMax M3",
+            1_000_000,
+            ["text", "image"],
+            ["high"],
+        ),
+        "kimi-k2.7-code": (
+            "Kimi K2.7 Code",
+            "Kimi K2.7 Code",
+            "Kimi K2.7 Code by Moonshot",
+            262_144,
+            ["text", "image"],
+            ["high"],
+        ),
+    }
+    raw = {
+        "model_groups": {
+            "third-party": {
+                "type": "llm",
+                "models": {slug: {} for slug in expected},
+            }
+        }
+    }
+
+    models = {model["slug"]: model for model in build_model_catalog(raw)["models"]}
+
+    for slug, values in expected.items():
+        display_name, description, identity, context, modalities, efforts = values
+        model = models[slug]
+        assert model["display_name"] == display_name
+        assert model["description"] == description
+        assert model["context_window"] == model["max_context_window"] == context
+        assert model["input_modalities"] == modalities
+        assert [level["effort"] for level in model["supported_reasoning_levels"]] == (
+            efforts
+        )
+        assert model["default_reasoning_level"] == (
+            "medium" if "medium" in efforts else efforts[0]
+        )
+        assert model["supports_image_detail_original"] is False
+        assert model["tool_mode"] == "code_mode_only"
+        assert model["apply_patch_tool_type"] == "freeform"
+        assert model["supports_parallel_tool_calls"] is False
+        assert model["supports_search_tool"] is True
+        assert model["web_search_tool_type"] == "text_and_image"
+        assert model["use_responses_lite"] is True
+        assert model["multi_agent_version"] == "v2"
+        assert model["support_verbosity"] is False
+        assert model["default_verbosity"] is None
+        assert model["service_tiers"] == []
+        assert model["additional_speed_tiers"] == []
+        assert model["effective_context_window_percent"] == 85
+        assert model["comp_hash"] is None
+        assert identity in model["base_instructions"]
+        assert "GPT-5" not in model["base_instructions"]
+        messages = json.dumps(model["model_messages"], ensure_ascii=False)
+        assert identity in messages
+        assert "GPT-5" not in messages
+
+
 def test_sync_replaces_catalog_setting_and_preserves_other_toml(tmp_path: Path) -> None:
     codex_home = tmp_path / "codex"
     codex_home.mkdir()

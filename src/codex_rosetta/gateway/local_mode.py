@@ -15,6 +15,7 @@ from .config import _atomic_write_bytes
 CATALOG_FILENAME = "model_catalog.json"
 CODEX_CONFIG_FILENAME = "config.toml"
 CATALOG_RESOURCE = "codex_models_0_144_1.json"
+PRESET_RESOURCE = "codex_model_presets.json"
 
 _MODEL_CATALOG_ASSIGNMENT_RE = re.compile(
     r"^[ \t]*(?:model_catalog_json|[\"']model_catalog_json[\"'])[ \t]*="
@@ -103,17 +104,123 @@ def _active_catalog_assignment_lines(text: str) -> set[int]:
     return assignments
 
 
+def _json_resource(name: str) -> Any:
+    raw = resources.files("codex_rosetta.gateway").joinpath(name).read_text("utf-8")
+    return json.loads(raw)
+
+
 def _catalog_resource() -> dict[str, Any]:
-    raw = (
-        resources.files("codex_rosetta.gateway")
-        .joinpath(CATALOG_RESOURCE)
-        .read_text(encoding="utf-8")
-    )
-    catalog = json.loads(raw)
+    catalog = _json_resource(CATALOG_RESOURCE)
     models = catalog.get("models") if isinstance(catalog, dict) else None
     if not isinstance(models, list) or not models:
         raise ValueError("bundled Codex model catalog is empty or invalid")
     return catalog
+
+
+def _preset_resource() -> dict[str, Any]:
+    presets = _json_resource(PRESET_RESOURCE)
+    if not isinstance(presets, dict):
+        raise ValueError("bundled Codex model presets must be an object")
+    if not isinstance(presets.get("shared_overrides"), dict):
+        raise ValueError("bundled Codex model presets have invalid shared overrides")
+    if not isinstance(presets.get("models"), list):
+        raise ValueError("bundled Codex model presets have invalid models")
+    return presets
+
+
+def _replace_identity(value: Any, source: str, identity: str) -> Any:
+    if isinstance(value, str):
+        return value.replace(source, identity)
+    if isinstance(value, list):
+        return [_replace_identity(item, source, identity) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _replace_identity(item, source, identity)
+            for key, item in value.items()
+        }
+    return copy.deepcopy(value)
+
+
+def _reasoning_levels(
+    terra: dict[str, Any], requested_efforts: list[str]
+) -> list[dict[str, Any]]:
+    terra_levels = terra.get("supported_reasoning_levels")
+    if not isinstance(terra_levels, list):
+        raise ValueError("gpt-5.6-terra has invalid reasoning levels")
+    by_effort = {
+        level.get("effort"): level
+        for level in terra_levels
+        if isinstance(level, dict) and isinstance(level.get("effort"), str)
+    }
+    missing = [effort for effort in requested_efforts if effort not in by_effort]
+    if missing:
+        raise ValueError(f"model preset references unknown reasoning levels: {missing}")
+    return [copy.deepcopy(by_effort[effort]) for effort in requested_efforts]
+
+
+def _materialize_model_preset(
+    terra: dict[str, Any],
+    shared_overrides: dict[str, Any],
+    raw_preset: dict[str, Any],
+    identity_source: str,
+) -> dict[str, Any]:
+    required_strings = ("slug", "display_name", "description", "identity")
+    if any(not isinstance(raw_preset.get(field), str) for field in required_strings):
+        raise ValueError("bundled Codex model preset has invalid identity fields")
+    requested_efforts = raw_preset.get("supported_reasoning_levels")
+    if (
+        not isinstance(requested_efforts, list)
+        or not requested_efforts
+        or not all(isinstance(effort, str) for effort in requested_efforts)
+    ):
+        raise ValueError("bundled Codex model preset has invalid reasoning levels")
+
+    model = copy.deepcopy(terra)
+    identity = raw_preset["identity"]
+    for field in ("base_instructions", "model_messages"):
+        model[field] = _replace_identity(model.get(field), identity_source, identity)
+
+    model.update(copy.deepcopy(shared_overrides))
+    model.update(
+        {
+            key: copy.deepcopy(value)
+            for key, value in raw_preset.items()
+            if key not in {"identity", "supported_reasoning_levels"}
+        }
+    )
+    context_window = model.get("context_window")
+    if not isinstance(context_window, int) or context_window <= 0:
+        raise ValueError(f"model preset '{model['slug']}' has invalid context window")
+    model["max_context_window"] = context_window
+    model["supported_reasoning_levels"] = _reasoning_levels(terra, requested_efforts)
+    default_reasoning = terra.get("default_reasoning_level")
+    model["default_reasoning_level"] = (
+        default_reasoning
+        if default_reasoning in requested_efforts
+        else requested_efforts[0]
+    )
+    return model
+
+
+def _model_presets(terra: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    resource = _preset_resource()
+    template_slug = resource.get("template_slug")
+    identity_source = resource.get("identity_source")
+    if template_slug != terra.get("slug") or not isinstance(identity_source, str):
+        raise ValueError("bundled Codex model presets have invalid template metadata")
+    shared_overrides = resource["shared_overrides"]
+    presets: dict[str, dict[str, Any]] = {}
+    for raw_preset in resource["models"]:
+        if not isinstance(raw_preset, dict):
+            raise ValueError("bundled Codex model preset must be an object")
+        model = _materialize_model_preset(
+            terra, shared_overrides, raw_preset, identity_source
+        )
+        slug = model["slug"]
+        if slug in presets:
+            raise ValueError(f"duplicate bundled Codex model preset: {slug}")
+        presets[slug] = model
+    return presets
 
 
 def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
@@ -128,6 +235,7 @@ def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
     terra = by_slug.get("gpt-5.6-terra")
     if terra is None:
         raise ValueError("bundled Codex model catalog has no gpt-5.6-terra preset")
+    presets = _model_presets(terra)
 
     custom_names: set[str] = set()
     model_groups = raw_config.get("model_groups", {})
@@ -145,10 +253,11 @@ def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
             )
 
     for name in sorted(custom_names):
-        model = copy.deepcopy(terra)
-        model["slug"] = name
-        model["display_name"] = name
-        model["description"] = name
+        model = copy.deepcopy(presets.get(name, terra))
+        if name not in presets:
+            model["slug"] = name
+            model["display_name"] = name
+            model["description"] = name
         base_models.append(model)
 
     return {"models": base_models}

@@ -18,6 +18,13 @@
 
 打包 JSON 一共出现 41 个不同的键。`ModelInfo` 还接受 `effective_context_window_percent`，但所有打包条目都省略它，因此使用默认值 `95`。所以本文覆盖 42 个可作为目录输入的字段。
 
+Rosetta 另外打包了基于 Terra 的 `deepseek-v4-pro`、`deepseek-v4-flash`、
+`glm-5.2`、`qwen3.7-plus`、`qwen3.7-max`、`mimo-v2.5-flash`、
+`mimo-v2.5-pro`、`minimax-m3` 和 `kimi-k2.7-code` 预设。只有 LLM 模型组中
+存在完全相同的别名时才会展开对应预设；它们不属于上游八项目录。每个预设保留
+Terra 的指令结构并替换模型身份，同时声明各自的上下文、输入模态、推理档位和
+经过选择的 Codex 能力字段。
+
 打包 JSON 中有四个键不属于当前 Rust `ModelInfo`。加载打包文件时，Serde 会忽略它们：
 
 - `available_in_plans`；
