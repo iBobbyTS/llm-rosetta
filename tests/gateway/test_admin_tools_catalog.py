@@ -12,7 +12,7 @@ from codex_rosetta.gateway.app import create_app
 from codex_rosetta.gateway.config import GatewayConfig
 from codex_rosetta.gateway.tool_profiles import tool_profile_contract
 
-CODEX_0_144_1_SOURCE_COMMIT = "44918ea10c0f99151c6710411b4322c2f5c96bea"
+CODEX_0_144_4_SOURCE_COMMIT = "8c68d4c87dc54d38861f5114e920c3de2efa5876"
 
 EXPECTED_FUNCTIONS = {
     "create_goal",
@@ -236,9 +236,9 @@ def test_catalog_defaults_and_namespace_image_policy():
     catalog, items, policies, _groups, _namespaces = _catalog_maps()
 
     assert catalog["metadata"]["schema_version"] == 3
-    assert catalog["metadata"]["catalog_version"] == "codex-0.144.1"
-    assert catalog["metadata"]["codex_cli_version"] == "0.144.1"
-    assert catalog["metadata"]["codex_source_commit"] == CODEX_0_144_1_SOURCE_COMMIT
+    assert catalog["metadata"]["catalog_version"] == "codex-0.144.4"
+    assert catalog["metadata"]["codex_cli_version"] == "0.144.4"
+    assert catalog["metadata"]["codex_source_commit"] == CODEX_0_144_4_SOURCE_COMMIT
     assert catalog["metadata"]["profile_selection"] == "model_group"
     assert catalog["builtin_profile"]["id"] == "builtin"
     assert catalog["builtin_profile"]["name"] == "Chat Default"

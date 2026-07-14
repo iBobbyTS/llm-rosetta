@@ -16,7 +16,7 @@ from .config import _atomic_write_bytes
 
 CATALOG_FILENAME = "model_catalog.json"
 CODEX_CONFIG_FILENAME = "config.toml"
-CATALOG_RESOURCE = "codex_models_0_144_1.json"
+CATALOG_RESOURCE = "codex_models_0_144_4.json"
 PRESET_RESOURCE = "codex_model_presets.json"
 CODEX_API_KEY_ID = "codex"
 CODEX_API_KEY_LABEL = "codex"
@@ -429,6 +429,34 @@ def _model_presets(terra: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return presets
 
 
+def _configured_model_upstreams(raw_config: dict[str, Any]) -> dict[str, str | None]:
+    configured: dict[str, str | None] = {}
+    model_groups = raw_config.get("model_groups", {})
+    if not isinstance(model_groups, dict):
+        return configured
+
+    for group in model_groups.values():
+        if not isinstance(group, dict):
+            continue
+        models = group.get("models", {})
+        if not isinstance(models, dict):
+            continue
+        for name, raw_model in models.items():
+            if not isinstance(name, str) or not name:
+                continue
+            raw_upstream = (
+                raw_model.get("upstream_model")
+                if isinstance(raw_model, dict)
+                else raw_model
+            )
+            configured[name] = (
+                raw_upstream.strip()
+                if isinstance(raw_upstream, str) and raw_upstream.strip()
+                else None
+            )
+    return configured
+
+
 def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
     """Build a Codex catalog from configured models or the bundled defaults."""
     bundled = _catalog_resource()
@@ -443,30 +471,21 @@ def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("bundled Codex model catalog has no gpt-5.6-terra preset")
     presets = _model_presets(terra)
 
-    configured_names: set[str] = set()
-    has_configured_models = False
-    model_groups = raw_config.get("model_groups", {})
-    if isinstance(model_groups, dict):
-        for group in model_groups.values():
-            if not isinstance(group, dict):
-                continue
-            models = group.get("models", {})
-            if not isinstance(models, dict):
-                continue
-            valid_names = {name for name in models if isinstance(name, str) and name}
-            has_configured_models = has_configured_models or bool(valid_names)
-            configured_names.update(valid_names)
-
-    if not has_configured_models:
+    configured_upstream_names = _configured_model_upstreams(raw_config)
+    if not configured_upstream_names:
         return {"models": base_models}
 
     selected_models: list[dict[str, Any]] = []
-    for name in sorted(configured_names):
+    for name in sorted(configured_upstream_names):
         model = copy.deepcopy(by_slug.get(name) or presets.get(name) or terra)
         if name not in by_slug and name not in presets:
             model["slug"] = name
             model["display_name"] = name
             model["description"] = name
+        if name == "codex-auto-review":
+            upstream_name = configured_upstream_names.get(name)
+            if upstream_name is not None and upstream_name != name:
+                model["tool_mode"] = "code_mode_only"
         selected_models.append(model)
 
     return {"models": selected_models}

@@ -93,6 +93,63 @@ def test_catalog_preserves_official_bundled_entries_for_configured_slugs() -> No
     assert configured == [defaults["gpt-5.5"], defaults["gpt-5.6-terra"]]
 
 
+@pytest.mark.parametrize(
+    "model_config",
+    [
+        {},
+        {"upstream_model": ""},
+        {"upstream_model": "codex-auto-review"},
+        "codex-auto-review",
+    ],
+)
+def test_catalog_preserves_auto_review_tool_mode_without_model_mapping(
+    model_config: dict[str, str] | str,
+) -> None:
+    raw = {
+        "model_groups": {
+            "review": {
+                "type": "llm",
+                "models": {"codex-auto-review": model_config},
+            }
+        }
+    }
+
+    default = next(
+        model
+        for model in build_model_catalog({})["models"]
+        if model["slug"] == "codex-auto-review"
+    )
+
+    assert default["tool_mode"] is None
+    assert build_model_catalog(raw)["models"] == [default]
+
+
+@pytest.mark.parametrize(
+    "model_config",
+    [{"upstream_model": "deepseek-v4-flash"}, "deepseek-v4-flash"],
+)
+def test_catalog_forces_code_mode_for_mapped_auto_review_model(
+    model_config: dict[str, str] | str,
+) -> None:
+    raw = {
+        "model_groups": {
+            "review": {
+                "type": "llm",
+                "models": {"codex-auto-review": model_config},
+            }
+        }
+    }
+
+    default = next(
+        model
+        for model in build_model_catalog({})["models"]
+        if model["slug"] == "codex-auto-review"
+    )
+    expected = dict(default, tool_mode="code_mode_only")
+
+    assert build_model_catalog(raw)["models"] == [expected]
+
+
 def test_catalog_materializes_named_third_party_presets_from_terra() -> None:
     expected = {
         "deepseek-v4-pro": (

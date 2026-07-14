@@ -65,7 +65,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "codex_rosetta" = ["py.typed", "shims/providers/*/provider.yaml", "shims/providers/*/*/provider.yaml"]
-"codex_rosetta.gateway" = ["codex_models_0_144_1.json", "codex_model_presets.json"]
+"codex_rosetta.gateway" = ["codex_models_0_144_4.json", "codex_model_presets.json"]
 "codex_rosetta.gateway.admin" = ["admin.html", "admin_i18n.json", "tool_catalog.json"]
 
 [tool.setuptools.dynamic]

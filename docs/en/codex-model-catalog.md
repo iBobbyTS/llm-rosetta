@@ -2,8 +2,8 @@
 
 This document describes the model catalog consumed by Codex and how
 Codex-Rosetta should use it when exposing third-party models. It is based on
-Codex CLI `0.144.1`, source commit
-`44918ea10c0f99151c6710411b4322c2f5c96bea`, especially:
+Codex CLI `0.144.4`, source commit
+`8c68d4c87dc54d38861f5114e920c3de2efa5876`, especially:
 
 - `codex-rs/models-manager/models.json`;
 - `codex-rs/protocol/src/openai_models.rs`;
@@ -39,6 +39,18 @@ provider's case-sensitive `name`. The managed provider uses Responses, the
 gateway's stable `codex` API key, and the effective local listening port.
 Existing non-Rosetta provider tables and their parameters remain untouched.
 
+`codex-auto-review` has one local-mode exception. When its upstream model is
+omitted or is also `codex-auto-review`, Rosetta preserves the official bundled
+entry, including its unset `tool_mode`. This lets OpenAI or GPT relay services
+receive the more native Responses request shape without an unnecessary catalog
+override. When the alias is explicitly mapped to a different upstream model,
+local mode writes `tool_mode: "code_mode_only"` for that entry. The different
+upstream name is the user's signal that the review model is being provided by a
+non-OpenAI service; constraining it to the newer Code Mode reduces the number
+of legacy and mixed tool surfaces that Rosetta must adapt. This rule uses only
+the configured model mapping and does not infer provider identity from names or
+URLs.
+
 Rosetta also packages Terra-derived presets for `deepseek-v4-pro`,
 `deepseek-v4-flash`, `glm-5.2`, `qwen3.7-plus`, `qwen3.7-max`,
 `mimo-v2.5-flash`, `mimo-v2.5-pro`, `minimax-m3`, and `kimi-k2.7-code`.
@@ -60,7 +72,7 @@ Four keys exist in the bundled JSON but are not members of the current Rust
 - `prefer_websockets`;
 - `reasoning_summary_format`.
 
-They are marked **ignored in 0.144.1** below. Rosetta must not implement runtime
+They are marked **ignored in 0.144.4** below. Rosetta must not implement runtime
 protocol behavior from them unless a later Codex version starts consuming
 them. `used_fallback_model_metadata` is the inverse case: it is an internal
 `ModelInfo` runtime flag with deserialization disabled, so it is not a valid
@@ -78,8 +90,8 @@ catalog input field.
 | `supported_in_api` | boolean, `true` | Propagates into the model preset's API-support marker. | Set only when the exposed alias can actually be routed by Rosetta. This flag does not validate the upstream API. |
 | `availability_nux` | object or null, `{"message":"New model available."}` | Optional new-user-experience message shown when a model becomes available. | Usually `null` for private aliases. Never use it as a capability switch. |
 | `upgrade` | object or null, `{"model":"replacement","migration_markdown":"Use replacement."}` | Supplies a recommended replacement and migration message for an older model. | Use only for a deliberate alias migration. Keep upstream routing changes in Rosetta configuration, not in this UI hint. |
-| `available_in_plans` | string array, `["plus","team"]` | **Ignored in 0.144.1:** not present in `ModelInfo`. | Do not use it for Rosetta authorization or routing. Enforce access at the gateway/provider layer. |
-| `minimal_client_version` | string in bundled JSON, `"0.144.0"` | **Ignored in 0.144.1:** not present in `ModelInfo`. | Do not rely on it to reject old clients. Use an explicit gateway compatibility policy if required. |
+| `available_in_plans` | string array, `["plus","team"]` | **Ignored in 0.144.4:** not present in `ModelInfo`. | Do not use it for Rosetta authorization or routing. Enforce access at the gateway/provider layer. |
+| `minimal_client_version` | string in bundled JSON, `"0.144.0"` | **Ignored in 0.144.4:** not present in `ModelInfo`. | Do not rely on it to reject old clients. Use an explicit gateway compatibility policy if required. |
 
 ## Reasoning, output, and service tiers
 
@@ -89,7 +101,7 @@ catalog input field.
 | `supported_reasoning_levels` | object array, `[{"effort":"low","description":"Fast"},{"effort":"high","description":"Deep"}]` | Populates selectable reasoning efforts and their UI descriptions. Current enums include `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`, subject to version changes. | Advertise only efforts that the upstream accepts or that Rosetta intentionally maps. Do not copy `ultra` merely to obtain delegation behavior. |
 | `supports_reasoning_summaries` | boolean, `false` | Allows Codex to request reasoning summaries. | Use `false` unless the upstream supports the request/response shape or Rosetta reliably converts or strips it. |
 | `default_reasoning_summary` | `"auto"`, `"concise"`, `"detailed"`, or `"none"` | Default summary mode when the user has not configured one. | Prefer `none` for third-party models until summary delivery is verified end to end. |
-| `reasoning_summary_format` | string, `"experimental"` | **Ignored in 0.144.1:** not present in `ModelInfo`. | Do not branch Rosetta conversion on this key. Inspect actual request and stream fields instead. |
+| `reasoning_summary_format` | string, `"experimental"` | **Ignored in 0.144.4:** not present in `ModelInfo`. | Do not branch Rosetta conversion on this key. Inspect actual request and stream fields instead. |
 | `support_verbosity` | boolean, `true` | When true, Codex sends the configured or default Responses `text.verbosity`; when false it omits it. | Enable only when the upstream accepts it or Rosetta strips/maps it. |
 | `default_verbosity` | `"low"`, `"medium"`, `"high"`, or null | Default Responses verbosity when supported and not overridden by the user. | Use a value actually supported by the upstream. `null` is safest when `support_verbosity` is false. |
 | `service_tiers` | object array, `[{"id":"priority","name":"Fast","description":"Higher speed"}]` | Lists allowed service tiers for UI and subagent/model selection; requested tiers are validated against this list. | Keep empty unless the Rosetta provider maps the tier to a real upstream service class. |
@@ -123,14 +135,14 @@ catalog input field.
 | `use_responses_lite` | boolean, `false` | Enables Codex's Responses Lite dialect: tools/instructions may move into input items, internal headers are used, hosted tools are disabled, and standalone namespace tools are expected. | Set true only if Rosetta handles `input[].type="additional_tools"`, developer instructions, custom `exec`, standalone `/v1/alpha/search`, compact/header behavior, and the resulting stream. |
 | `multi_agent_version` | `"disabled"`, `"v1"`, `"v2"`, or null | Selects legacy multi-agent, collaboration v2, disabled, or feature/config fallback behavior. It affects tool definitions and subagent lifecycle. | Use `disabled` or null until the third-party model reliably completes the corresponding tool loop. Prefer v1 over v2 when collaboration-specific schemas are not stable for that model. |
 | `auto_review_model_override` | string or null, `"review-model"` | Redirects command-execution approval review from the selected model to another model. | Set to a Rosetta-exposed alias that is actually routable and suited to approval review. Keep null for ordinary models. |
-| `prefer_websockets` | boolean, `true` | **Ignored in 0.144.1:** not present in `ModelInfo`; WebSocket selection is controlled elsewhere. | Do not claim WebSocket support or change Rosetta transport from this field. Verify the actual client request path. |
+| `prefer_websockets` | boolean, `true` | **Ignored in 0.144.4:** not present in `ModelInfo`; WebSocket selection is controlled elsewhere. | Do not claim WebSocket support or change Rosetta transport from this field. Verify the actual client request path. |
 
 ## Instructions and skills
 
 | Field | Type and example | Codex behavior | Rosetta guidance |
 | --- | --- | --- | --- |
 | `base_instructions` | string, `"You are a coding agent..."` | Base model instructions used when no valid instruction template overrides them. | Write instructions for the third-party model's real tool and reasoning behavior. Do not copy a large GPT prompt solely to make Codex expose tools. |
-| `model_messages` | object or null, `{"instructions_template":"... {{ personality }} ...","instructions_variables":{"personality_default":"","personality_friendly":"...","personality_pragmatic":"..."},"approvals":{"on_request":"...","on_request_auto_review":"..."}}` | If `instructions_template` exists, it always replaces `base_instructions`. A `{{ personality }}` placeholder plus complete variables enables personality-specific text. `approvals` supplies approval-mode messages. | Use null or a small tested template first. If a template is present, keep all critical instructions there because `base_instructions` will not be appended automatically. |
+| `model_messages` | object or null, `{"instructions_template":"... {{ personality }} ...","instructions_variables":{"personality_default":"","personality_friendly":"...","personality_pragmatic":"..."},"approvals":{"on_request":"...","on_request_auto_review":"..."},"auto_review":{"policy":"..."}}` | If `instructions_template` exists, it always replaces `base_instructions`. A `{{ personality }}` placeholder plus complete variables enables personality-specific text. `approvals` supplies approval-mode messages. In 0.144.4, optional `auto_review.policy` supplies the catalog policy for the automatic reviewer and survives instruction-template clearing. | Use null or a small tested template first. If a template is present, keep all critical instructions there because `base_instructions` will not be appended automatically. Treat the auto-review policy as security-sensitive model guidance and copy it only when its behavior has been reviewed. |
 | `include_skills_usage_instructions` | boolean, `false` | Controls whether Codex appends the full “How to use skills” tutorial to the skills fragment. It does not control whether the available-skills list itself is sent. | Keep false unless the third-party model materially benefits from the longer tutorial and has enough context budget. |
 
 ### `base_instructions` and `model_messages` in bundled models
@@ -245,7 +257,7 @@ third-party model should use the same prompt or limits:
 ```
 
 The four currently ignored bundled keys are omitted deliberately. Adding them
-would not change Codex 0.144.1 runtime behavior.
+would not change Codex 0.144.4 runtime behavior.
 
 ## Upgrade review requirements
 

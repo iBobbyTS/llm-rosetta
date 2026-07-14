@@ -1,5 +1,5 @@
 {
-  "codex_source_commit": "2e8c3756f95789c215d9ea9a5ade6ec377934b3f",
+  "codex_source_commit": "8c68d4c87dc54d38861f5114e920c3de2efa5876",
   "contract": {
     "apply_patch": {
       "format_type": "grammar",
@@ -47,7 +47,6 @@
     ],
     "endpoints": {
       "MEMORIES_SUMMARIZE_ENDPOINT": "/memories/trace_summarize",
-      "REALTIME_CALLS_ENDPOINT": "/realtime/calls",
       "RESPONSES_COMPACT_ENDPOINT": "/responses/compact",
       "RESPONSES_ENDPOINT": "/responses"
     },
@@ -161,6 +160,10 @@
       "approvals": {
         "attributes": [],
         "type": "Option<ApprovalMessages>"
+      },
+      "auto_review": {
+        "attributes": [],
+        "type": "Option<AutoReviewMessages>"
       },
       "instructions_template": {
         "attributes": [],

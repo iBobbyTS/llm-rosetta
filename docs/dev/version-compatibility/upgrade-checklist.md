@@ -102,7 +102,7 @@ src/codex_rosetta/gateway/stream_phase_buffer.py
 src/codex_rosetta/gateway/tool_adaptation.py
 src/codex_rosetta/gateway/web_search.py
 src/codex_rosetta/gateway/local_mode.py
-src/codex_rosetta/gateway/codex_models_0_144_1.json
+src/codex_rosetta/gateway/codex_models_0_144_4.json
 src/codex_rosetta/gateway/codex_model_presets.json
 src/codex_rosetta/gateway/admin/tool_catalog.json
 src/codex_rosetta/converters/openai_responses/

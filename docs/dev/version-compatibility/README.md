@@ -25,24 +25,24 @@ Codex-Rosetta source versions use `{codex_version}.r{patch_number}`. The first t
 
 ## Current pending inspection baseline
 
-Inspection date: 2026-07-12
+Inspection date: 2026-07-14
 
 | Project | Current Value | Description |
 | --- | --- | --- |
-| Local Codex CLI | `codex-cli 0.144.1` | From `codex --version`; newer than the `0.144.0.r0` compatibility target |
-| Codex source branch | detached `rust-v0.144.1` | Exact release reference in `../openai-codex-src` |
-| Codex source commit | `44918ea10c0f99151c6710411b4322c2f5c96bea` | Exact peeled commit for `rust-v0.144.1` |
-| Codex source timestamp | `2026-07-09T15:10:27-07:00` | Release commit timestamp |
+| Local Codex CLI | `codex-cli 0.144.4` | From `codex --version`; newer than the `0.144.0.r0` compatibility target |
+| Codex source branch | detached `rust-v0.144.4` | Exact release reference in `../openai-codex-src` |
+| Codex source commit | `8c68d4c87dc54d38861f5114e920c3de2efa5876` | Exact peeled commit for `rust-v0.144.4` |
+| Codex source timestamp | `2026-07-13T21:20:37-07:00` | Release commit timestamp |
 | Codex-Rosetta package version | `0.144.0.r0` | First Rosetta patch for Codex `0.144.0` |
-| Codex-Rosetta review snapshot | HEAD `eb947426572ad7658c4b5ad19688fa68659a06b6` plus uncommitted work | Seventh-round repair close observed 86 tracked modified files, 20 untracked files, and a tracked diff of 4,757 additions / 1,175 deletions |
+| Codex-Rosetta review snapshot | HEAD `47157ee` plus the 0.144.4 compatibility worktree | Exact release compatibility remains pending until the triggered live gates pass |
 
-This is a dirty inspection snapshot, not a clean reproducible release revision. The `0.144.1` reference review and the earlier `0.144.0` compatibility decision are **pending / not approved** until every triggered live gate passes against an exact clean Codex-Rosetta commit. The Codex CLI release version, Codex source commit, Codex-Rosetta source version, and Codex-Rosetta commit remain independent compatibility identifiers. See [`reports/20260712-codex-v0.144.1.md`](reports/20260712-codex-v0.144.1.md) for the scoped source review and remaining gates.
+This is a dirty inspection snapshot, not a clean reproducible release revision. The `0.144.4` reference review and the earlier `0.144.0` compatibility decision are **pending / not approved** until every triggered live gate passes against an exact clean Codex-Rosetta commit. The Codex CLI release version, Codex source commit, Codex-Rosetta source version, and Codex-Rosetta commit remain independent compatibility identifiers. See [`reports/20260714-codex-v0.144.4.md`](reports/20260714-codex-v0.144.4.md) for the scoped source review and remaining gates; the 0.144.1 report remains historical evidence.
 
 ## Recorded verification results (partial)
 
 | Check | Results |
 | --- | --- |
-| Codex source contract check | Passed after updating baseline; matches `2e8c3756f957…` |
+| Codex source contract check | Baseline reviewed and updated for `8c68d4c87dc…`; final worktree verification is recorded in the 0.144.4 report |
 | Codex-specific targeted regression | `404 passed`; extended regression `425 passed, 6 warnings`; Responses converter `356 passed` |
 | `make lint` | Passed; both Ruff check and format check passed |
 | `make test` | `2533 passed, 4 skipped, 9 warnings` |
