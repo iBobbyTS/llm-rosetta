@@ -1,0 +1,14 @@
+{
+  "id": "05",
+  "timeout_seconds": 120,
+  "success_marker": "RESULT:GOAL_LIFECYCLE_OK",
+  "failure_marker": "RESULT:GOAL_LIFECYCLE_FAILED",
+  "expected_native_pattern": {
+    "ordered_calls": ["get_goal", "create_goal", "get_goal", "update_goal"],
+    "objective": "Verify projected Goal tools",
+    "token_budget_present": false,
+    "final_status": "complete",
+    "same_thread_required": true,
+    "gateway_log_evidence_required": true
+  }
+}

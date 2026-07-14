@@ -55,6 +55,26 @@ delegation judgment or subagent answer quality. Its provider matrix uses exact
 case-sensitive IDs and display names `custom` and `OpenAI`; lowercase `openai`
 does not satisfy the OpenAI identity cell.
 
+The built-in Code Mode suite is
+[`tests/agent_workspace/builtin_tools`](../../tests/agent_workspace/builtin_tools/README.md).
+It fixes the provider display name to `OpenAI` and the model catalog shape to
+`gpt-5.6-sol`, then exercises a yielded `exec` cell through top-level `wait`,
+two projected `update_plan` calls, one grouped localized file workflow
+(`Glob`, `Grep`, `Read`, projected `apply_patch`, `Edit`, and create-file
+`Write`), projected `view_image`, and one grouped
+`get_goal`/`create_goal`/`update_goal` lifecycle.
+The network-search suite's second task covers `web.run` search-reference
+`open`, plus the current explicit Not Implemented results for `find` and
+`click`.
+
+`request_user_input` is not represented by a `codex exec` task. Codex 0.144.1
+explicitly rejects that server request in exec mode. Codex's own integration
+test drives it through the app-server protocol, captures the
+`ToolRequestUserInput` JSON-RPC request, sends a deterministic answer, and only
+then waits for turn completion. A future real-agent fixture must add an
+app-server JSON-RPC runner; `auto_resolution_ms` does not make the current exec
+runner capable of answering the request.
+
 The GPT relay provider-identity suite is
 [`tests/integration/gpt_relay`](../../tests/integration/gpt_relay/README.md).
 It sends the same real relay/model through non-OpenAI and `OpenAI` Codex

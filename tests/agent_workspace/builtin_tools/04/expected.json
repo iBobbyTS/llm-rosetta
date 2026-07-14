@@ -1,0 +1,15 @@
+{
+  "id": "04",
+  "timeout_seconds": 90,
+  "success_marker": "RESULT:VIEW_IMAGE_OK",
+  "failure_marker": "RESULT:VIEW_IMAGE_FAILED",
+  "expected_native_pattern": {
+    "model_facing_view_image_calls": 1,
+    "nested_view_image_calls": 1,
+    "path": "fixtures/quadrants.png",
+    "detail": "original",
+    "image_result_required": true,
+    "fallback_file_calls_max": 0,
+    "gateway_log_evidence_required": true
+  }
+}

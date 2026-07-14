@@ -1,0 +1,17 @@
+{
+  "id": "01",
+  "timeout_seconds": 90,
+  "success_marker": "RESULT:CODE_MODE_WAIT_OK",
+  "failure_marker": "RESULT:CODE_MODE_WAIT_FAILED",
+  "expected_native_pattern": {
+    "exec_calls": 1,
+    "yielded_cells": 1,
+    "wait_calls_min": 1,
+    "same_cell_required": true,
+    "required_wait_output": "WAIT_PHASE_2",
+    "write_stdin_calls_max": 0,
+    "shell_command_starts_max": 0,
+    "gateway_log_evidence_required": true
+  }
+}
+

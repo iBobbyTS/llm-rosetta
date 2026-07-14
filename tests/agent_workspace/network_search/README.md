@@ -8,6 +8,11 @@ quality, citation style, or the quality of the final prose.
 
 - `01`: search for the official Python documentation and report a fixed marker
   only when a `docs.python.org` URL is present in the tool result.
+- `02`: under the fixed OpenAI-identified, `gpt-5.6-sol`-equivalent scope,
+  search for the Python documentation, open its stored search reference, and
+  then call `find` and `click`. Local Rosetta currently supports `open` but
+  deliberately returns Not Implemented for `find` and `click`; the scenario
+  verifies both the successful page retrieval and those bounded errors.
 
 ## Required Codex configuration
 
@@ -18,7 +23,7 @@ unrelated suites.
 For a normal custom-provider run, retain the Rosetta localhost `base_url` and
 the provider identity requested by the matrix. Responses Lite models expose
 the standalone `web.run` extension only when the provider display name is
-`openai`; use that test-only display-name override when the matrix is intended
+`OpenAI`; use that test-only display-name override when the matrix is intended
 to exercise `web.run`, and record the override in the result. Use a separate
 timestamp run for every provider identity.
 
@@ -26,6 +31,11 @@ The task forbids shell commands and browser automation so the marker cannot be
 obtained by bypassing the model-facing network-search surface. Follow
 [`EVALUATION.md`](EVALUATION.md) and write `artifacts/evaluation.json` for every
 run.
+
+Task `02` must use a provider display name exactly equal to `OpenAI`, a model
+catalog entry exactly equivalent to `gpt-5.6-sol`, and the bundled `Chat
+Default` Profile. It is not valid evidence when Codex selects hosted
+`web_search` instead of standalone `web.run`.
 
 The final tool classification must come from Rosetta **Gateway Logs**, not from
 the Codex CLI item label. Codex renders both standalone `web.run` and hosted

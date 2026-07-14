@@ -325,13 +325,14 @@ Select a model by debugging target, don't just look at the Codex-facing alias:
 - Read the real file and use native `apply_patch` to complete the modification;
 - Let a patch fail, then confirm that the model can read the error, correct the patch and continue the round;
 - When function tool and custom tool coexist, model selection and Codex execution are correct;
-- `request_user_input`, Goal/Plan and Desktop/runtime-only tools can be called according to the real schema;
+- Run `tests/agent_workspace/builtin_tools/01` through `05` with provider display name `OpenAI` and a model catalog exactly equivalent to `gpt-5.6-sol`; verify Code Mode `wait`, two Plan updates, projected `apply_patch` plus localized file aliases, `view_image`, and the grouped Goal lifecycle;
+- Test `request_user_input` through an app-server JSON-RPC client that answers `ToolRequestUserInput`; `codex exec` explicitly rejects this request and cannot provide valid real-agent coverage;
 - plugin/MCP namespace finds the tool through `tool_search`, actually calls it and consumes the result;
 - `multi_agent_v1` and `multi_agent_v2/collaboration` provided by the version can spawn, communicate, wait and return results, and parent/window/thread does not cross talk;
 - For a new third-party alias, test collaboration v2 before retaining legacy `multi_agent_v1`; use v1 only when the newer lifecycle is demonstrably unreliable for that model;
 - When model catalog enables code mode, actually verify `exec/wait` and nested tool continuation; especially check that the payload received by `exec` is custom/raw-source, not function/JSON payload, and confirm that third-party models will recover with visible tool errors when they misuse the freeform tool and will not be fatal;
 - When web search is enabled, the model can initiate a search, read the results, and proceed to generate the final answer.
-- For a new third-party alias, test standalone `web.run` search/open before retaining legacy hosted `web_search`; verify the actual surface in Gateway Logs.
+- For a new third-party alias, test standalone `web.run` search/open before retaining legacy hosted `web_search`; verify the actual surface in Gateway Logs. Also run `network_search/02` to confirm the current explicit Not Implemented contract for `find` and `click` until those operations are implemented.
 
 #### D. Reasoning, History and Recovery
 

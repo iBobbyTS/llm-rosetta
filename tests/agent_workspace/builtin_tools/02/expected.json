@@ -1,0 +1,17 @@
+{
+  "id": "02",
+  "timeout_seconds": 90,
+  "success_marker": "RESULT:UPDATE_PLAN_OK",
+  "failure_marker": "RESULT:UPDATE_PLAN_FAILED",
+  "expected_native_pattern": {
+    "model_facing_update_plan_calls": 2,
+    "nested_update_plan_calls": 2,
+    "plan_update_events": 2,
+    "final_steps": [
+      {"step": "Inspect fixture", "status": "completed"},
+      {"step": "Report result", "status": "completed"}
+    ],
+    "gateway_log_evidence_required": true
+  }
+}
+

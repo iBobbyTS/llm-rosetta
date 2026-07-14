@@ -73,6 +73,41 @@ conditions hold. A correctly selected search tool whose backend fails is still
 an end-to-end test failure, while its `search_surface` classification remains
 valid.
 
+## Task `02` navigation decision
+
+Task `02` is successful only when Gateway Logs prove four separate
+model-facing `web.run` calls in order:
+
+1. `search_query` succeeds and returns a `docs.python.org` search reference;
+2. `open` resolves that stored reference and returns readable Python
+   documentation content;
+3. `find` returns the expected Not Implemented error naming `commands.find`
+   and ending with `Consider "Browser Use" skill`;
+4. `click` returns the expected Not Implemented error naming `commands.click`
+   and ending with the same Browser Use hint.
+
+The expected `find` and `click` errors are successful contract observations,
+not successful browser operations. An absent call, malformed arguments,
+unrelated error, passthrough HTML response, or model refusal is a task failure.
+The prompt requires attempting `click` after the expected `find` error so that
+one unsupported operation cannot hide the other.
+
+For task `02`, add these fields to `artifacts/evaluation.json`:
+
+```json
+{
+  "operation_results": {
+    "search_query": "success | failed | not_called",
+    "open": "success | failed | not_called",
+    "find": "expected_not_implemented | unexpected_error | not_called",
+    "click": "expected_not_implemented | unexpected_error | not_called"
+  },
+  "opened_reference": "bounded turnXsearchY value",
+  "open_returned_readable_content": true,
+  "browser_use_hint_observed_for": ["find", "click"]
+}
+```
+
 ## Required result file
 
 Write `artifacts/evaluation.json` with this shape:

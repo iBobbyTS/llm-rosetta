@@ -1,0 +1,25 @@
+{
+  "id": "03",
+  "timeout_seconds": 120,
+  "success_marker": "RESULT:LOCALIZED_FILES_OK",
+  "failure_marker": "RESULT:LOCALIZED_FILES_FAILED",
+  "expected_model_facing_pattern": {
+    "Glob": 1,
+    "Grep": 1,
+    "Read": 1,
+    "apply_patch": 1,
+    "Edit": 1,
+    "Write": 1
+  },
+  "expected_native_pattern": {
+    "nested_exec_command_calls_min": 3,
+    "apply_patch_semantic_calls_min": 3,
+    "model_selected_shell_calls_max": 0,
+    "gateway_log_evidence_required": true
+  },
+  "workspace_assertions": {
+    "fixtures/alpha.txt": "first exact line is status=edited; status=original absent",
+    "fixtures/beta.txt": "first exact line is status=patched; status=unchanged absent",
+    "fixtures/created.txt": "exact UTF-8 content CREATED_BY_WRITE followed by one newline"
+  }
+}

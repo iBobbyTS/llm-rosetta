@@ -1,0 +1,24 @@
+{
+  "id": "02",
+  "timeout_seconds": 150,
+  "success_marker": "RESULT:WEB_RUN_NAVIGATION_OK",
+  "failure_marker": "RESULT:WEB_RUN_NAVIGATION_FAILED",
+  "required_scope": {
+    "provider_display_name": "OpenAI",
+    "model_catalog_equivalent_to": "gpt-5.6-sol",
+    "search_surface": "web.run"
+  },
+  "expected_native_pattern": {
+    "ordered_operations": ["search_query", "open", "find", "click"],
+    "separate_calls_required": true,
+    "same_reference_required": true,
+    "successful_search_result_required": true,
+    "successful_open_result_required": true,
+    "find_error_feature": "commands.find",
+    "click_error_feature": "commands.click",
+    "unsupported_error_hint": "Consider \"Browser Use\" skill",
+    "command_calls_max": 0,
+    "browser_calls_max": 0,
+    "gateway_log_evidence_required": true
+  }
+}
