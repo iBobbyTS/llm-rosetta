@@ -102,6 +102,7 @@ src/codex_rosetta/gateway/stream_phase_buffer.py
 src/codex_rosetta/gateway/tool_adaptation.py
 src/codex_rosetta/gateway/web_search.py
 src/codex_rosetta/gateway/local_mode.py
+src/codex_rosetta/gateway/cli.py
 src/codex_rosetta/gateway/codex_models_0_144_4.json
 src/codex_rosetta/gateway/codex_model_presets.json
 src/codex_rosetta/gateway/admin/tool_catalog.json
@@ -220,7 +221,7 @@ The following behavior can be automatically verified using the fixed Codex reque
   rollback, unlimited mapping, and a real Codex image-history request above the
   former 50 MB ceiling;
 - `/v1/models` current OpenAI-style response remains distinct from Codex's dynamic `ModelInfo` catalog endpoint; statically verify the complete bundled catalog/schema contract without treating the gateway route as that endpoint;
-- Local-mode upstream catalog asset/source equality, eight-entry order, exact-name Terra-derived preset validation and prompt identity substitution, generic fallback aliases, CLI/WebUI first-use confirmation and clear behavior, custom Codex Home, TOML preservation, managed-only deletion, startup/model-mutation synchronization, remote-host warning, compensating rollback, and wheel/sdist resource inclusion;
+- Local-mode upstream catalog asset/source equality, eight-entry order, exact-name Terra-derived preset validation and prompt identity substitution, generic fallback aliases, CLI/WebUI first-use confirmation and clear behavior, `--no-local-mode` persistence without Codex Home mutation, custom Codex Home, TOML preservation, managed-only deletion, startup/model-mutation synchronization, remote-host warning, compensating rollback, and wheel/sdist resource inclusion;
 - Configuration/admin UI saving, defaults and runtime loading of Codex tool-adaptation switches.
 - Static tool-catalog contract: unique IDs, valid placement/policy references, required fixed tools, direct Responses Namespace parents versus flat Code Mode `namespace__function` entries, Function/Hosted input IDs/types/defaults/localization keys, excluded runtime-dynamic plugin/MCP/app/connector tools and obsolete hosted `image_generation`, current `image_gen__imagegen` coverage, Chat Default Profile defaults, supported states, and exact CLI/source metadata binding.
 

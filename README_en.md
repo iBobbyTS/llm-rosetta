@@ -93,7 +93,14 @@ are required.
 
 Once `--local-mode` has been used, the enabled state is stored in the gateway
 configuration and remains on for later starts without that option. To disable
-local mode and remove Rosetta's managed catalog, catalog assignment, selected
+local mode persistently without modifying Codex Home, run:
+
+```bash
+codex-rosetta-gateway --no-local-mode
+```
+
+`--local-mode` and `--no-local-mode` are mutually exclusive. To disable local
+mode and also remove Rosetta's managed catalog, catalog assignment, selected
 provider, and managed provider table from Codex `config.toml`, run:
 
 ```bash

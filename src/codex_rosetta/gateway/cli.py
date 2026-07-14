@@ -334,9 +334,10 @@ def _configure_local_mode_startup(
     raw_config = load_config_raw(config_path)
     server = raw_config.setdefault("server", {})
     config_changed = False
-    if args.local_mode:
-        config_changed = server.get("local_mode") is not True
-        server["local_mode"] = True
+    if args.local_mode or args.no_local_mode:
+        requested_local_mode = args.local_mode
+        config_changed = server.get("local_mode") is not requested_local_mode
+        server["local_mode"] = requested_local_mode
 
     try:
         GatewayConfig.from_raw_with_env(raw_config)
@@ -472,10 +473,16 @@ def main() -> None:
         default=None,
         help="Codex Home directory (default: $CODEX_HOME or ~/.codex)",
     )
-    parser.add_argument(
+    local_mode_group = parser.add_mutually_exclusive_group()
+    local_mode_group.add_argument(
         "--local-mode",
         action="store_true",
         help="Enable local mode persistently in config.jsonc",
+    )
+    local_mode_group.add_argument(
+        "--no-local-mode",
+        action="store_true",
+        help="Disable local mode persistently without modifying Codex Home",
     )
     parser.add_argument(
         "--confirm-clear-existing-catalog",

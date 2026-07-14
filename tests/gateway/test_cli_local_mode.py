@@ -151,6 +151,47 @@ def test_confirm_flag_records_consent_without_enabling_local_mode(
     assert started == [("127.0.0.1", 8765)]
 
 
+def test_no_local_mode_flag_persists_without_modifying_codex_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_dir = tmp_path / "gateway"
+    config_dir.mkdir()
+    config_path = config_dir / "config.jsonc"
+    config_path.write_text(
+        json.dumps(_gateway_config(local_mode=True, confirmed=True)),
+        encoding="utf-8",
+    )
+    codex_home = tmp_path / "codex"
+    codex_home.mkdir()
+    catalog = codex_home / "model_catalog.json"
+    catalog.write_text("existing catalog", encoding="utf-8")
+    config_toml = codex_home / "config.toml"
+    original_toml = 'model_catalog_json = "/existing/catalog.json"\nmodel = "user"\n'
+    config_toml.write_text(original_toml, encoding="utf-8")
+    started = _stub_server(monkeypatch)
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "codex-rosetta-gateway",
+            "--no-banner",
+            "--config",
+            str(config_dir),
+            "--codex-home",
+            str(codex_home),
+            "--no-local-mode",
+        ],
+    )
+
+    cli.main()
+
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["server"]["local_mode"] is False
+    assert catalog.read_text(encoding="utf-8") == "existing catalog"
+    assert config_toml.read_text(encoding="utf-8") == original_toml
+    assert started == [("127.0.0.1", 8765)]
+
+
 def test_noninteractive_first_start_requires_confirmation_flag(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

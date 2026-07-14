@@ -76,8 +76,15 @@ codex-rosetta-gateway --confirm-clear-existing-catalog
 需要同时开启本地模式和跳过确认，请与 `--local-mode` 一起使用。
 
 使用过 `--local-mode` 后，开启状态会写入网关配置，后续启动即使不再传入该参数也
-会保持开启。若要关闭本地模式，并从 Codex `config.toml` 中删除 Rosetta 管理的
-模型目录配置、当前 Provider 选择和 `codex_rosetta` Provider 表，运行：
+会保持开启。若要持久关闭本地模式且不修改 Codex Home，请运行：
+
+```bash
+codex-rosetta-gateway --no-local-mode
+```
+
+`--local-mode` 与 `--no-local-mode` 互斥。若要关闭本地模式，并同时从 Codex
+`config.toml` 中删除 Rosetta 管理的模型目录配置、当前 Provider 选择和
+`codex_rosetta` Provider 表，请运行：
 
 ```bash
 codex-rosetta-gateway local-mode clear
