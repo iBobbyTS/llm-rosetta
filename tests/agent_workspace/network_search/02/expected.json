@@ -1,24 +1,29 @@
 {
   "id": "02",
-  "timeout_seconds": 150,
-  "success_marker": "RESULT:WEB_RUN_NAVIGATION_OK",
-  "failure_marker": "RESULT:WEB_RUN_NAVIGATION_FAILED",
+  "timeout_seconds": 120,
+  "success_marker": "RESULT:WEB_RUN_REFERENCE_OPEN_OK",
+  "failure_marker": "RESULT:WEB_RUN_REFERENCE_OPEN_FAILED",
   "required_scope": {
     "provider_display_name": "OpenAI",
     "model_catalog_equivalent_to": "gpt-5.6-sol",
-    "search_surface": "web.run"
+    "tool_profile": "Chat Default",
+    "search_surface": "web.run",
+    "tavily_token": "required",
+    "web_run_sidecar": "disabled"
   },
   "expected_native_pattern": {
-    "ordered_operations": ["search_query", "open", "find", "click"],
+    "ordered_operations": ["search_query", "open"],
     "separate_calls_required": true,
-    "same_reference_required": true,
     "successful_search_result_required": true,
     "successful_open_result_required": true,
-    "find_error_feature": "commands.find",
-    "click_error_feature": "commands.click",
-    "unsupported_error_hint": "Consider \"Browser Use\" skill",
+    "search_domains": ["docs.python.org"],
+    "response_length": "short",
+    "opened_reference_pattern": "turnXsearchY",
+    "open_lineno": 1,
+    "open_line_zero_absent": true,
+    "static_python_open_required": true,
     "command_calls_max": 0,
-    "browser_calls_max": 0,
+    "external_browser_fallback_calls_max": 0,
     "gateway_log_evidence_required": true
   }
 }

@@ -54,14 +54,17 @@ stdin and restarted the process. The later two-stage continuation proved that
 | Hosted `web_search` | **Success** | `deepseek-v4-flash → deepseek-v4-flash` | Rosetta localized the hosted tool and Tavily returned a usable search result. |
 | `web.run` / `search_query` | **Success** | `gpt-5.6-sol → deepseek-v4-flash`; `gpt-5.6-terra → gpt-5.6-terra` | Search completed through the local Codex Search API and Tavily executor. |
 | `web.run` / `open` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | Rosetta resolved the stored `turnXsearchY` reference and returned readable page content. |
-| `web.run` / `find` | **Historical test: not implemented** | `gpt-5.6-sol → deepseek-v4-flash` | The run predates the optional `web-run` sidecar. It reached Rosetta and returned the documented Not Implemented error with the Browser Use hint. |
-| `web.run` / `click` | **Historical test: not implemented** | `gpt-5.6-sol → deepseek-v4-flash` | The run predates the optional `web-run` sidecar. It reached Rosetta and returned the documented Not Implemented error with the Browser Use hint. |
+| `web.run` / browser `open` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | With the optional sidecar enabled, it opened `example.com` and returned `turn0fetch0`, readable content, and numbered links. |
+| `web.run` / `find` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | The sidecar found `Example Domain` on the exact stored `turn0fetch0` reference. |
+| `web.run` / `click` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | The sidecar clicked link `1` on `turn0fetch0` and returned a new `turn1fetch0` reference. |
+| `web.run` / PDF `screenshot` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | The sidecar opened the one-page W3C PDF as `turn0view0`, found its embedded text, and returned render metadata plus `Dummy PDF file`. |
+| `web.run` / `time` | **Success** | `gpt-5.6-sol → deepseek-v4-flash` | One call with `+03:00` then `-05:30` returned both correctly labelled ISO 8601 timestamps without Tavily or the sidecar. |
 
-The optional sidecar now implements browser-backed `open`, `find`, `click`, and
-PDF `screenshot`, but this table does not promote them to Success until a new
-real-agent run records its model and Gateway Logs. The historical contract runs
-only prove that the earlier unsupported calls routed and failed in a controlled
-way.
+The 2026-07-14 isolated runs used the `codex_rosetta` provider (display name
+`OpenAI`), the `gpt-5.6-sol` catalog entry routed to `deepseek-v4-flash`, and
+Gateway Logs to confirm the `web.run` surface. The browser/PDF runs used the
+documented `web-run` seccomp configuration; no shell, direct HTTP, or external
+browser fallback was used.
 
 ## Namespace tools
 
@@ -96,10 +99,8 @@ The existing result set does not establish a final status for:
 - `tool_search`;
 - `clock.sleep` and other unlisted Clock operations;
 - Memories and Skills operations other than the rows above;
-- sidecar-backed `web.run` `find`, `click`, and PDF `screenshot` with a current
-  model;
 - other `web.run` commands such as `image_query`, `finance`, `weather`,
-  `sports`, and `time`;
+  and `sports`;
 - GitHub, MCP, App, and Connector Namespace tools;
 - disabled legacy surfaces such as `shell_command` and `multi_agent_v1`.
 

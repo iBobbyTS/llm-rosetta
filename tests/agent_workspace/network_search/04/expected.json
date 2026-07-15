@@ -1,0 +1,31 @@
+{
+  "id": "04",
+  "timeout_seconds": 150,
+  "success_marker": "RESULT:WEB_RUN_PDF_OK",
+  "failure_marker": "RESULT:WEB_RUN_PDF_FAILED",
+  "required_scope": {
+    "provider_display_name": "OpenAI",
+    "model_catalog_equivalent_to": "gpt-5.6-sol",
+    "tool_profile": "Chat Default",
+    "search_surface": "web.run",
+    "tavily_token": "not_required",
+    "web_run_sidecar": "required"
+  },
+  "expected_native_pattern": {
+    "ordered_operations": ["open", "find", "screenshot"],
+    "separate_calls_required": true,
+    "direct_open_url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+    "opened_reference_pattern": "turnXviewY",
+    "pdf_pages": 1,
+    "find_pattern": "Dummy PDF file",
+    "find_matches_min": 1,
+    "screenshot_reference_matches_open": true,
+    "screenshot_pageno": 0,
+    "rendered_size_required": true,
+    "text_source_required": true,
+    "rendered_text_contains": "Dummy PDF file",
+    "command_calls_max": 0,
+    "external_browser_fallback_calls_max": 0,
+    "gateway_log_evidence_required": true
+  }
+}

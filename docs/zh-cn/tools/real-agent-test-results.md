@@ -48,12 +48,16 @@ Codex 工具行为以 Codex 0.144.1 为基准；生图一行明确记录 Codex 0
 | Hosted `web_search` | **成功** | `deepseek-v4-flash → deepseek-v4-flash` | Rosetta 本地化 Hosted 工具后，Tavily 返回了可用搜索结果。 |
 | `web.run` / `search_query` | **成功** | `gpt-5.6-sol → deepseek-v4-flash`；`gpt-5.6-terra → gpt-5.6-terra` | 搜索经本地 Codex Search API 和 Tavily 执行成功。 |
 | `web.run` / `open` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | Rosetta 成功解析已存储的 `turnXsearchY` 引用，并返回可读页面内容。 |
-| `web.run` / `find` | **历史测试：未实现** | `gpt-5.6-sol → deepseek-v4-flash` | 该次运行早于可选 `web-run` sidecar；调用到达 Rosetta 后返回包含 Browser Use 提示的约定 Not Implemented 错误。 |
-| `web.run` / `click` | **历史测试：未实现** | `gpt-5.6-sol → deepseek-v4-flash` | 该次运行早于可选 `web-run` sidecar；调用到达 Rosetta 后返回包含 Browser Use 提示的约定 Not Implemented 错误。 |
+| `web.run` / 浏览器 `open` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | 启用可选 sidecar 后成功打开 `example.com`，返回 `turn0fetch0`、可读内容和带编号链接。 |
+| `web.run` / `find` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | sidecar 在同一个已存储的 `turn0fetch0` 引用中找到 `Example Domain`。 |
+| `web.run` / `click` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | sidecar 点击 `turn0fetch0` 的链接 `1`，并返回新的 `turn1fetch0` 引用。 |
+| `web.run` / PDF `screenshot` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | sidecar 将 W3C 的单页 PDF 打开为 `turn0view0`，找到其嵌入文本，并返回渲染元数据和 `Dummy PDF file`。 |
+| `web.run` / `time` | **成功** | `gpt-5.6-sol → deepseek-v4-flash` | 在一次调用中按顺序传入 `+03:00`、`-05:30`，返回两个标签正确的 ISO 8601 时间戳，未使用 Tavily 或 sidecar。 |
 
-可选 sidecar 现在已经实现浏览器版 `open`、`find`、`click` 和 PDF `screenshot`，
-但在新的实机运行记录测试模型和 Gateway Logs 前，本表不会把它们提升为成功。历史契约
-运行只证明当时未支持的调用能够正确路由并受控失败。
+2026-07-14 的隔离运行使用显示名为 `OpenAI` 的 `codex_rosetta` Provider，以及映射到
+`deepseek-v4-flash` 的 `gpt-5.6-sol` catalog 条目；通过 Gateway Logs 确认实际调用面为
+`web.run`。浏览器/PDF 场景使用文档规定的 `web-run` seccomp 配置，且没有使用 Shell、
+直接 HTTP 或外部浏览器回退。
 
 ## Namespace 工具
 
@@ -88,9 +92,8 @@ Codex 工具行为以 Codex 0.144.1 为基准；生图一行明确记录 Codex 0
 - `tool_search`；
 - `clock.sleep` 和其他未列出的 Clock 操作；
 - 上表以外的 Memories 和 Skills 操作；
-- 使用当前模型实测 sidecar 版 `web.run` 的 `find`、`click` 和 PDF `screenshot`；
 - 其他 `web.run` 命令，例如 `image_query`、`finance`、`weather`、`sports` 和
-  `time`；
+  `sports`；
 - GitHub、MCP、App 和 Connector Namespace 工具；
 - 默认禁用的旧工具面，例如 `shell_command` 和 `multi_agent_v1`。
 

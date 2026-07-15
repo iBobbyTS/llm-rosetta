@@ -2,6 +2,15 @@
   "id": "01",
   "timeout_seconds": 90,
   "success_marker": "RESULT:NETWORK_SEARCH_OK",
+  "failure_marker": "RESULT:NETWORK_SEARCH_FAILED",
+  "required_scope": {
+    "search_surface": [
+      "web.run",
+      "web_search"
+    ],
+    "tavily_token": "required_for_rosetta_local_execution",
+    "web_run_sidecar": "disabled"
+  },
   "expected_native_pattern": {
     "network_search_calls_min": 1,
     "successful_search_result_required": true,
@@ -11,6 +20,6 @@
       "web_search"
     ],
     "command_calls_max": 0,
-    "browser_calls_max": 0
+    "external_browser_fallback_calls_max": 0
   }
 }

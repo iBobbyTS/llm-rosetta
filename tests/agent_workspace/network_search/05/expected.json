@@ -1,0 +1,26 @@
+{
+  "id": "05",
+  "timeout_seconds": 60,
+  "success_marker": "RESULT:WEB_RUN_TIME_OK",
+  "failure_marker": "RESULT:WEB_RUN_TIME_FAILED",
+  "required_scope": {
+    "provider_display_name": "OpenAI",
+    "model_catalog_equivalent_to": "gpt-5.6-sol",
+    "tool_profile": "Chat Default",
+    "search_surface": "web.run",
+    "tavily_token": "not_required",
+    "web_run_sidecar": "disabled"
+  },
+  "expected_native_pattern": {
+    "network_calls": 1,
+    "ordered_operations": ["time"],
+    "time_entries_in_single_call": true,
+    "utc_offsets": ["+03:00", "-05:30"],
+    "iso_8601_timestamps_required": true,
+    "search_query_calls": 0,
+    "open_calls": 0,
+    "command_calls_max": 0,
+    "external_browser_fallback_calls_max": 0,
+    "gateway_log_evidence_required": true
+  }
+}

@@ -12,10 +12,11 @@ handling rather than prose quality.
 
 - [`command_execution`](command_execution/README.md): starting commands,
   polling a running process, and sending input to an existing process.
-- [`network_search`](network_search/README.md): selecting network search and
-  receiving a usable result without shell or browser fallbacks; its evaluator
-  uses Rosetta Gateway Logs to distinguish `web.run` from hosted
-  `web_search`.
+- [`network_search`](network_search/README.md): selecting network search plus
+  the implemented `web.run` search, static-page, browser-navigation, PDF, and
+  fixed-offset time operations without shell or external-browser fallbacks;
+  its evaluator uses Rosetta Gateway Logs to distinguish `web.run` from hosted
+  `web_search` and to prove which local executor ran.
 - [`context_compaction`](context_compaction/README.md): forcing a second
   model turn across Codex remote compaction and recording whether an
   OpenAI-identified provider returns a valid compaction item.

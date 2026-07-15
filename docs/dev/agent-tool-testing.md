@@ -21,10 +21,15 @@ two ordered interactive inputs.
 
 The network-search suite is
 [`tests/agent_workspace/network_search`](../../tests/agent_workspace/network_search/README.md).
-It verifies that the agent selects the model-facing search surface, receives a
-successful result containing an official Python documentation URL, and does not bypass the
-tool with a shell command or browser automation. Its outer evaluator follows
-the suite's `EVALUATION.md` and writes `artifacts/evaluation.json`.
+It retains a basic search-surface comparison, then covers every model-facing
+operation currently implemented by the local `web.run` bridge: domain-filtered
+Tavily search and response length, scoped `turnXsearchY` static open with
+`lineno`, sidecar-backed page `open`/`find`/`click` with `turnXfetchY`, PDF
+`open`/`find`/`screenshot` with `turnXviewY`, and Python fixed-offset `time`.
+The scenarios do not bypass the target surface with a shell, direct HTTP
+client, or external browser tool. Its outer evaluator follows the suite's
+`EVALUATION.md`, classifies the surface and local executor from Gateway Logs,
+and writes `artifacts/evaluation.json`.
 
 The context-compaction suite is
 [`tests/agent_workspace/context_compaction`](../../tests/agent_workspace/context_compaction/README.md).
@@ -77,9 +82,10 @@ description. The outer developer or development agent, not the tested model,
 decides whether that description contains a dog, grass or a lawn, and running.
 The suite also requires a Profile-configured OpenAI-compatible Images endpoint;
 it does not measure artistic quality.
-The network-search suite's second task covers `web.run` search-reference
-`open`, plus the current explicit Not Implemented results for `find` and
-`click`.
+The network-search suite records Tesseract fallback as container-test coverage
+rather than an agent fixture because the deterministic public PDF contains
+embedded text. The agent PDF task still exercises the complete model-facing
+`screenshot` operation and verifies render metadata plus returned text.
 
 `request_user_input` is not represented by a `codex exec` task. Codex 0.144.1
 explicitly rejects that server request in exec mode. Codex's own integration
@@ -135,14 +141,16 @@ in `expected.json`. For continuation tasks, confirm that the returned session
 identifier is reused. Restarting the scenario is a failure even if it produces
 the same final marker.
 
-For network-search tasks, confirm at least one model-facing search call, a
-non-error search result satisfying the task, and the absence of prohibited
-command or browser calls. The final `web.run` versus `web_search`
-classification must come from Rosetta Gateway Logs. Do not infer it from the
-Codex CLI item type because Codex displays both paths as `web_search`.
-Responses-to-Chat localization and Tavily execution remain a `web_search`
-surface; record Tavily separately as the executor. Missing or inconclusive
-Gateway Logs make the surface `ambiguous` and the run cannot pass.
+For network-search tasks, confirm every required model-facing operation, its
+non-error result, scoped references where applicable, and the absence of
+prohibited command, direct-HTTP, or external-browser calls. The final
+`web.run` versus `web_search` classification must come from Rosetta Gateway
+Logs. Do not infer it from the Codex CLI item type because Codex displays both
+paths as `web_search`. Responses-to-Chat localization and Tavily execution
+remain a `web_search` surface; record Tavily separately as the executor.
+Sidecar-backed browser/PDF execution behind `web.run` is a target path, not a
+fallback. Missing or inconclusive Gateway Logs make the surface `ambiguous`
+and the run cannot pass.
 
 For context-compaction tasks, require a genuine `compaction_trigger` input item
 in the Gateway Logs trace. Classify the run as completed, error reproduced, or
