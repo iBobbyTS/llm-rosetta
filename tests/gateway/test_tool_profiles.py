@@ -85,7 +85,10 @@ def test_builtin_profile_covers_catalog_with_type_specific_states():
         "Pass raw JavaScript source"
         in contract["readonly"]["builtin"]["inputs"]["custom.exec"]["guidance"]
     )
-    assert set(contract["readonly"]) == {"builtin"}
+    assert set(contract["readonly"]) == {
+        "builtin",
+        "openai-responses-tool-mapping-only",
+    }
     assert all(
         contract["builtin"][child_id] == "disabled"
         for child_id in contract["namespace_children"]["namespace.multi_agent_v1"]
@@ -95,6 +98,17 @@ def test_builtin_profile_covers_catalog_with_type_specific_states():
         "injected",
     )
     assert contract["builtin"]["injection.claude_code.read"] == "injected"
+
+
+def test_openai_responses_tool_mapping_only_profile_never_replaces_tools():
+    contract = tool_profile_contract()
+    profile = contract["readonly"]["openai-responses-tool-mapping-only"]["tools"]
+    catalog_items = load_tool_catalog()["items"]
+
+    assert set(profile) == set(contract["supported"])
+    for item in catalog_items:
+        expected = "disabled" if item["type"] == "custom_injection" else "passthrough"
+        assert profile[item["id"]] == expected
 
 
 def test_disabled_namespace_forces_all_child_states_to_disabled():
@@ -532,10 +546,13 @@ def test_tool_mapping_only_provider_applies_selected_group_profile():
     assert "tools" not in adapted
 
 
-def test_chat_default_is_the_only_bundled_profile():
+def test_bundled_profiles_expose_chat_and_responses_defaults():
     contract = tool_profile_contract()
 
-    assert set(contract["readonly"]) == {"builtin"}
+    assert set(contract["readonly"]) == {
+        "builtin",
+        "openai-responses-tool-mapping-only",
+    }
     assert resolve_tool_profile("builtin", {}) == contract["builtin"]
     assert "hosted.image_generation" not in contract["builtin"]
     assert contract["builtin"]["hosted.web_search"] == "disabled"

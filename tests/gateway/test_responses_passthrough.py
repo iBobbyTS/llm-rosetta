@@ -16,10 +16,9 @@ from codex_rosetta.routing import ResolvedRoute, is_openai_responses_passthrough
 
 
 def _responses_route() -> ResolvedRoute:
-    profile = {
-        item_id: ("disabled" if item_id.startswith("injection.") else "passthrough")
-        for item_id in tool_profile_contract()["builtin"]
-    }
+    profile = tool_profile_contract()["readonly"]["openai-responses-tool-mapping-only"][
+        "tools"
+    ]
     return ResolvedRoute(
         source_provider="openai_responses",
         target_provider="openai_responses",

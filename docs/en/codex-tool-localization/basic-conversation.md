@@ -30,7 +30,7 @@ This is important because Codex relies on fields that are not part of a minimal 
 - Native Responses tool item structure.
 - Provider-specific request fields such as `include`.
 
-Tool Profiles are selectable for this mode. **Chat Default** is currently the only bundled Profile and is also the default for Tool Mapping only. It marks `web.run` as Modified, so Codex still exposes and calls `tools.web__run` while `/v1/alpha/search` is handled by Rosetta's reliable Tavily/Python subset. To keep every native tool on the upstream path, copy Chat Default and set the relevant tools and Namespaces to Passthrough. Other Responses fields and upstream response bytes remain on the direct path.
+Tool Profiles are selectable for this mode. Tool Mapping only now defaults to the bundled **OpenAI Responses Tool Mapping Only** profile: every native function, custom, hosted, and Namespace tool is Passthrough, so Rosetta does not replace, disable, inject, or locally map them. Its only disabled catalog entries are synthetic tool injections, which prevents Rosetta from adding tools that Codex did not send. Select **Chat Default** explicitly if you want Rosetta's local `web.run` mapping or other Chat-oriented tool behavior. Other Responses fields and upstream response bytes remain on the direct path.
 
 Codex's standalone Search and Images clients use three additional JSON endpoints:
 

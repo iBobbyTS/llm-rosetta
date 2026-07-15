@@ -45,7 +45,19 @@
       }
     }
   },
-  "preset_profiles": [],
+  "preset_profiles": [
+    {
+      "id": "openai-responses-tool-mapping-only",
+      "name": "OpenAI Responses Tool Mapping Only",
+      "defaults": {
+        "function": "passthrough",
+        "custom": "passthrough",
+        "hosted": "passthrough",
+        "namespace": "passthrough",
+        "custom_injection": "disabled"
+      }
+    }
+  ],
   "policies": [
     {
       "id": "passthrough",

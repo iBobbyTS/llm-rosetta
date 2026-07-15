@@ -257,6 +257,8 @@ def provider_supports_tool_profiles(cfg: Any) -> bool:
 
 def default_tool_profile_for_provider(cfg: Any) -> str:
     """Return the bundled default Profile for one provider handling mode."""
+    if isinstance(cfg, dict) and cfg.get("api_type") == "responses_passthrough":
+        return "openai-responses-tool-mapping-only"
     return BUILTIN_TOOL_PROFILE
 
 

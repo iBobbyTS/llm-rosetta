@@ -538,8 +538,8 @@ class TestProviderApiTypeResolution:
         assert route.target_provider == "openai_responses"
         assert route.shim_name is None
         assert route.responses_processing == "passthrough"
-        assert route.tool_profile_name == "builtin"
-        assert route.tool_profile["namespace.web.run"] == "modified"
+        assert route.tool_profile_name == "openai-responses-tool-mapping-only"
+        assert route.tool_profile["namespace.web.run"] == "passthrough"
 
     def test_responses_rosetta_uses_same_wire_protocol_with_conversion_mode(self):
         raw = {
@@ -738,7 +738,7 @@ def test_cli_add_rosetta_model_group_selects_builtin_profile(tmp_path):
     assert saved["model_groups"]["Test Rosetta"]["tool_profile"] == "builtin"
 
 
-def test_cli_add_tool_mapping_only_group_selects_chat_default_profile(tmp_path):
+def test_cli_add_tool_mapping_only_group_selects_passthrough_profile(tmp_path):
     config_path = tmp_path / "config.jsonc"
     config_path.write_text(
         json.dumps(
@@ -768,4 +768,6 @@ def test_cli_add_tool_mapping_only_group_selects_chat_default_profile(tmp_path):
     )
 
     saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["model_groups"]["Test Responses"]["tool_profile"] == "builtin"
+    assert saved["model_groups"]["Test Responses"]["tool_profile"] == (
+        "openai-responses-tool-mapping-only"
+    )
