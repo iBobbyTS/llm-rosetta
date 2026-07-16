@@ -81,7 +81,10 @@ DEFAULT_REQUEST_BODY_LIMIT_MB = 128
 UNLIMITED_REQUEST_BODY_LIMIT = "unlimited"
 WEB_RUN_SIDECAR_URL_ENV = "CODEX_ROSETTA_WEB_RUN_URL"
 WEB_RUN_SIDECAR_TOKEN_ENV = "CODEX_ROSETTA_WEB_RUN_TOKEN"
-WEB_SEARCH_PROVIDERS = frozenset({"tavily", "self_hosted_google"})
+SELF_HOSTED_WEB_SEARCH_PROVIDERS = frozenset(
+    {"self_hosted_google", "self_hosted_bing", "self_hosted_bing_browser"}
+)
+WEB_SEARCH_PROVIDERS = frozenset({"tavily", *SELF_HOSTED_WEB_SEARCH_PROVIDERS})
 CODEX_MEMORY_MODEL_FIELDS = ("extract_model", "consolidation_model")
 
 

@@ -51,11 +51,11 @@ Rosetta 从实际 Codex `exec` 声明中读取每项工具的 schema 和 descrip
 
 Chat Default 会把父级 `exec` 设为“禁用”，禁止向模型暴露。对于 Responses 到 Chat 的路由，Rosetta 仍会让这个容器通过源请求的 Profile 过滤，在内部读取并展开子工具，随后在发给 Chat 上游之前移除父级。这个移除过程 fail-closed：即使没有任何模型可见声明能够成功解析，也不会把已禁用的父级 `exec` 当作回退暴露。只有复制出的 Profile 明确把父级设为“直通”或“修改”时，才允许有意暴露原始 `exec`。
 
-对 exec 展开卡片而言，**直通**只做形态适配：把当前声明暴露为普通 Chat Function，再把调用翻译回 `exec`，不会追加任何 catalog 文本。Chat Default 中的 `exec_command`、`write_stdin`、`update_plan`、`view_image`、`get_goal`、Clock、Memories 和 Skills 都使用该状态。只有 Profile 会改变模型可见指导或工具行为时才保留**修改**：`create_goal` 和 `update_goal` 会追加指导，`web.run` 则使用所选的 Tavily 或自托管 Google Rosetta 搜索映射。
+对 exec 展开卡片而言，**直通**只做形态适配：把当前声明暴露为普通 Chat Function，再把调用翻译回 `exec`，不会追加任何 catalog 文本。Chat Default 中的 `exec_command`、`write_stdin`、`update_plan`、`view_image`、`get_goal`、Clock、Memories 和 Skills 都使用该状态。只有 Profile 会改变模型可见指导或工具行为时才保留**修改**：`create_goal` 和 `update_goal` 会追加指导，`web.run` 则使用所选的 Tavily、自托管 Google 或自托管 Bing Rosetta 搜索映射。
 
 当 `web.run` 为“修改”时，即使直接 Responses 路由仍把 `web__run` 放在 custom
 `exec` 内，Rosetta 也会改写这段实时声明。模型始终看到有界 `open`、固定时区 `time`
-和 `response_length`；配置全局 Tavily Key，或选择 Self-hosted (Google) 且 sidecar
+和 `response_length`；配置全局 Tavily Key，或选择任一 self-hosted Provider 且 sidecar
 就绪后，才显示 `search_query`。配置健康且
 通过认证的 `web-run` sidecar 后，只有共享的五秒健康缓存报告 `browser_ready=true`
 时才额外暴露浏览器 `open`、`find`、`click` 和 PDF `screenshot`；必须通过提供的 Compose profile 启动 sidecar，才能让 Chromium 获得必需的

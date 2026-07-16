@@ -52,12 +52,20 @@ class WebRunSearchClient(Protocol):
 class WebRunSidecarHTTPClient:
     """Bounded bearer-authenticated HTTP client for the optional sidecar."""
 
-    def __init__(self, base_url: str, token: str, *, timeout: float = 45.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        token: str,
+        *,
+        timeout: float = 45.0,
+        search_provider: str = "self_hosted_google",
+    ) -> None:
         root = base_url.rstrip("/")
         self._execute_url = f"{root}/v1/execute"
         self._search_url = f"{root}/v1/search"
         self._token = token
         self._timeout = timeout
+        self._search_provider = search_provider
 
     async def execute(
         self,
@@ -117,8 +125,9 @@ class WebRunSidecarHTTPClient:
         *,
         settings: WebSearchSettings,
     ) -> dict[str, Any]:
-        """Run a bounded Google search inside the authenticated sidecar."""
+        """Run a bounded self-hosted search inside the authenticated sidecar."""
         payload = {
+            "provider": self._search_provider,
             "query": query,
             "max_results": settings.max_results,
             "include_domains": list(settings.include_domains),

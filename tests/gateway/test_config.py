@@ -606,15 +606,17 @@ class TestWebSearchConfig:
         }
         assert "tvly-secret" in config.token_values
 
-    def test_self_hosted_google_requires_request_time_sidecar_readiness(self):
-        config = GatewayConfig(
-            _minimal_raw(web_search={"provider": "self_hosted_google"})
-        )
+    @pytest.mark.parametrize(
+        "provider",
+        ["self_hosted_google", "self_hosted_bing", "self_hosted_bing_browser"],
+    )
+    def test_self_hosted_search_requires_request_time_sidecar_readiness(self, provider):
+        config = GatewayConfig(_minimal_raw(web_search={"provider": provider}))
 
         route, _provider = config.resolve("openai_responses", "gpt-test")
 
         assert config.web_search == {
-            "provider": "self_hosted_google",
+            "provider": provider,
             "tavily_api_key": "",
         }
         assert WEB_RUN_BASIC_SEARCH_CAPABILITY not in route.tool_runtime_capabilities

@@ -243,7 +243,7 @@ New fixture/component coverage in this round:
 - Deferred-tool canonical UTF-8 byte/count budgets, atomic overflow, replacement, concurrent writers, and TTL/eviction/clear budget return;
 - Deferred-tool and provider-metadata per-principal count quotas, same-principal global-oldest replacement, cross-principal rejection, unique-scope accounting across loaded/deferred maps, and concurrent saturation;
 - Encrypted tool-mapping row/session/principal/global row+byte quotas, replacement without double counting, expiry budget release, raw SQLite accounting, encrypted-v1 backfill, bounded replay, concurrent saturation, and transactional write rollback;
-- Tavily real-loopback normal JSON, Content-Length/chunked/EOF overflow, compressed-response rejection, timeout and cancellation; self-hosted Google sidecar bearer authentication, request/result bounds, domain filtering, concurrency limit, challenge detection, and no-fallback failures; pinned Patchright/Chromium image build, headful Xvfb startup under the seccomp profile, and browser/PDF regression without any Playwright runtime dependency;
+- Tavily real-loopback normal JSON, Content-Length/chunked/EOF overflow, compressed-response rejection, timeout and cancellation; self-hosted Google and Bing sidecar bearer authentication, provider routing, request/result bounds, domain filtering, concurrency limit, challenge detection, Bing redirect unwrapping, and no-fallback failures; pinned Patchright/Chromium image build, headful Xvfb startup under the seccomp profile, and browser/PDF regression without any Playwright runtime dependency;
 - Tool-mapping TTL validation for environment strings, booleans, non-finite/overflow values, and the inclusive 720-hour boundary;
 - Codex source contract extractor tests for Rust comment/string/braces, enum wire rename, commit and contract drift separation, and baseline canonical serialization.
 
@@ -344,7 +344,7 @@ Select a model by debugging target, don't just look at the Codex-facing alias:
 - `multi_agent_v1` and `multi_agent_v2/collaboration` provided by the version can spawn, communicate, wait and return results, and parent/window/thread does not cross talk;
 - For a new third-party alias, test collaboration v2 before retaining legacy `multi_agent_v1`; use v1 only when the newer lifecycle is demonstrably unreliable for that model;
 - When model catalog enables code mode, actually verify `exec/wait` and nested tool continuation; especially check that the payload received by `exec` is custom/raw-source, not function/JSON payload, and confirm that third-party models will recover with visible tool errors when they misuse the freeform tool and will not be fatal;
-- With Tavily and Self-hosted (Google) tested separately, the model can initiate a search, read normalized results, and proceed to generate the final answer without a Codex response-shape difference.
+- With Tavily, Self-hosted (Google), Self-hosted (Bing RSS), and Self-hosted (Bing Browser) tested separately, the model can initiate a search, read normalized results, and proceed to generate the final answer without a Codex response-shape difference.
 - For a new third-party alias, test standalone `web.run` search/open before retaining legacy hosted `web_search`; verify the actual surface in Gateway Logs. Also run `network_search/02` to confirm the current explicit Not Implemented contract for `find` and `click` until those operations are implemented.
 
 #### D. Reasoning, History and Recovery

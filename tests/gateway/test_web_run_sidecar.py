@@ -73,7 +73,13 @@ def test_sidecar_client_maps_client_errors(monkeypatch) -> None:
         )
 
 
-def test_sidecar_client_sends_bounded_google_search(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "provider",
+    ["self_hosted_google", "self_hosted_bing", "self_hosted_bing_browser"],
+)
+def test_sidecar_client_sends_bounded_self_hosted_search(
+    monkeypatch, provider: str
+) -> None:
     captured = {}
 
     async def fake_request(client, method, url, **kwargs):
@@ -89,7 +95,9 @@ def test_sidecar_client_sends_bounded_google_search(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(sidecar_module, "request_bounded_response", fake_request)
-    client = WebRunSidecarHTTPClient("http://web-run:8080", "sidecar-secret")
+    client = WebRunSidecarHTTPClient(
+        "http://web-run:8080", "sidecar-secret", search_provider=provider
+    )
 
     result = asyncio.run(
         client.search(
@@ -105,6 +113,7 @@ def test_sidecar_client_sends_bounded_google_search(monkeypatch) -> None:
     assert result["results"][0]["title"] == "Python"
     assert captured["url"] == "http://web-run:8080/v1/search"
     assert captured["json"] == {
+        "provider": provider,
         "query": "official Python",
         "max_results": 8,
         "include_domains": ["python.org"],

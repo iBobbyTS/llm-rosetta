@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
+from .config import SELF_HOSTED_WEB_SEARCH_PROVIDERS
 from .codex_page import (
     PageOpenExecutionError,
     PageOpenInvalidRequest,
@@ -104,8 +105,12 @@ class CodexSearchBridgeResult:
             or self.find_count
             or self.screenshot_count
         )
-        if self.search_provider == "self_hosted_google" and self.search_count:
-            executor = "google_web_run_sidecar"
+        if (
+            self.search_provider in SELF_HOSTED_WEB_SEARCH_PROVIDERS
+            and self.search_count
+        ):
+            engine = self.search_provider.removeprefix("self_hosted_")
+            executor = f"{engine}_web_run_sidecar"
         elif used_browser:
             executor = "tavily_python_web_run_sidecar"
         else:
@@ -148,7 +153,7 @@ def should_use_local_codex_search(
     config = web_search_config if isinstance(web_search_config, dict) else {}
     provider = str(config.get("provider") or "tavily")
     if str(config.get("tavily_api_key") or "").strip() or (
-        provider == "self_hosted_google" and browser_available
+        provider in SELF_HOSTED_WEB_SEARCH_PROVIDERS and browser_available
     ):
         return True
     commands = body.get("commands")
@@ -224,10 +229,11 @@ async def execute_local_codex_search(
                     "Codex search_query requires a Tavily API key in Admin > Web Search"
                 )
             search_client = TavilyHTTPClient(api_key)
-        elif provider == "self_hosted_google":
+        elif provider in SELF_HOSTED_WEB_SEARCH_PROVIDERS:
             if browser_client is None:
+                label = _search_provider_label(provider)
                 raise CodexSearchNotImplemented(
-                    "Self-hosted Google search requires a healthy web-run sidecar"
+                    f"{label} search requires a healthy web-run sidecar"
                 )
             search_client = cast(WebSearchClient, browser_client)
         else:
@@ -375,6 +381,10 @@ async def _execute_search_queries(
 def _search_provider_label(provider: str) -> str:
     if provider == "self_hosted_google":
         return "Self-hosted Google"
+    if provider == "self_hosted_bing":
+        return "Self-hosted Bing RSS"
+    if provider == "self_hosted_bing_browser":
+        return "Self-hosted Bing Browser"
     if provider == "tavily":
         return "Tavily"
     return provider or "Web"

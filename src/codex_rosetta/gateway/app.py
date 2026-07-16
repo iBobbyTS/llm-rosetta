@@ -31,7 +31,11 @@ from .auth import (
     api_key_principal_var,
     create_auth_hook,
 )
-from .config import GatewayConfig, resolve_codex_home
+from .config import (
+    SELF_HOSTED_WEB_SEARCH_PROVIDERS,
+    GatewayConfig,
+    resolve_codex_home,
+)
 from .codex_auxiliary import handle_codex_auxiliary as _handle_codex_auxiliary
 from .codex_search_references import CodexSearchReferenceStore
 from .cors import apply_cors_headers, is_admin_origin_allowed, is_admin_path
@@ -545,7 +549,7 @@ async def _resolve_request_tool_runtime_capabilities(
 
     capabilities = set(route.tool_runtime_capabilities)
     capabilities.add(WEB_RUN_SIDECAR_CAPABILITY)
-    if config.web_search["provider"] == "self_hosted_google":
+    if config.web_search["provider"] in SELF_HOSTED_WEB_SEARCH_PROVIDERS:
         capabilities.add(WEB_RUN_BASIC_SEARCH_CAPABILITY)
     return replace(route, tool_runtime_capabilities=frozenset(capabilities))
 

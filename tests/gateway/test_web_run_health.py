@@ -6,6 +6,8 @@ import asyncio
 from types import SimpleNamespace
 from typing import cast
 
+import pytest
+
 from codex_rosetta.gateway import web_run_health
 from codex_rosetta.gateway.app import _resolve_request_tool_runtime_capabilities
 from codex_rosetta.gateway.config import GatewayConfig
@@ -244,7 +246,11 @@ def test_request_route_adds_browser_capability_only_when_ready(monkeypatch):
     assert WEB_RUN_SIDECAR_CAPABILITY in available.tool_runtime_capabilities
 
 
-def test_ready_sidecar_adds_self_hosted_google_search_capability(monkeypatch):
+@pytest.mark.parametrize(
+    "provider",
+    ["self_hosted_google", "self_hosted_bing", "self_hosted_bing_browser"],
+)
+def test_ready_sidecar_adds_self_hosted_search_capability(monkeypatch, provider):
     async def fake_request(*args, **kwargs):
         return SimpleNamespace(
             status_code=200,
@@ -259,7 +265,7 @@ def test_ready_sidecar_adds_self_hosted_google_search_capability(monkeypatch):
         SimpleNamespace(
             web_run_sidecar_url="http://web-run:8080",
             web_run_sidecar_token="sidecar-token",
-            web_search={"provider": "self_hosted_google", "tavily_api_key": ""},
+            web_search={"provider": provider, "tavily_api_key": ""},
         ),
     )
     route = ResolvedRoute(

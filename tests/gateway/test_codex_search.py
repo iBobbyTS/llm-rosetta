@@ -503,7 +503,15 @@ def test_search_without_tavily_key_is_not_implemented() -> None:
         )
 
 
-def test_self_hosted_google_search_uses_web_run_sidecar() -> None:
+@pytest.mark.parametrize(
+    ("provider", "executor"),
+    [
+        ("self_hosted_google", "google_web_run_sidecar"),
+        ("self_hosted_bing", "bing_web_run_sidecar"),
+        ("self_hosted_bing_browser", "bing_browser_web_run_sidecar"),
+    ],
+)
+def test_self_hosted_search_uses_web_run_sidecar(provider: str, executor: str) -> None:
     client = _FakeSelfHostedGoogleClient()
 
     result = asyncio.run(
@@ -511,7 +519,7 @@ def test_self_hosted_google_search_uses_web_run_sidecar() -> None:
             _body(
                 {"search_query": [{"q": "official Python", "domains": ["python.org"]}]}
             ),
-            {"provider": "self_hosted_google", "tavily_api_key": ""},
+            {"provider": provider, "tavily_api_key": ""},
             browser_client=client,
         )
     )
@@ -524,17 +532,21 @@ def test_self_hosted_google_search_uses_web_run_sidecar() -> None:
     ]
     assert "https://www.python.org/" in result.output
     assert result.search_count == 1
-    assert result.trace_summary()["executor"] == "google_web_run_sidecar"
+    assert result.trace_summary()["executor"] == executor
     assert result.trace_summary()["search_result_count"] == 1
     assert result.trace_summary()["tavily_result_count"] == 0
 
 
-def test_self_hosted_google_search_requires_sidecar() -> None:
+@pytest.mark.parametrize(
+    "provider",
+    ["self_hosted_google", "self_hosted_bing", "self_hosted_bing_browser"],
+)
+def test_self_hosted_search_requires_sidecar(provider: str) -> None:
     with pytest.raises(CodexSearchNotImplemented, match="healthy web-run sidecar"):
         asyncio.run(
             execute_local_codex_search(
                 _body({"search_query": [{"q": "python"}]}),
-                {"provider": "self_hosted_google", "tavily_api_key": ""},
+                {"provider": provider, "tavily_api_key": ""},
             )
         )
 
@@ -575,6 +587,18 @@ def test_local_bridge_selection_preserves_native_passthrough_without_tavily() ->
     assert should_use_local_codex_search(
         search,
         {"provider": "self_hosted_google"},
+        native_passthrough_available=True,
+        browser_available=True,
+    )
+    assert should_use_local_codex_search(
+        search,
+        {"provider": "self_hosted_bing"},
+        native_passthrough_available=True,
+        browser_available=True,
+    )
+    assert should_use_local_codex_search(
+        search,
+        {"provider": "self_hosted_bing_browser"},
         native_passthrough_available=True,
         browser_available=True,
     )

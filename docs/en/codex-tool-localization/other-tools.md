@@ -51,13 +51,13 @@ Rosetta reads each schema and description from the actual Codex `exec` declarati
 
 Chat Default marks the parent `exec` tool Disabled for model exposure. On a Responses-to-Chat route, Rosetta nevertheless retains that container through the source Profile filter, reads it for projection, and removes it before the outbound Chat request. The removal is fail-closed: even when no model-visible declaration can be parsed, the Disabled parent `exec` is not exposed as a fallback. A copied Profile may explicitly set the parent to Pass through or Modified when raw `exec` exposure is intentional.
 
-For Exec Expansion cards, **Pass through** means representation-only adaptation: expose the current declaration as a normal Chat Function and translate its call back to `exec`, without appending any catalog text. Chat Default uses this state for `exec_command`, `write_stdin`, `update_plan`, `view_image`, `get_goal`, Clock, Memories, and Skills. **Modified** is retained where the Profile changes model-visible guidance or behavior: `create_goal` and `update_goal` append guidance, while `web.run` uses the selected Tavily or self-hosted Google Rosetta search mapping.
+For Exec Expansion cards, **Pass through** means representation-only adaptation: expose the current declaration as a normal Chat Function and translate its call back to `exec`, without appending any catalog text. Chat Default uses this state for `exec_command`, `write_stdin`, `update_plan`, `view_image`, `get_goal`, Clock, Memories, and Skills. **Modified** is retained where the Profile changes model-visible guidance or behavior: `create_goal` and `update_goal` append guidance, while `web.run` uses the selected Tavily, self-hosted Google, or self-hosted Bing Rosetta search mapping.
 
 With `web.run` Modified, Rosetta rewrites the live `web__run` declaration even
 when it remains nested inside a custom `exec` tool on a direct Responses route.
 The model always sees bounded `open`, fixed-offset `time`, and
 `response_length`; `search_query` appears when the global Tavily Key is
-configured, or when Self-hosted (Google) is selected and the sidecar is ready.
+configured, or when either self-hosted provider is selected and the sidecar is ready.
 A healthy, authenticated `web-run` sidecar additionally exposes
 browser `open`, `find`, `click`, and PDF `screenshot` only while its shared
 five-second health cache reports `browser_ready=true`; the sidecar must be started through the supplied

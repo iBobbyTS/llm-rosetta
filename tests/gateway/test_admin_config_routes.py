@@ -1889,6 +1889,14 @@ def test_admin_html_uses_page_routes():
     assert '<option value="self_hosted_google">Self-hosted (Google)</option>' in (
         network_page
     )
+    assert (
+        '<option value="self_hosted_bing">Self-hosted (Bing RSS)</option>'
+        in network_page
+    )
+    assert (
+        '<option value="self_hosted_bing_browser">Self-hosted (Bing Browser)</option>'
+        in network_page
+    )
     assert 'id="networkSearchApiKey"' in network_page
     assert "apiKeyGroup.hidden = provider.value !== 'tavily'" in html
     assert 'id="networkSearchSidecarStatus"' in network_page

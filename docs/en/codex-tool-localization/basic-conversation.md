@@ -57,9 +57,11 @@ Standalone Search has an additional local bridge. When the selected Profile
 marks `web.run` as Modified, `/v1/alpha/search` executes the reliable subset
 locally: `search_query` uses the global Provider configured under Admin
 **Web Search** (`server.web_search`). Tavily uses the configured API Key;
-**Self-hosted (Google)** runs an unauthenticated Google result-page search in the
-existing `web-run` container and therefore requires that sidecar to be healthy.
-Both providers are normalized to the same Codex-visible source format. Direct-URL
+**Self-hosted (Google)**, **Self-hosted (Bing RSS)**, and
+**Self-hosted (Bing Browser)** run in the existing `web-run` container and
+therefore require that sidecar to be healthy. Bing RSS reads the XML result
+representation, while Bing Browser loads and parses the interactive HTML result
+page. All providers are normalized to the same Codex-visible source format. Direct-URL
 `open` fetches public static HTML or plain text, and `time` uses
 Python fixed-UTC-offset calculation. Open validates every redirect target,
 rejects credentials and non-public addresses, permits at most five redirects,
@@ -68,7 +70,7 @@ line-addressable text and supports `lineno`; stored `turnXsearchY` references
 resolve to their scoped search-result URL.
 
 An optional, separately built `web-run` Docker sidecar provides self-hosted
-Google basic search and adds JavaScript-rendered `open`, session-scoped
+Google or Bing basic search and adds JavaScript-rendered `open`, session-scoped
 `turnXfetchY` page references, numbered-link `click`,
 case-insensitive `find`, and PDF `turnXviewY` references. PDF `open` and `find`
 use PyMuPDF embedded-text extraction. PDF `screenshot` renders the requested
@@ -93,7 +95,7 @@ sidecar is configured. When it sets `web.run` to Modified, supported commands
 use Rosetta's search service. The model-visible definition always retains
 direct-URL `open`, fixed-offset `time`, and `response_length`; it adds
 `search_query` when either a global Tavily API Key is configured or
-Self-hosted (Google) is selected and the sidecar reports ready, and adds
+either self-hosted provider is selected and the sidecar reports ready, and adds
 `click`, `find`, and `screenshot` only while the optional sidecar reports
 `browser_ready=true`. The Hosted `web_search` tool remains independent:
 its Provider, Token, and guidance continue to belong to the selected Profile.

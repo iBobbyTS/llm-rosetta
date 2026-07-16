@@ -204,9 +204,11 @@ CLI option, configure matching `server.web_run.base_url` and
 `server.web_run.token` values (or the corresponding URL/Token environment
 variables) explicitly.
 
-The Admin **Web Search** page lets basic search use either Tavily credentials or
-**Self-hosted (Google)** in the existing sidecar. The latter sends no search API
-credential, but Google may rate-limit, challenge, or change its result page; such
+The Admin **Web Search** page lets basic search use Tavily credentials,
+**Self-hosted (Google)**, **Self-hosted (Bing RSS)**, or
+**Self-hosted (Bing Browser)** in the existing sidecar. The
+self-hosted providers send no search API credential, but either engine may
+rate-limit, challenge, or change its result page; such
 failures are returned as bounded `502` search errors instead of silently falling
 back to another provider. The read-only advanced section reports sidecar service
 availability and browser readiness independently. The status endpoint uses a
@@ -217,6 +219,13 @@ Admin page is selected. Model requests share the same five-second health cache;
 Modified `web.run` advertises browser commands only while the cached status is
 online with `browser_ready=true`. Concurrent refreshes are coalesced, and config
 hot reload invalidates the cached status.
+
+Self-hosted Bing RSS reads Bing's XML result representation. Self-hosted Bing
+Browser instead loads the interactive HTML result page in the sidecar's
+Patchright browser. They are separately selectable and never silently fall back
+to each other; both retain the same result and domain bounds. Operators remain
+responsible for using each search engine in accordance with its applicable
+terms.
 
 Self-hosted searches use short-lived isolated browser contexts with at most two
 concurrent searches. Search result URLs, titles, and snippets are bounded and

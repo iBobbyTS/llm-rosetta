@@ -170,8 +170,9 @@ docker-compose -f docker/docker-compose.yaml \
 被遮盖。若既不使用 Compose，也不使用 CLI 托管参数，需要显式配置相互匹配的
 `server.web_run.base_url`、`server.web_run.token`（或对应的 URL/Token 环境变量）。
 
-Admin **联网搜索**页面允许基础搜索选择 Tavily 凭据或现有 sidecar 内的
-**Self-hosted (Google)**。后者不会发送搜索 API 凭据，但 Google 可能限流、要求验证
+Admin **联网搜索**页面允许基础搜索选择 Tavily 凭据，或现有 sidecar 内的
+**Self-hosted (Google)**、**Self-hosted (Bing RSS)** 与
+**Self-hosted (Bing Browser)**。self-hosted Provider 不会发送搜索 API 凭据，但搜索引擎可能限流、要求验证
 或改变结果页；这类失败会作为有界的 `502` 搜索错误返回，不会静默切换 Provider。高级 Section
 只读，并分别显示 sidecar 服务在线状态和浏览器就绪状态。状态端点以两秒超时、
 有界响应访问 sidecar 的公共 `/health` 路由，不返回 sidecar URL、Bearer Token
@@ -179,8 +180,13 @@ Admin **联网搜索**页面允许基础搜索选择 Tavily 凭据或现有 side
 模型请求复用同一个五秒健康缓存；Modified `web.run` 只有在缓存状态在线且
 `browser_ready=true` 时才声明浏览器命令。并发刷新会合并，配置热重载会使缓存失效。
 
+Self-hosted Bing RSS 读取 Bing 的 XML 结果表示；Self-hosted Bing Browser
+则在 sidecar 的 Patchright 浏览器中加载交互式 HTML 结果页。两者可独立选择，
+不会静默相互回退，并保持相同的结果数量与 domain 边界。运维方仍需确保使用方式
+符合各搜索引擎的适用条款。
+
 自托管搜索使用短生命周期、相互隔离的 browser context，并发上限为两个。搜索结果
-URL、标题和摘要在返回网关前会被限制长度并规范化；domain filter 同时应用于 Google
+URL、标题和摘要在返回网关前会被限制长度并规范化；domain filter 同时应用于搜索引擎
 查询和返回结果 hostname。
 
 容器固定使用 Patchright 及其 Chromium build，不再安装 Playwright runtime，也不再

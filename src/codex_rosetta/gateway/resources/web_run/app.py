@@ -30,6 +30,11 @@ from patchright.async_api import (
     async_playwright,
 )
 
+from bing_search import (
+    BingSearchError,
+    execute_bing_browser_search,
+    execute_bing_search,
+)
 from google_search import GoogleSearchError, execute_google_search
 
 _SESSION_RE = re.compile(r"[a-f0-9]{64}")
@@ -67,6 +72,11 @@ class SearchRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    provider: Literal[
+        "self_hosted_google",
+        "self_hosted_bing",
+        "self_hosted_bing_browser",
+    ]
     query: str = Field(min_length=1, max_length=4_000)
     max_results: int = Field(default=5, ge=1, le=10)
     include_domains: list[str] = Field(default_factory=list, max_length=20)
@@ -144,12 +154,18 @@ class WebRunService:
             return await self._screenshot(session, request.arguments)
 
     async def search(self, request: SearchRequest) -> dict[str, Any]:
-        """Execute one stateless Google search in an isolated context."""
+        """Execute one stateless search in an isolated context."""
         if self._browser is None:
             raise BrowserOperationError("Browser is not ready", status_code=503)
         async with self._search_semaphore:
             try:
-                return await execute_google_search(
+                executors = {
+                    "self_hosted_google": execute_google_search,
+                    "self_hosted_bing": execute_bing_search,
+                    "self_hosted_bing_browser": execute_bing_browser_search,
+                }
+                executor = executors[request.provider]
+                return await executor(
                     self._browser,
                     query=request.query,
                     max_results=request.max_results,
@@ -158,7 +174,7 @@ class WebRunService:
                 )
             except ValueError as exc:
                 raise BrowserOperationError(str(exc)) from exc
-            except GoogleSearchError as exc:
+            except (GoogleSearchError, BingSearchError) as exc:
                 raise BrowserOperationError(str(exc), status_code=502) from exc
 
     async def _session(self, session_id: str) -> SessionState:

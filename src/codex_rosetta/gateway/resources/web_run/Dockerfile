@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends xauth \
     && rm -rf /var/lib/apt/lists/*
-COPY --chown=pwuser:pwuser app.py google_search.py /app/
+COPY --chown=pwuser:pwuser app.py google_search.py bing_search.py /app/
 
 USER pwuser
 EXPOSE 8080
