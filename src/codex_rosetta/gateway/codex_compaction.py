@@ -19,7 +19,7 @@ from importlib import resources
 from typing import Any
 
 from codex_rosetta._vendor.httpserver import JSONResponse, Response, StreamingResponse
-from codex_rosetta.routing import ResolvedRoute, is_openai_responses_passthrough
+from codex_rosetta.routing import ResolvedRoute, is_responses_passthrough
 
 from .transport.sse_format import SSE_FORMATTERS
 
@@ -145,7 +145,7 @@ def _rehydrate_input(
     dropped_native = 0
     renew_at = _iso(now + COMPACTION_TTL)
     now_text = _iso(now)
-    direct_responses = is_openai_responses_passthrough(route)
+    direct_responses = is_responses_passthrough(route)
     for item in input_items:
         if not isinstance(item, dict) or item.get("type") != COMPACTION_ITEM_TYPE:
             result.append(item)
@@ -237,8 +237,7 @@ def prepare_codex_compaction(
     reason = _compaction_reason(request)
     mode = (
         "native"
-        if is_openai_responses_passthrough(route)
-        and reason in NATIVE_COMPACTION_REASONS
+        if is_responses_passthrough(route) and reason in NATIVE_COMPACTION_REASONS
         else "rosetta"
     )
     if mode == "native":

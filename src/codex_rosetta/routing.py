@@ -15,7 +15,7 @@ separately by each :class:`Router` implementation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import Protocol
 
 from codex_rosetta.auto_detect import ProviderType
 
@@ -45,8 +45,6 @@ class ResolvedRoute:
             tool profiles do not apply to the route.
         tool_profile: Effective catalog item states for the selected profile.
         tool_profile_inputs: Function-card input values for the selected profile.
-        responses_processing: Internal handling mode for same-format OpenAI
-            Responses routes. This does not represent a distinct wire protocol.
         tool_runtime_capabilities: Gateway-owned optional tool executors available
             to this route. Core converters treat these as opaque capability names.
     """
@@ -60,7 +58,6 @@ class ResolvedRoute:
     tool_profile_name: str | None = None
     tool_profile: dict[str, str] = field(default_factory=dict)
     tool_profile_inputs: dict[str, dict[str, str]] = field(default_factory=dict)
-    responses_processing: Literal["passthrough", "rosetta"] = "rosetta"
     tool_runtime_capabilities: frozenset[str] = field(default_factory=frozenset)
 
 
@@ -95,11 +92,10 @@ class Router(Protocol):
         ...
 
 
-def is_openai_responses_passthrough(route: ResolvedRoute) -> bool:
-    """Return whether *route* is a direct OpenAI Responses pass-through."""
+def is_responses_passthrough(route: ResolvedRoute) -> bool:
+    """Return whether *route* keeps the Responses wire protocol unchanged."""
 
-    return (
-        route.responses_processing == "passthrough"
-        and route.source_provider in ("openai_responses", "open_responses")
-        and route.target_provider in ("openai_responses", "open_responses")
-    )
+    return route.source_provider in (
+        "openai_responses",
+        "open_responses",
+    ) and route.target_provider in ("openai_responses", "open_responses")

@@ -10,11 +10,14 @@ and are renewed when replayed. A missing, expired, or cross-principal handle is
 silently discarded. This logical TTL does not erase rollout files, explicitly
 enabled raw traces, test artifacts, backups, or already-freed SQLite pages.
 
-For a configured OpenAI Responses passthrough route, only `context_limit` and
-`user_requested` retain native compaction unchanged. Rosetta does not probe the
-upstream and never falls back after a native failure. All model-switch reasons
-and every other route use Rosetta's no-tools summary request; native compaction
-items that those routes cannot process are silently discarded.
+On a same-format Responses route, `context_limit` and `user_requested`
+compaction remains native and unchanged. Model-switch compaction, including
+`comp_hash_changed` and `model_downshift`, instead uses Rosetta's no-tools
+summary request against the previous model. Rosetta stores the plaintext
+replacement for seven days and returns an opaque `rskc_v1_` handle so the next
+Provider receives replayable plaintext rather than another Provider's encrypted
+compaction payload. Routes that convert Responses to another protocol also use
+the Rosetta coordinator.
 
 Codex-Rosetta fails closed: every gateway configuration must contain a
 non-empty Admin password and at least one gateway access key. The default bind

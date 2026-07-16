@@ -935,7 +935,7 @@ def test_put_provider_persists_provider_and_api_type(tmp_path):
     assert app.gateway_config.provider_shim_names["DeepSeek"] == "deepseek"
 
 
-def test_put_provider_persists_responses_processing_mode(tmp_path):
+def test_put_provider_persists_direct_responses_protocol(tmp_path):
     config_path = tmp_path / "config.jsonc"
     config_path.write_text(json.dumps(_config_data()), encoding="utf-8")
     initial_config = GatewayConfig(_config_data())
@@ -959,7 +959,6 @@ def test_put_provider_persists_responses_processing_mode(tmp_path):
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     assert saved["providers"]["Qwen"]["api_type"] == "responses"
     assert app.gateway_config.provider_types["Qwen"] == "openai_responses"
-    assert app.gateway_config.provider_responses_processing["Qwen"] == "rosetta"
 
 
 def test_put_provider_masked_key_preserves_existing_key_with_api_type(tmp_path):

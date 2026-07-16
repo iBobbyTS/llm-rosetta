@@ -35,7 +35,7 @@ from codex_rosetta.converters.google_genai.image_fetch import (
     ImageFetchTimeoutError,
 )
 from codex_rosetta.pipeline import ConversionError, ConversionPipeline
-from codex_rosetta.routing import ResolvedRoute, is_openai_responses_passthrough
+from codex_rosetta.routing import ResolvedRoute, is_responses_passthrough
 
 from codex_rosetta.observability.error_dump import dump_error
 
@@ -2609,7 +2609,7 @@ async def handle_non_streaming(
         window_tools=window_tools,
     )
 
-    if is_openai_responses_passthrough(route):
+    if is_responses_passthrough(route):
         log_original_request(body, state=body_log_state)
         t_upstream = time.perf_counter()
         try:
@@ -3548,7 +3548,7 @@ async def handle_streaming(  # noqa: C901
         window_tools=window_tools,
     )
 
-    if is_openai_responses_passthrough(route):
+    if is_responses_passthrough(route):
         return await _handle_direct_responses_streaming(
             route,
             provider_info,

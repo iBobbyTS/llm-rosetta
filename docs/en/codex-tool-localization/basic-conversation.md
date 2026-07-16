@@ -2,25 +2,25 @@
 
 Codex talks to models through the OpenAI Responses API surface. Many third-party providers only expose an OpenAI Chat Completions-compatible endpoint. Codex-Rosetta bridges that gap in different ways depending on the route:
 
-- The Admin UI exposes one **OpenAI Responses** protocol. Official OpenAI and custom relay selections keep the direct Responses path; listed third-party providers use Responses → IR → Responses normalization.
+- The Admin UI exposes one **OpenAI Responses** protocol. Every Provider uses the direct Responses path; Provider selection changes only the default Tool Profile.
 - Responses to Chat routes are converted through Codex-Rosetta's IR, then converted back to Responses events for Codex.
 
 The goal is to preserve Codex runtime semantics, not just make the upstream request syntactically valid.
 
 ## One Responses Protocol, Provider-Aware Defaults
 
-Provider configuration stores `api_type: "responses"`. The model-group default Profile and internal handling are selected from the Provider choice:
+Provider configuration stores `api_type: "responses"`. The Provider choice selects the model-group default Profile, while protocol handling remains direct:
 
 - OpenAI Official selects **透传（适用于OpenAI官方API）** and keeps the request, tool declarations, response JSON, and SSE bytes on the direct path.
 - OpenAI Custom and Custom + Custom select **web.run 注入（适用于尚未支持/alpha/search端点的中转站）**. This keeps every original tool shape except `web.run`, which is Modified and handled by Rosetta.
-- A listed third-party provider with Responses selects **工具映射（适用于第三方模型提供的Responses接口）** and uses Responses → IR → Responses normalization.
+- A listed third-party provider with Responses selects **工具映射（适用于第三方模型提供的Responses接口）** while keeping direct Responses transport.
 - Any Chat protocol selects **Chat Default（适用于第三方仅提供chat api的模型）**. Other protocols currently use the same fallback through a separate branch reserved for future protocol defaults.
 
 The only supported Responses protocol value is `responses`; the former `responses_passthrough` and `responses_rosetta` values are no longer accepted and must be replaced before loading the configuration.
 
 ## Direct Responses Transport
 
-For a direct same-protocol Responses route, the gateway does not decode and re-encode the complete request through IR. It applies the selected Tool Profile, forwards the resulting request, and streams raw upstream SSE bytes back to Codex. The transport-level exception is an authenticated request with `Content-Encoding: zstd`: Rosetta decodes it under the configured pre/post-decompression size limits and removes the encoding header first.
+For every same-protocol Responses route, the gateway does not decode and re-encode the complete request through IR. It applies the selected Tool Profile, forwards the resulting request, and streams raw upstream SSE bytes back to Codex. Model-switch compaction is the deliberate semantic exception: Rosetta asks the previous model for a plaintext summary, stores its replacement for seven days, and rehydrates it before the next Provider request. The transport-level exception is an authenticated request with `Content-Encoding: zstd`: Rosetta decodes it under the configured pre/post-decompression size limits and removes the encoding header first.
 
 This is important because Codex relies on fields that are not part of a minimal cross-provider IR, including:
 

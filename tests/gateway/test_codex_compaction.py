@@ -34,7 +34,6 @@ def _route(*, passthrough: bool = False) -> ResolvedRoute:
         source_provider="openai_responses",
         target_provider="openai_responses" if passthrough else "openai_chat",
         provider_name="test",
-        responses_processing="passthrough" if passthrough else "rosetta",
     )
 
 
@@ -70,7 +69,7 @@ def _request(reason: str = "context_limit") -> dict:
     ],
 )
 def test_policy_uses_only_route_configuration_and_metadata_reason(
-    passthrough: bool, reason: str, expected: str
+    passthrough: bool, reason: str, expected: str | None
 ) -> None:
     prepared = prepare_codex_compaction(
         _request(reason),
@@ -81,6 +80,7 @@ def test_policy_uses_only_route_configuration_and_metadata_reason(
     assert prepared.mode == expected
     if expected == "native":
         assert prepared.body == _request(reason)
+        assert prepared.summary_request is None
     else:
         assert prepared.summary_request is not None
 
@@ -167,7 +167,7 @@ def test_mapping_replays_only_for_its_principal_and_stores_prefixed_plaintext(
     }
     restored = prepare_codex_compaction(
         request,
-        route=_route(),
+        route=_route(passthrough=True),
         persistence=persistence,
         principal_id="client-a",
         now=datetime(2026, 7, 2, tzinfo=timezone.utc),
@@ -176,7 +176,7 @@ def test_mapping_replays_only_for_its_principal_and_stores_prefixed_plaintext(
     assert restored.body["input"][0]["content"][0]["text"] == row["replacement_text"]
     cross_principal = prepare_codex_compaction(
         request,
-        route=_route(),
+        route=_route(passthrough=True),
         persistence=persistence,
         principal_id="client-b",
         now=datetime(2026, 7, 2, tzinfo=timezone.utc),

@@ -10,7 +10,7 @@ import re
 import sys
 import tempfile
 from collections.abc import Callable, Mapping
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import urlsplit
 
 from codex_rosetta.auto_detect import ProviderType
@@ -321,19 +321,6 @@ def api_type_to_provider_type(api_type: Any) -> str | None:
     if not api_type:
         return None
     return API_TYPE_TO_PROVIDER_TYPE.get(str(api_type))
-
-
-def provider_responses_processing(
-    cfg: dict[str, Any], provider_type: str
-) -> Literal["passthrough", "rosetta"]:
-    """Return the internal handling mode for an OpenAI Responses provider."""
-    if provider_type not in {"openai_responses", "open_responses"}:
-        return "rosetta"
-    return (
-        "rosetta"
-        if default_tool_profile_for_provider(cfg) == RESPONSES_TOOL_MAPPING_PROFILE
-        else "passthrough"
-    )
 
 
 def provider_supports_tool_profiles(cfg: Any) -> bool:
@@ -683,11 +670,6 @@ class GatewayConfig:
         self.provider_types, self.provider_shim_names = self._resolve_provider_types(
             self._raw_providers
         )
-        self.provider_responses_processing = {
-            name: provider_responses_processing(cfg, self.provider_types[name])
-            for name, cfg in self._raw_providers.items()
-        }
-
         # Top-level ``models`` is intentionally ignored. Model groups are the
         # only persisted routing definition; this flat mapping is runtime-only.
         self._expanded_raw_models = self._expand_model_groups(
@@ -1074,7 +1056,6 @@ class GatewayConfig:
                 if tool_profile_name is not None
                 else {}
             ),
-            responses_processing=self.provider_responses_processing[provider_name],
             tool_runtime_capabilities=(
                 frozenset({WEB_RUN_BASIC_SEARCH_CAPABILITY})
                 if self.web_search["provider"] == "tavily"

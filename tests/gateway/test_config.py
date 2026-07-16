@@ -32,6 +32,7 @@ from codex_rosetta.gateway.web_run_capabilities import (
     WEB_RUN_BASIC_SEARCH_CAPABILITY,
     WEB_RUN_SIDECAR_CAPABILITY,
 )
+from codex_rosetta.routing import is_responses_passthrough
 
 
 def test_default_config_search_only_uses_xdg_directory() -> None:
@@ -84,38 +85,33 @@ def test_provider_selection_chooses_expected_builtin_tool_profile(
 
 
 @pytest.mark.parametrize(
-    ("provider", "base_url", "expected_processing", "expected_profile"),
+    ("provider", "base_url", "expected_profile"),
     [
         (
             "openai",
             "https://api.openai.com/v1",
-            "passthrough",
             "openai-responses-tool-mapping-only",
         ),
         (
             "openai",
             "https://relay.example/v1",
-            "passthrough",
             "web-run-injection",
         ),
         (
             "custom",
             "https://relay.example",
-            "passthrough",
             "web-run-injection",
         ),
         (
             "qwen",
             "https://qwen.example/v1",
-            "rosetta",
             "responses-tool-mapping",
         ),
     ],
 )
-def test_unified_responses_protocol_resolves_processing_and_profile(
+def test_unified_responses_protocol_resolves_direct_profile(
     provider: str,
     base_url: str,
-    expected_processing: str,
     expected_profile: str,
 ) -> None:
     raw = {
@@ -142,7 +138,7 @@ def test_unified_responses_protocol_resolves_processing_and_profile(
 
     route, _provider_info = GatewayConfig(raw).resolve("openai_responses", "test-model")
 
-    assert route.responses_processing == expected_processing
+    assert is_responses_passthrough(route)
     assert route.tool_profile_name == expected_profile
 
 
@@ -752,11 +748,11 @@ class TestProviderApiTypeResolution:
         assert cfg.provider_shim_names["Pixel"] is None
         assert route.target_provider == "openai_responses"
         assert route.shim_name is None
-        assert route.responses_processing == "passthrough"
+        assert not is_responses_passthrough(route)
         assert route.tool_profile_name == "web-run-injection"
         assert route.tool_profile["namespace.web.run"] == "modified"
 
-    def test_listed_responses_provider_uses_conversion_mode(self):
+    def test_listed_responses_provider_uses_direct_mode(self):
         raw = {
             "providers": {
                 "Qwen": {
@@ -781,7 +777,7 @@ class TestProviderApiTypeResolution:
 
         assert cfg.provider_types["Qwen"] == "openai_responses"
         assert route.target_provider == "openai_responses"
-        assert route.responses_processing == "rosetta"
+        assert is_responses_passthrough(route)
 
     @pytest.mark.parametrize("api_type", ["responses_passthrough", "responses_rosetta"])
     def test_removed_responses_api_types_are_rejected(self, api_type):

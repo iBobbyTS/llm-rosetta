@@ -2,25 +2,25 @@
 
 Codex 通过 OpenAI Responses API 接口与模型通信。许多第三方供应商只暴露 OpenAI Chat Completions 兼容的端点。Codex-Rosetta 根据路由不同，以不同方式填补这一差距：
 
-- 管理界面只暴露一个 **OpenAI Responses** 协议。OpenAI 官方与自定义中转站走直接 Responses 路径；列表内的第三方供应商走 Responses → IR → Responses 归一化。
+- 管理界面只暴露一个 **OpenAI Responses** 协议。所有 Provider 都走直接 Responses 路径；Provider 选择只改变默认 Tool Profile。
 - Responses 到 Chat 的路由通过 Codex-Rosetta 的 IR 进行转换，然后再转换回 Responses 事件供 Codex 使用。
 
 目标是保留 Codex 运行时的语义，而不仅仅是让上游请求在语法上有效。
 
 ## 单一 Responses 协议与供应商感知默认值
 
-Provider 配置保存 `api_type: "responses"`。模型组的默认 Profile 和内部处理方式根据供应商选择自动确定：
+Provider 配置保存 `api_type: "responses"`。供应商选择只决定模型组默认 Profile，协议处理始终保持直接传输：
 
 - OpenAI 官方选择 **透传（适用于OpenAI官方API）**，请求、工具声明、响应 JSON 和 SSE 字节都走直接路径。
 - OpenAI 自定义以及“自定义 + 自定义”选择 **web.run 注入（适用于尚未支持/alpha/search端点的中转站）**。原始工具形态全部保留，只有 `web.run` 设为 Modified 并由 Rosetta 处理。
-- 列表内第三方供应商选择 Responses 时，自动使用 **工具映射（适用于第三方模型提供的Responses接口）**，并走 Responses → IR → Responses 归一化。
+- 列表内第三方供应商选择 Responses 时，自动使用 **工具映射（适用于第三方模型提供的Responses接口）**，同时保持 Responses 直接传输。
 - 任何 Chat 协议选择 **Chat Default（适用于第三方仅提供chat api的模型）**。其他协议当前也回退到该 Profile，但代码保留独立分支，方便以后扩展。
 
 现在只支持 `responses` 这一种 Responses 协议值；旧的 `responses_passthrough` 与 `responses_rosetta` 不再接受，加载配置前必须替换为 `responses`。
 
 ## Responses 直接传输
 
-对于同协议的直接 Responses 路由，网关不会通过 IR 解码和重新编码完整请求体。它先应用所选 Tool Profile，再转发处理后的请求，并将上游原始 SSE 字节流式传输回 Codex。传输层只有一个例外：经过认证且带有 `Content-Encoding: zstd` 的请求会先在配置的解压前、解压后大小限制内解码，并移除编码 header。
+对于所有同协议 Responses 路由，网关不会通过 IR 解码和重新编码完整请求体。它只应用所选 Tool Profile，再转发处理后的请求，并将上游原始 SSE 字节流式传输回 Codex。模型切换压缩是唯一的语义例外：Rosetta 会让旧模型生成明文摘要，保存对应替换内容七天，并在下一个 Provider 请求前还原。传输层还有一个编码例外：经过认证且带有 `Content-Encoding: zstd` 的请求会先在配置的解压前、解压后大小限制内解码，并移除编码 header。
 
 这一点很重要，因为 Codex 依赖的某些字段不属于最小跨供应商 IR 的一部分，包括：
 

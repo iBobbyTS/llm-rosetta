@@ -10,9 +10,9 @@
 The currently developed and supported gateway paths are:
 
 - OpenAI Responses to OpenAI Chat Completions conversion;
-- OpenAI Responses direct pass-through and listed-provider Responses normalization, selected by the Provider and model-group Profile.
+- Direct OpenAI Responses transport for every Provider, with model-group Tool Profile changes plus Rosetta-managed plaintext handoff for model-switch compaction.
 
-Anthropic and Google conversion remain internal options and are not currently guaranteed. The Admin UI keeps one OpenAI Responses protocol; its internal direct-versus-normalized handling is selected from the Provider category rather than exposed as separate protocol choices.
+Anthropic and Google conversion remain internal options and are not currently guaranteed. The Admin UI keeps one OpenAI Responses protocol; Provider selection chooses the default Tool Profile but never changes same-format Responses protocol handling.
 
 ## Gateway operations
 

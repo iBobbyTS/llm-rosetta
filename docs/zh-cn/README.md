@@ -10,9 +10,9 @@
 目前已重点开发并保证的网关路径仅有：
 
 - OpenAI Responses 到 OpenAI Chat Completions 的协议转换；
-- OpenAI Responses 直接透传和列表内第三方 Responses 归一化，由 Provider 与模型组 Profile 自动选择。
+- 所有 Provider 都直接传输 OpenAI Responses；除模型组 Tool Profile 外，仅模型切换压缩使用 Rosetta 管理的明文交接。
 
-Anthropic 和 Google 转换仍是内部选项，目前不作保证。管理界面只保留一个 OpenAI Responses 协议；直接处理或归一化处理由 Provider 类别决定，不再作为两个独立协议选项暴露。
+Anthropic 和 Google 转换仍是内部选项，目前不作保证。管理界面只保留一个 OpenAI Responses 协议；Provider 类别只决定默认 Tool Profile，不会改变同协议 Responses 的处理路径。
 
 ## 网关运维
 

@@ -569,7 +569,6 @@ def test_tool_mapping_only_provider_applies_selected_group_profile():
     body = {"tools": [{"type": "function", "name": "update_plan", "parameters": {}}]}
     adapted = _apply_tool_adaptation(body, route)
 
-    assert route.responses_processing == "rosetta"
     assert route.tool_profile_name == "custom"
     assert route.tool_profile["function.update_plan"] == "disabled"
     assert "tools" not in adapted

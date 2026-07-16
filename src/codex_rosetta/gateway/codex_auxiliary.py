@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 from codex_rosetta._vendor.httpserver import JSONResponse, Response
-from codex_rosetta.routing import is_openai_responses_passthrough
+from codex_rosetta.routing import is_responses_passthrough
 
 from .auth import api_key_principal_var
 from .codex_images import (
@@ -143,7 +143,7 @@ async def handle_codex_auxiliary(
             status_code=404,
         )
 
-    native_passthrough = is_openai_responses_passthrough(route)
+    native_passthrough = is_responses_passthrough(route)
     web_run_state = route_tool_state(route, "namespace.web.run", "modified")
     image_tool_state = route_tool_state(route, IMAGEGEN_PROFILE_ITEM_ID, "disabled")
     web_run_mapping = web_run_state == "modified"
