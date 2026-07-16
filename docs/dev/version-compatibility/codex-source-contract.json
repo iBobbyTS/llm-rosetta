@@ -341,7 +341,7 @@
       "tool_choice",
       "tools"
     ],
-    "responses_lite_model_capabilities": [
+    "responses_lite_model_fields": [
       {
         "apply_patch_tool_type": "freeform",
         "default_reasoning_level": "medium",

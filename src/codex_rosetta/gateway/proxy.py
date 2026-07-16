@@ -2686,7 +2686,7 @@ async def handle_non_streaming(
         route.target_provider,
         route.shim_name,
         upstream_model=model,
-        model_capabilities=route.model_capabilities,
+        input_modalities=route.input_modalities,
         reasoning_mapping=None,
         provider_name=route.provider_name,
         conversion_options={
@@ -3575,7 +3575,7 @@ async def handle_streaming(  # noqa: C901
         route.target_provider,
         route.shim_name,
         upstream_model=model,
-        model_capabilities=route.model_capabilities,
+        input_modalities=route.input_modalities,
         reasoning_mapping=None,
         provider_name=route.provider_name,
         conversion_options={

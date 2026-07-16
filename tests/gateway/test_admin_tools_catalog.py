@@ -815,7 +815,7 @@ def test_admin_tool_profile_crud_and_reference_guard(tmp_path):
                 "provider": "test-provider",
                 "type": "llm",
                 "tool_profile": "builtin",
-                "models": {"gpt-test": {"capabilities": ["text"]}},
+                "models": {"gpt-test": {}},
             }
         },
         "server": {
@@ -928,7 +928,7 @@ def test_admin_tool_profile_crud_and_reference_guard(tmp_path):
                     "provider": "test-provider",
                     "type": "llm",
                     "tool_profile": "restricted",
-                    "models": {"gpt-test": {"capabilities": ["text"]}},
+                    "models": {"gpt-test": {}},
                 },
             )
         )

@@ -62,7 +62,7 @@ def _config_data() -> dict[str, Any]:
             "OpenAI": {
                 "provider": "openai",
                 "type": "llm",
-                "models": {"gpt-test": {"capabilities": ["text"]}},
+                "models": {"gpt-test": {}},
             }
         },
         "server": {
@@ -1012,12 +1012,7 @@ def test_get_config_returns_model_groups_and_effective_models(tmp_path):
         "OpenAI": {
             "provider": "openai",
             "type": "llm",
-            "models": {
-                "grouped": {
-                    "upstream_model": "grouped-upstream",
-                    "capabilities": ["text"],
-                }
-            },
+            "models": {"grouped": {"upstream_model": "grouped-upstream"}},
         }
     }
     config_path = tmp_path / "config.jsonc"
@@ -1088,7 +1083,6 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
         "models": {
             "gpt-grouped": {
                 "upstream_model": "gpt-upstream",
-                "capabilities": ["text"],
             }
         },
     }
@@ -1103,7 +1097,6 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
         "tool_profile": "builtin",
         "models": {
             "gpt-grouped": {
-                "capabilities": ["text"],
                 "upstream_model": "gpt-upstream",
             }
         },
@@ -1111,11 +1104,13 @@ def test_put_model_group_persists_and_reloads_runtime_config(tmp_path):
     route, _provider = app.gateway_config.resolve("openai_responses", "gpt-grouped")
     assert route.provider_name == "openai"
     assert route.upstream_model == "gpt-upstream"
-    assert route.model_capabilities == ["text"]
+    assert route.input_modalities is None
     assert route.tool_profile_name == "builtin"
 
 
-def test_put_model_group_persists_complete_model_info_and_derives_vision(tmp_path):
+def test_put_model_group_persists_model_info_without_runtime_modality_override(
+    tmp_path,
+):
     config = _config_data()
     config_path = tmp_path / "config.jsonc"
     config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -1152,7 +1147,7 @@ def test_put_model_group_persists_complete_model_info_and_derives_vision(tmp_pat
         "model_info": model_info
     }
     route, _provider = app.gateway_config.resolve("openai_responses", "vision-alias")
-    assert route.model_capabilities == ["text", "vision"]
+    assert route.input_modalities is None
     assert route.tool_profile
 
 
@@ -1197,7 +1192,7 @@ def test_local_mode_model_save_syncs_catalog_and_disable_clears_it(tmp_path):
         "provider": "openai",
         "type": "llm",
         "tool_profile": "builtin",
-        "models": {"third-party-model": {"capabilities": ["text"]}},
+        "models": {"third-party-model": {}},
     }
 
     response = _run(put_model_group(request))
@@ -1406,7 +1401,7 @@ def test_local_mode_sync_failure_rolls_back_admin_config_and_codex_files(
         "provider": "openai",
         "type": "llm",
         "tool_profile": "builtin",
-        "models": {"new-model": {"capabilities": ["text"]}},
+        "models": {"new-model": {}},
     }
     real_atomic_write = local_mode._atomic_write_bytes
     failed = False

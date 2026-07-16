@@ -205,34 +205,34 @@ class TestApplyIrTransforms:
         result = apply_ir_transforms(ir, shim)
         assert result == original
 
-    def test_strip_non_vision_when_no_vision_cap(self):
-        """Images should be stripped when model lacks vision capability."""
+    def test_strip_images_when_preset_is_text_only(self):
+        """Images should be stripped when the preset is text-only."""
         ir = _simple_ir_request(n_images=3)
         shim = _make_shim(ir_transforms=(strip_non_vision_images(),))
         result = apply_ir_transforms(
-            ir, shim, model_capabilities=["text"], upstream_model="deepseek-chat"
+            ir, shim, input_modalities=["text"], upstream_model="deepseek-chat"
         )
         # Images should be replaced with text placeholders
         content = result["messages"][0]["content"]
         image_parts = [p for p in content if p.get("type") == "image"]
         assert len(image_parts) == 0
 
-    def test_no_strip_when_vision_cap(self):
-        """Images should NOT be stripped when model has vision capability."""
+    def test_no_strip_when_preset_supports_images(self):
+        """Images should not be stripped when the preset supports images."""
         ir = _simple_ir_request(n_images=3)
         original = copy.deepcopy(ir)
         shim = _make_shim(ir_transforms=(strip_non_vision_images(),))
         result = apply_ir_transforms(
-            ir, shim, model_capabilities=["text", "vision"], upstream_model="gpt-4o"
+            ir, shim, input_modalities=["text", "image"], upstream_model="gpt-4o"
         )
         assert result == original
 
-    def test_no_strip_when_caps_none(self):
-        """Images should NOT be stripped when model_capabilities is None."""
+    def test_no_strip_when_modalities_are_unknown(self):
+        """Images should not be stripped when preset modalities are unknown."""
         ir = _simple_ir_request(n_images=3)
         original = copy.deepcopy(ir)
         shim = _make_shim(ir_transforms=(strip_non_vision_images(),))
-        result = apply_ir_transforms(ir, shim, model_capabilities=None)
+        result = apply_ir_transforms(ir, shim, input_modalities=None)
         assert result == original
 
     def test_image_limit_enforced(self):

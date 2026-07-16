@@ -214,7 +214,7 @@ def _minimal_raw(**server_overrides) -> dict:
             "test-llm": {
                 "provider": "test",
                 "type": "llm",
-                "models": {"gpt-test": {"capabilities": ["text"]}},
+                "models": {"gpt-test": {}},
             }
         },
         "server": _secure_server(),
@@ -813,25 +813,30 @@ class TestModelGroups:
         assert "ignored" not in cfg.models
         assert cfg.models == {"gpt-test": "test"}
 
-    def test_llm_group_preserves_text_vision_and_upstream_model(self):
+    def test_llm_group_uses_compact_preset_modalities(self):
         raw = _minimal_raw()
         raw["model_groups"] = {
             "OpenAI": {
                 "provider": "test",
                 "type": "llm",
-                "models": {
-                    "gpt-public": {
-                        "upstream_model": "gpt-upstream",
-                        "capabilities": ["text", "vision"],
-                    }
-                },
+                "models": {"qwen-public": {"upstream_model": "qwen3.7-plus"}},
             }
         }
         cfg = GatewayConfig(raw)
-        route, _provider = cfg.resolve("openai_responses", "gpt-public")
-        assert cfg.models == {"gpt-public": "test"}
-        assert route.upstream_model == "gpt-upstream"
-        assert route.model_capabilities == ["text", "vision"]
+        route, _provider = cfg.resolve("openai_responses", "qwen-public")
+        assert cfg.models == {"qwen-public": "test"}
+        assert route.upstream_model == "qwen3.7-plus"
+        assert route.input_modalities == ["text", "image"]
+
+    def test_full_codex_catalog_does_not_impose_runtime_modalities(self):
+        raw = _minimal_raw()
+        raw["model_groups"]["test-llm"]["models"] = {
+            "gpt-public": {"upstream_model": "gpt-5.6-sol"}
+        }
+
+        route, _provider = GatewayConfig(raw).resolve("openai_responses", "gpt-public")
+
+        assert route.input_modalities is None
 
     def test_embedding_group_is_rejected(self):
         raw = _minimal_raw()
@@ -860,12 +865,12 @@ class TestModelGroups:
         with pytest.raises(ValueError, match="unsupported fields"):
             GatewayConfig(raw)
 
-    def test_rejects_non_text_vision_llm_capabilities(self):
+    def test_removed_capabilities_field_is_rejected(self):
         raw = _minimal_raw()
         raw["model_groups"]["test-llm"]["models"]["gpt-test"] = {
             "capabilities": ["text", "audio"]
         }
-        with pytest.raises(ValueError, match="unsupported capabilities"):
+        with pytest.raises(ValueError, match="unsupported fields.*capabilities"):
             GatewayConfig(raw)
 
     def test_duplicate_names_across_groups_are_rejected(self):

@@ -26,19 +26,19 @@
   // profile is bundled with the gateway and is not duplicated in this file.
   "tool_profiles": {},
 
-  // Model groups are the only routing definitions. Models may declare
-  // text/vision capabilities only.
+  // Model groups are the only routing definitions. Gateway-side modality
+  // filtering is supplied by exact matches in the bundled model presets.
   "model_groups": {
     "OpenAI Chat": {
       "provider": "openai_chat",
       "type": "llm",
       "tool_profile": "builtin",
       "models": {
-        "gpt-4o": {"capabilities": ["text", "vision"]},
-        "gpt-4o-mini": {"capabilities": ["text", "vision"]},
-        "gpt-4.1": {"capabilities": ["text", "vision"]},
-        "gpt-4.1-mini": {"capabilities": ["text", "vision"]},
-        "gpt-4.1-nano": {"capabilities": ["text"]}
+        "gpt-4o": {},
+        "gpt-4o-mini": {},
+        "gpt-4.1": {},
+        "gpt-4.1-mini": {},
+        "gpt-4.1-nano": {}
       }
     },
     "Anthropic": {
@@ -46,8 +46,8 @@
       "type": "llm",
       "tool_profile": "builtin",
       "models": {
-        "claude-sonnet-4-20250514": {"capabilities": ["text", "vision"]},
-        "claude-3-5-haiku-20241022": {"capabilities": ["text", "vision"]}
+        "claude-sonnet-4-20250514": {},
+        "claude-3-5-haiku-20241022": {}
       }
     },
     "Google": {
@@ -55,9 +55,9 @@
       "type": "llm",
       "tool_profile": "builtin",
       "models": {
-        "gemini-2.0-flash": {"capabilities": ["text", "vision"]},
-        "gemini-2.5-pro": {"capabilities": ["text", "vision"]},
-        "gemini-2.5-flash": {"capabilities": ["text", "vision"]}
+        "gemini-2.0-flash": {},
+        "gemini-2.5-pro": {},
+        "gemini-2.5-flash": {}
       }
     }
   },

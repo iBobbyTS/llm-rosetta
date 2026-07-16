@@ -28,7 +28,7 @@ from .tool_profiles import (
     resolve_tool_profile_inputs,
     validate_tool_profile_reference,
 )
-from .model_presets import model_capabilities, normalize_model_info
+from .model_presets import model_input_modalities, normalize_model_info
 from .web_run_capabilities import WEB_RUN_BASIC_SEARCH_CAPABILITY
 from .transport import ProviderInfo
 
@@ -662,9 +662,6 @@ def discover_config(explicit_dir: str | None = None) -> str | None:
 class GatewayConfig:
     """Parsed and validated gateway configuration."""
 
-    # Default capabilities when not specified in config.
-    DEFAULT_CAPABILITIES: list[str] = ["text"]
-
     @classmethod
     def from_raw_with_env(cls, raw: dict[str, Any]) -> GatewayConfig:
         """Resolve environment placeholders in a raw candidate and validate it."""
@@ -696,7 +693,7 @@ class GatewayConfig:
         self._expanded_raw_models = self._expand_model_groups(
             raw.get("model_groups", {})
         )
-        self.models, self.model_capabilities, self.model_upstream_names = (
+        self.models, self.model_input_modalities, self.model_upstream_names = (
             self._parse_models(self._expanded_raw_models, self._raw_providers)
         )
         self.tool_profile_documents = normalize_tool_profile_documents(
@@ -928,26 +925,12 @@ class GatewayConfig:
                     f"'{group_name}'.model_info"
                 ),
             )
-        unsupported = set(entry) - {"provider", "upstream_model", "capabilities"}
+        unsupported = set(entry) - {"provider", "upstream_model"}
         if unsupported:
             raise ValueError(
                 f"config: model '{model_name}' in model group "
                 f"'{group_name}' has unsupported fields: {sorted(unsupported)}"
             )
-        capability_source = dict(entry)
-        if model_info is not None:
-            capability_source["model_info"] = model_info
-        capabilities = model_capabilities(model_name, capability_source)
-        if not isinstance(capabilities, list) or not capabilities:
-            capabilities = ["text"]
-        invalid_capabilities = set(capabilities) - {"text", "vision"}
-        if invalid_capabilities:
-            raise ValueError(
-                f"config: model '{model_name}' in model group "
-                f"'{group_name}' has unsupported capabilities: "
-                f"{sorted(invalid_capabilities)}"
-            )
-        entry["capabilities"] = list(dict.fromkeys(capabilities))
         return entry
 
     @classmethod
@@ -1001,7 +984,7 @@ class GatewayConfig:
         cls,
         raw_models: dict[str, Any],
         raw_providers: dict[str, dict[str, str]],
-    ) -> tuple[dict[str, ProviderType], dict[str, list[str]], dict[str, str]]:
+    ) -> tuple[dict[str, ProviderType], dict[str, list[str] | None], dict[str, str]]:
         """Parse model routing entries from config.
 
         Entries have already been normalized from model groups.
@@ -1009,10 +992,10 @@ class GatewayConfig:
         Models referencing disabled/missing providers are silently skipped.
 
         Returns:
-            Tuple of (models, model_capabilities, model_upstream_names).
+            Tuple of (models, model input modalities, model upstream names).
         """
         models: dict[str, ProviderType] = {}
-        model_capabilities: dict[str, list[str]] = {}
+        input_modalities: dict[str, list[str] | None] = {}
         model_upstream_names: dict[str, str] = {}
         for name, value in raw_models.items():
             if not isinstance(value, dict):
@@ -1023,13 +1006,14 @@ class GatewayConfig:
                 continue
 
             models[name] = provider_name
-            model_capabilities[name] = value.get(
-                "capabilities", list(cls.DEFAULT_CAPABILITIES)
-            )
             upstream = value.get("upstream_model")
+            input_modalities[name] = model_input_modalities(
+                name,
+                upstream,
+            )
             if upstream:
                 model_upstream_names[name] = upstream
-        return models, model_capabilities, model_upstream_names
+        return models, input_modalities, model_upstream_names
 
     @property
     def api_key(self) -> str | None:
@@ -1044,7 +1028,7 @@ class GatewayConfig:
         """Resolve *model* to a :class:`ResolvedRoute` and :class:`ProviderInfo`.
 
         Consolidates model lookup, provider type resolution, shim binding,
-        capability detection, and reasoning overrides into a single typed
+        input-modality detection and reasoning overrides into a single typed
         result.
 
         Args:
@@ -1065,7 +1049,7 @@ class GatewayConfig:
         provider_type = self.provider_types[provider_name]
         shim_name = self.provider_shim_names.get(provider_name)
         upstream_model = self.model_upstream_names.get(model)
-        caps = self.model_capabilities.get(model, list(self.DEFAULT_CAPABILITIES))
+        input_modalities = self.model_input_modalities.get(model)
         tool_profile_name = self.model_tool_profile_names.get(model)
 
         route = ResolvedRoute(
@@ -1074,7 +1058,7 @@ class GatewayConfig:
             provider_name=provider_name,
             shim_name=shim_name,
             upstream_model=upstream_model,
-            model_capabilities=caps,
+            input_modalities=input_modalities,
             tool_profile_name=tool_profile_name,
             tool_profile=(
                 resolve_tool_profile(tool_profile_name, self.tool_profiles)

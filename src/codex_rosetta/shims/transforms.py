@@ -212,18 +212,17 @@ class TransformContext:
     """Context available to IR-level transforms.
 
     Carries route-level information that body-level transforms don't
-    need but IR transforms do (e.g. model capabilities for vision
-    stripping).
+    need but IR transforms do (e.g. preset modalities for image stripping).
 
     Attributes:
         model: Upstream model identifier (post-alias).
-        model_capabilities: Declared capabilities of the model
-            (e.g. ``["text", "vision"]``).  ``None`` means unknown.
+        input_modalities: Input modalities declared by the model preset
+            (e.g. ``["text", "image"]``). ``None`` means unknown.
         request_id: Request identifier for logging.
     """
 
     model: str = ""
-    model_capabilities: list[str] | None = None
+    input_modalities: list[str] | None = None
     request_id: str = "-"
 
 
@@ -268,14 +267,14 @@ def apply_ir_transforms(
 
 def strip_non_vision_images() -> IRTransform:
     """Return an IR transform that replaces all images with text placeholders
-    when the model lacks ``"vision"`` capability.
+    when the model preset lacks the ``"image"`` input modality.
 
-    No-op if ``model_capabilities`` is ``None`` (unknown) or includes
-    ``"vision"`` (idempotent).
+    No-op if ``input_modalities`` is ``None`` (unknown) or includes
+    ``"image"`` (idempotent).
     """
 
     def _strip(body: dict[str, Any], context: TransformContext) -> dict[str, Any]:
-        if context.model_capabilities is None or "vision" in context.model_capabilities:
+        if context.input_modalities is None or "image" in context.input_modalities:
             return body
         from codex_rosetta.converters.base.helpers.image_limit import (
             strip_images_for_non_vision,

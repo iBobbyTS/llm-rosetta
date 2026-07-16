@@ -1,9 +1,8 @@
-"""Capability enforcement — adapt IR input to model capabilities.
+"""Input adaptation for model reasoning and preset-defined modalities.
 
-This module handles **platform-level** capability constraints that apply
-regardless of provider dialect.  Every model has capabilities (vision,
-audio, tools, reasoning, etc.) and the pipeline must adapt the IR
-request to match what the model can actually process.
+This module handles **platform-level** constraints that apply regardless of
+provider dialect. The pipeline adapts the IR request to match the input
+modalities declared by the bundled model preset.
 
 This is distinct from **shim transforms** (provider-specific dialect
 adaptation) and from **converter logic** (API-standard translation).
@@ -105,21 +104,20 @@ def enforce_reasoning(
 def enforce_vision(
     ir_request: dict[str, Any],
     *,
-    model_capabilities: list[str] | None = None,
+    input_modalities: list[str] | None = None,
     model: str = "",
     request_id: str = "-",
 ) -> dict[str, Any]:
-    """Strip images from the IR request if the model lacks vision capability.
+    """Strip images from the IR request if its preset lacks image input.
 
     Must be called **after** source → IR conversion (operates on the IR
     dict, not the raw provider body).
 
-    No-op when *model_capabilities* is ``None`` (unknown) or includes
-    ``"vision"``.
+    No-op when *input_modalities* is ``None`` (unknown) or includes ``"image"``.
 
     Args:
         ir_request: The IR request dict — **always use the return value**.
-        model_capabilities: Declared capabilities of the model.
+        input_modalities: Input modalities declared by the model preset.
         model: Upstream model identifier (for logging).
         request_id: Request identifier (for logging).
 
@@ -127,7 +125,7 @@ def enforce_vision(
         The IR request with images replaced by text placeholders, or
         the original request if the model has vision capability.
     """
-    if model_capabilities is None or "vision" in model_capabilities:
+    if input_modalities is None or "image" in input_modalities:
         return ir_request
 
     from codex_rosetta.converters.base.helpers.image_limit import (

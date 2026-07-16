@@ -3062,23 +3062,23 @@ function toggleModelGroup(groupName) {
   renderModels();
 }
 
-function _modelCaps(info) {
-  return (typeof info === 'object' && info.capabilities) ? info.capabilities : ['text'];
+function _modelModalities(info) {
+  return (typeof info === 'object' && Array.isArray(info.input_modalities)) ? info.input_modalities : [];
 }
 
 function _modelUpstream(info) {
   return (typeof info === 'object' && info.upstream_model) ? info.upstream_model : '';
 }
 
-function _modelCapBadges(caps) {
-  return caps.map(c => {
-    const cls = c === 'vision' ? 'badge-cap-vision' : c === 'tools' ? 'badge-cap-tools' : c === 'reasoning' ? 'badge-cap-reasoning' : 'badge-cap';
-    return `<span class="badge ${cls}">${esc(c)}</span>`;
+function _modelModalityBadges(modalities) {
+  return modalities.map(modality => {
+    const cls = modality === 'image' ? 'badge-cap-vision' : 'badge-cap';
+    return `<span class="badge ${cls}">${esc(modality)}</span>`;
   }).join('');
 }
 
-function _modelTestControls(name, caps) {
-  const hasVision = caps.includes('vision');
+function _modelTestControls(name, modalities) {
+  const hasVision = modalities.includes('image');
   return `<div class="test-group">
     <button class="btn btn-sm btn-test" onclick="runTest(${handlerArg(name)},'text')">${t('btn.test')}</button>
     <button class="btn btn-sm btn-caret" onclick="toggleTestMenu(this)">&#9662;</button>
@@ -3150,13 +3150,13 @@ function renderModels() {
     const providerDisabled = disabledProviders.has(provider);
     const collapsed = _collapsedModelGroups.has(groupName);
     const rows = modelEntries.map(([modelName, info]) => {
-      const caps = _modelCaps(info);
+      const modalities = _modelModalities(info);
       const upstream = _modelUpstream(info);
       const upstreamTag = upstream ? ` <span style="font-size:11px;color:var(--text-dim)" title="Upstream: ${escAttr(upstream)}">→ ${esc(upstream)}</span>` : '';
       return `<tr${providerDisabled ? ' style="opacity:0.4"' : ''}>
-        <td><code class="copyable" title="Click to copy" onclick="copyText(${handlerArg(modelName)})">${esc(modelName)}</code>${upstreamTag} ${_modelCapBadges(caps)}</td>
+        <td><code class="copyable" title="Click to copy" onclick="copyText(${handlerArg(modelName)})">${esc(modelName)}</code>${upstreamTag} ${_modelModalityBadges(modalities)}</td>
         <td>${esc(provider)}${providerDisabled ? ` <span style="color:var(--text-dim);font-size:11px">(${t('provider.disabled')})</span>` : ''}</td>
-        <td style="text-align:right;white-space:nowrap">${_modelTestControls(modelName, caps)}</td>
+        <td style="text-align:right;white-space:nowrap">${_modelTestControls(modelName, modalities)}</td>
       </tr>`;
     }).join('');
     return `<div class="model-group-card${collapsed ? ' collapsed' : ''}">

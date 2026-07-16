@@ -217,8 +217,8 @@ def test_catalog_materializes_named_third_party_presets_from_terra() -> None:
             ["text"],
             ["low", "medium", "high", "xhigh", "max"],
         ),
-        "mimo-v2.5-flash": (
-            "MiMo V2.5 Flash",
+        "mimo-v2.5": (
+            "MiMo V2.5",
             "Cheaper version of MiMo V2.5 by Xiaomi, best for working not coding",
             "MiMo V2.5 Flash by Xiaomi",
             1_000_000,
@@ -271,13 +271,18 @@ def test_catalog_materializes_named_third_party_presets_from_terra() -> None:
         assert [level["effort"] for level in model["supported_reasoning_levels"]] == (
             efforts
         )
+        if slug == "minimax-m3":
+            assert model["supports_reasoning_summaries"] is True
+            assert model["default_reasoning_summary"] == "none"
+            assert model["truncation_policy"] == {"mode": "bytes", "limit": 10000}
+            assert model["supports_parallel_tool_calls"] is True
         assert model["default_reasoning_level"] == (
             "medium" if "medium" in efforts else efforts[0]
         )
         assert model["supports_image_detail_original"] is False
         assert model["tool_mode"] == "code_mode_only"
         assert model["apply_patch_tool_type"] == "freeform"
-        assert model["supports_parallel_tool_calls"] is False
+        assert model["supports_parallel_tool_calls"] is (slug == "minimax-m3")
         assert model["supports_search_tool"] is True
         assert model["web_search_tool_type"] == "text_and_image"
         assert model["use_responses_lite"] is True
@@ -391,7 +396,7 @@ def test_catalog_compaction_hash_groups_are_stable_and_non_null() -> None:
         "glm-5.2": {},
         "qwen3.7-plus": {},
         "qwen3.7-max": {},
-        "mimo-v2.5-flash": {},
+        "mimo-v2.5": {},
         "mimo-v2.5-pro": {},
         "minimax-m3": {},
         "kimi-k2.7-code": {},
@@ -405,7 +410,7 @@ def test_catalog_compaction_hash_groups_are_stable_and_non_null() -> None:
     assert hashes["gpt-5.6-sol"] == hashes["gpt-5.6-terra"] == hashes["gpt-5.6-luna"]
     assert hashes["gpt-5.5"] == hashes["gpt-5.4"] == hashes["gpt-5.4-mini"]
     assert hashes["deepseek-v4-flash"] == hashes["deepseek-v4-pro"]
-    assert hashes["mimo-v2.5-flash"] == hashes["mimo-v2.5-pro"]
+    assert hashes["mimo-v2.5"] == hashes["mimo-v2.5-pro"]
     groups = {
         hashes["gpt-5.6-sol"],
         hashes["gpt-5.5"],
@@ -415,7 +420,7 @@ def test_catalog_compaction_hash_groups_are_stable_and_non_null() -> None:
         hashes["glm-5.2"],
         hashes["qwen3.7-plus"],
         hashes["qwen3.7-max"],
-        hashes["mimo-v2.5-flash"],
+        hashes["mimo-v2.5"],
         hashes["minimax-m3"],
         hashes["kimi-k2.7-code"],
         hashes["unlisted-model"],

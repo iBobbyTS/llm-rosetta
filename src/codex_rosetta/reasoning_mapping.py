@@ -239,41 +239,169 @@ def _write_mapping_fields(
         output_config["effort"] = effort
         body["output_config"] = output_config
     elif mapping == "deepseek_v4":
-        body["thinking"] = {"type": "enabled"}
-        body["reasoning_effort"] = "max" if effort in {"xhigh", "max"} else "high"
+        _write_deepseek_v4_fields(body, target_provider, effort)
     elif mapping == "glm_5_2":
-        thinking: dict[str, Any] = {"type": "enabled"}
-        if has_reasoning_history:
-            thinking["clear_thinking"] = False
-        body["thinking"] = thinking
-        body["reasoning_effort"] = effort
+        _write_glm_5_2_fields(body, target_provider, effort, has_reasoning_history)
     elif mapping == "qwen_3_7":
+        _write_qwen_3_7_fields(body, target_provider, effort, warnings)
+    elif mapping == "kimi_k2_7_code":
+        _write_kimi_k2_7_code_fields(body, target_provider, effort, warnings)
+    elif mapping == "minimax_m3":
+        _write_minimax_m3_fields(body, target_provider, effort, warnings)
+    elif mapping == "mimo_v2_5":
+        _write_mimo_v2_5_fields(body, target_provider, effort, warnings)
+
+
+def _write_deepseek_v4_fields(
+    body: dict[str, Any], target_provider: str, effort: ReasoningEffort
+) -> None:
+    mapped_effort = "max" if effort in {"xhigh", "max"} else "high"
+    if target_provider == "anthropic":
+        body["thinking"] = {"type": "enabled"}
+        body["output_config"] = {"effort": mapped_effort}
+    elif target_provider == "openai_chat":
+        body["thinking"] = {"type": "enabled"}
+        body["reasoning_effort"] = mapped_effort
+    else:
+        _write_target_protocol_fields(body, target_provider, effort)
+
+
+def _write_glm_5_2_fields(
+    body: dict[str, Any],
+    target_provider: str,
+    effort: ReasoningEffort,
+    has_reasoning_history: bool,
+) -> None:
+    if target_provider != "openai_chat":
+        _write_target_protocol_fields(body, target_provider, effort)
+        return
+    thinking: dict[str, Any] = {"type": "enabled"}
+    if has_reasoning_history:
+        thinking["clear_thinking"] = False
+    body["thinking"] = thinking
+    body["reasoning_effort"] = effort
+
+
+def _write_qwen_3_7_fields(
+    body: dict[str, Any],
+    target_provider: str,
+    effort: ReasoningEffort,
+    warnings: list[str] | None,
+) -> None:
+    if target_provider == "openai_responses":
+        body["reasoning"] = {
+            "effort": _responses_compatible_effort(
+                effort, model="Qwen 3.7", warnings=warnings
+            )
+        }
+    elif target_provider == "anthropic":
+        thinking: dict[str, Any] = {"type": "enabled"}
+        if effort != "max":
+            thinking["budget_tokens"] = _QWEN_BUDGETS[effort]
+        body["thinking"] = thinking
+    else:
         body["enable_thinking"] = True
         if effort != "max":
             body["thinking_budget"] = _QWEN_BUDGETS[effort]
         body["preserve_thinking"] = True
-    elif mapping == "kimi_k2_7_code":
-        _warn(
-            warnings,
-            "Reasoning mapping kimi_k2_7_code has no request effort control; "
-            "leaving upstream defaults.",
+
+
+def _write_kimi_k2_7_code_fields(
+    body: dict[str, Any],
+    target_provider: str,
+    effort: ReasoningEffort,
+    warnings: list[str] | None,
+) -> None:
+    if target_provider != "openai_chat":
+        _write_target_protocol_fields(body, target_provider, effort)
+        return
+    _warn(
+        warnings,
+        "Reasoning mapping kimi_k2_7_code has no request effort control; "
+        "leaving upstream defaults.",
+    )
+
+
+def _write_minimax_m3_fields(
+    body: dict[str, Any],
+    target_provider: str,
+    effort: ReasoningEffort,
+    warnings: list[str] | None,
+) -> None:
+    if target_provider == "openai_responses":
+        body["reasoning"] = {
+            "effort": _responses_compatible_effort(
+                effort, model="MiniMax M3", warnings=warnings
+            )
+        }
+        warning = (
+            "MiniMax M3 Responses accepts non-none effort levels for "
+            "compatibility but does not tune reasoning depth."
         )
-    elif mapping == "minimax_m3":
+    else:
         body["thinking"] = {"type": "adaptive"}
         if target_provider != "anthropic":
             body["reasoning_split"] = True
-        _warn(
-            warnings,
+        warning = (
             "Reasoning mapping minimax_m3 has no request effort control; "
-            "leaving upstream defaults.",
+            "leaving upstream defaults."
         )
-    elif mapping == "mimo_v2_5":
+    _warn(warnings, warning)
+
+
+def _write_mimo_v2_5_fields(
+    body: dict[str, Any],
+    target_provider: str,
+    effort: ReasoningEffort,
+    warnings: list[str] | None,
+) -> None:
+    if target_provider == "openai_responses":
+        body["reasoning"] = {
+            "effort": _responses_compatible_effort(
+                effort, model="MiMo V2.5", warnings=warnings
+            )
+        }
+        warning = (
+            "MiMo V2.5 Responses accepts low, medium, and high with "
+            "identical reasoning behavior."
+        )
+    else:
         body["thinking"] = {"type": "enabled"}
+        warning = (
+            "Reasoning mapping mimo_v2_5 has no request effort control; "
+            "leaving upstream defaults."
+        )
+    _warn(warnings, warning)
+
+
+def _write_target_protocol_fields(
+    body: dict[str, Any], target_provider: str, effort: ReasoningEffort
+) -> None:
+    """Write generic controls when a model has no official protocol endpoint."""
+    if target_provider == "openai_responses":
+        body["reasoning"] = {"effort": effort}
+    elif target_provider == "anthropic":
+        body["thinking"] = {"type": "adaptive"}
+        body["output_config"] = {"effort": effort}
+    else:
+        body["reasoning_effort"] = effort
+
+
+def _responses_compatible_effort(
+    effort: ReasoningEffort,
+    *,
+    model: str,
+    warnings: list[str] | None,
+) -> Literal["low", "medium", "high"]:
+    """Clamp model-specific Responses controls to their documented ladder."""
+    if effort in {"xhigh", "max"}:
         _warn(
             warnings,
-            "Reasoning mapping mimo_v2_5 has no request effort control; "
-            "leaving upstream defaults.",
+            f"{model} Responses API accepts reasoning effort only through high; "
+            f"mapping {effort} to high.",
         )
+        return "high"
+    return cast(Literal["low", "medium", "high"], effort)
 
 
 def _remove_reasoning_controls(body: dict[str, Any]) -> dict[str, Any]:

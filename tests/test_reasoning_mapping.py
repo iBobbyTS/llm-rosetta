@@ -188,6 +188,15 @@ def test_deepseek_v4_mapping_efforts(effort, expected):
     assert result["reasoning_effort"] == expected
 
 
+@pytest.mark.parametrize(("effort", "expected"), [("high", "high"), ("max", "max")])
+def test_deepseek_v4_anthropic_uses_output_config(effort, expected):
+    result = _apply("deepseek_v4", effort, "anthropic")
+
+    assert result["thinking"] == {"type": "enabled"}
+    assert result["output_config"] == {"effort": expected}
+    assert "reasoning_effort" not in result
+
+
 @pytest.mark.parametrize(
     ("effort", "expected"),
     [
@@ -228,6 +237,27 @@ def test_qwen_3_7_mapping_efforts(effort, expected_budget):
         assert result["thinking_budget"] == expected_budget
 
 
+@pytest.mark.parametrize(
+    ("effort", "expected"),
+    [("light", "low"), ("medium", "medium"), ("high", "high"), ("max", "high")],
+)
+def test_qwen_3_7_responses_uses_supported_reasoning_ladder(effort, expected):
+    result = _apply("qwen_3_7", effort, "openai_responses")
+
+    assert result["reasoning"] == {"effort": expected}
+    assert "enable_thinking" not in result
+    assert "thinking_budget" not in result
+    assert "preserve_thinking" not in result
+
+
+def test_qwen_3_7_anthropic_uses_budget_tokens():
+    result = _apply("qwen_3_7", "high", "anthropic")
+
+    assert result["thinking"] == {"type": "enabled", "budget_tokens": 8192}
+    assert "enable_thinking" not in result
+    assert "preserve_thinking" not in result
+
+
 @pytest.mark.parametrize("effort", ["light", "medium", "high", "xhigh", "max"])
 def test_kimi_k2_7_code_mapping_efforts_are_noop(effort):
     ctx = ConversionContext()
@@ -266,6 +296,18 @@ def test_minimax_m3_anthropic_mapping_omits_reasoning_split():
     assert "reasoning_split" not in result
 
 
+@pytest.mark.parametrize(
+    ("effort", "expected"),
+    [("light", "low"), ("medium", "medium"), ("high", "high"), ("max", "high")],
+)
+def test_minimax_m3_responses_uses_supported_reasoning_ladder(effort, expected):
+    result = _apply("minimax_m3", effort, "openai_responses")
+
+    assert result["reasoning"] == {"effort": expected}
+    assert "thinking" not in result
+    assert "reasoning_split" not in result
+
+
 @pytest.mark.parametrize("effort", ["light", "medium", "high", "xhigh", "max"])
 def test_mimo_v2_5_mapping_efforts_enable_thinking(effort):
     ctx = ConversionContext()
@@ -279,6 +321,24 @@ def test_mimo_v2_5_mapping_efforts_enable_thinking(effort):
 
     assert result["thinking"] == {"type": "enabled"}
     assert ctx.warnings
+
+
+def test_mimo_v2_5_anthropic_enables_thinking_without_budget():
+    result = _apply("mimo_v2_5", "high", "anthropic")
+
+    assert result["thinking"] == {"type": "enabled"}
+    assert "output_config" not in result
+
+
+@pytest.mark.parametrize(
+    ("effort", "expected"),
+    [("light", "low"), ("medium", "medium"), ("high", "high"), ("max", "high")],
+)
+def test_mimo_v2_5_responses_uses_supported_reasoning_ladder(effort, expected):
+    result = _apply("mimo_v2_5", effort, "openai_responses")
+
+    assert result["reasoning"] == {"effort": expected}
+    assert "thinking" not in result
 
 
 def test_disabled_input_promotes_to_low_without_disable_field():

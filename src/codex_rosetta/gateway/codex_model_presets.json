@@ -69,8 +69,18 @@
       "supported_reasoning_levels": ["low", "medium", "high", "xhigh", "max"]
     },
     {
-      "slug": "mimo-v2.5-flash",
-      "display_name": "MiMo V2.5 Flash",
+      "slug": "qwen3.7-max-2026-06-08",
+      "display_name": "Qwen 3.7 Max (2026-06-08 snapshot, supports multi-modal)",
+      "description": "Stronger Qwen 3.7 (with multi-modal)",
+      "identity": "Qwen 3.7 Max by Alibaba",
+      "priority": 20,
+      "context_window": 1000000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "slug": "mimo-v2.5",
+      "display_name": "MiMo V2.5",
       "description": "Cheaper version of MiMo V2.5 by Xiaomi, best for working not coding",
       "identity": "MiMo V2.5 Flash by Xiaomi",
       "priority": 20,
@@ -96,7 +106,11 @@
       "priority": 20,
       "context_window": 1000000,
       "input_modalities": ["text", "image"],
-      "supported_reasoning_levels": ["high"]
+      "supported_reasoning_levels": ["high"],
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "truncation_policy": {"mode": "bytes", "limit": 10000},
+      "supports_parallel_tool_calls": true
     },
     {
       "slug": "kimi-k2.7-code",

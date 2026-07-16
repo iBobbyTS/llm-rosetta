@@ -16,6 +16,14 @@ MODEL_INFO_LIST_FIELDS = ("input_modalities", "supported_reasoning_levels")
 MODEL_INFO_FIELDS = frozenset(
     (*MODEL_INFO_STRING_FIELDS, *MODEL_INFO_INTEGER_FIELDS, *MODEL_INFO_LIST_FIELDS)
 )
+MODEL_CATALOG_OVERRIDE_FIELDS = frozenset(
+    {
+        "supports_reasoning_summaries",
+        "default_reasoning_summary",
+        "truncation_policy",
+        "supports_parallel_tool_calls",
+    }
+)
 
 
 @lru_cache(maxsize=1)
@@ -115,6 +123,50 @@ def normalize_model_info(value: Any, *, field: str) -> dict[str, Any]:
     return normalized
 
 
+def normalize_model_preset(value: Any, *, field: str) -> dict[str, Any]:
+    """Validate one bundled preset and its optional catalog-only overrides."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be an object")
+    unknown = sorted(set(value) - MODEL_INFO_FIELDS - MODEL_CATALOG_OVERRIDE_FIELDS)
+    if unknown:
+        raise ValueError(f"{field} contains unsupported fields: {unknown}")
+
+    normalized = normalize_model_info(
+        {key: value.get(key) for key in MODEL_INFO_FIELDS},
+        field=field,
+    )
+    for key in ("supports_reasoning_summaries", "supports_parallel_tool_calls"):
+        item = value.get(key)
+        if item is not None:
+            if not isinstance(item, bool):
+                raise ValueError(f"{field}.{key} must be a boolean")
+            normalized[key] = item
+
+    summary = value.get("default_reasoning_summary")
+    if summary is not None:
+        if summary not in {"none", "auto", "concise", "detailed"}:
+            raise ValueError(
+                f"{field}.default_reasoning_summary has an unsupported value"
+            )
+        normalized["default_reasoning_summary"] = summary
+
+    truncation = value.get("truncation_policy")
+    if truncation is not None:
+        if not isinstance(truncation, dict):
+            raise ValueError(f"{field}.truncation_policy must be an object")
+        if set(truncation) != {"mode", "limit"}:
+            raise ValueError(f"{field}.truncation_policy must contain mode and limit")
+        if truncation.get("mode") != "bytes":
+            raise ValueError(f"{field}.truncation_policy.mode must be 'bytes'")
+        limit = truncation.get("limit")
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+            raise ValueError(
+                f"{field}.truncation_policy.limit must be a positive integer"
+            )
+        normalized["truncation_policy"] = {"mode": "bytes", "limit": limit}
+    return normalized
+
+
 def model_presets_for_admin() -> list[dict[str, Any]]:
     """Return all bundled models available to exact-slug Admin detection."""
     result: list[dict[str, Any]] = []
@@ -127,7 +179,7 @@ def model_presets_for_admin() -> list[dict[str, Any]]:
         seen.add(slug)
         result.append(preset)
     for index, value in enumerate(load_model_preset_resource()["models"]):
-        preset = normalize_model_info(
+        preset = normalize_model_preset(
             value, field=f"bundled model preset at index {index}"
         )
         slug = preset["slug"]
@@ -150,24 +202,23 @@ def detect_model_preset(
     return None
 
 
-def model_capabilities(
+def model_input_modalities(
     exposed_model: str,
-    value: Any,
-) -> list[str]:
-    """Derive gateway text/vision capabilities from model info or a preset."""
-    mapping = value if isinstance(value, dict) else {}
-    model_info = mapping.get("model_info")
-    if isinstance(model_info, dict):
-        modalities = model_info.get("input_modalities")
-    else:
-        preset = detect_model_preset(exposed_model, mapping.get("upstream_model"))
-        modalities = preset.get("input_modalities") if preset else None
-    if isinstance(modalities, list) and modalities:
-        capabilities = ["text"]
-        if "image" in modalities:
-            capabilities.append("vision")
-        return capabilities
-    legacy = mapping.get("capabilities")
-    if isinstance(legacy, list) and legacy:
-        return list(dict.fromkeys(str(item) for item in legacy))
-    return ["text"]
+    upstream_model: str | None = None,
+) -> list[str] | None:
+    """Return compact-preset input modalities for one routed model.
+
+    Runtime image filtering deliberately uses only ``codex_model_presets.json``.
+    Full Codex catalog metadata and Admin ``model_info`` overrides describe the
+    Codex-facing catalog but do not impose gateway-side modality restrictions.
+    """
+    candidate = upstream_model.strip() if isinstance(upstream_model, str) else ""
+    slug = candidate or exposed_model
+    for index, value in enumerate(load_model_preset_resource()["models"]):
+        preset = normalize_model_preset(
+            value, field=f"bundled model preset at index {index}"
+        )
+        if preset["slug"] != slug:
+            continue
+        return list(preset["input_modalities"])
+    return None

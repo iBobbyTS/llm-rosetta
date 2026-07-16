@@ -33,7 +33,7 @@ HIGH_CONFIDENCE_CONTRACT_KEYS = {
     "model_messages_fields",
     "response_item_additional_tools_fields",
     "remote_compaction_v2",
-    "responses_lite_model_capabilities",
+    "responses_lite_model_fields",
     "responses_metadata_keys",
     "sse_event_names",
     "tool_spec_web_search_fields",
@@ -59,7 +59,7 @@ HIGH_CONFIDENCE_DESCRIPTIONS = {
         "RemoteCompactionV2 default/stage, exact bundled prompts, V2 item fields, "
         "metadata enums, and comp_hash transition contract match"
     ),
-    "responses_lite_model_capabilities": (
+    "responses_lite_model_fields": (
         "use_responses_lite model list and key protocol capability snapshot match"
     ),
     "responses_metadata_keys": "extracted turn metadata key names and values match",
@@ -359,7 +359,7 @@ def _function_body_sha256(text: str, name: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
-def _responses_lite_model_capabilities(models_json: str) -> list[dict[str, Any]]:
+def _responses_lite_model_fields(models_json: str) -> list[dict[str, Any]]:
     try:
         payload = json.loads(models_json)
     except json.JSONDecodeError as exc:
@@ -603,9 +603,7 @@ def extract_contract(source_root: Path) -> dict[str, Any]:
             in _enum_variants(models, "ResponseItem"),
         },
         "responses_api_request_fields": _struct_fields(common, "ResponsesApiRequest"),
-        "responses_lite_model_capabilities": _responses_lite_model_capabilities(
-            model_catalog
-        ),
+        "responses_lite_model_fields": _responses_lite_model_fields(model_catalog),
         "responses_metadata_keys": _string_constants(
             responses_metadata, r"[A-Z0-9_]+_KEY"
         ),

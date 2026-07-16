@@ -2,7 +2,7 @@
 
 Defines the :class:`ResolvedRoute` data contract and :class:`Router`
 protocol for resolving a model name into a target provider, shim config,
-and capabilities.
+and preset-defined input modalities.
 
 This module lives in the core library (no network or gateway deps) so
 any consumer (gateway, argo-proxy, CLI tools) can depend on it.
@@ -39,8 +39,8 @@ class ResolvedRoute:
             (e.g. ``"volcengine--openai_chat"``), or ``None``.
         upstream_model: Actual model ID to send upstream, or ``None``
             when the gateway model name is used as-is.
-        model_capabilities: Declared capabilities of the model
-            (e.g. ``["text", "vision"]``).
+        input_modalities: Input modalities declared by the bundled model preset,
+            or ``None`` when the routed model is unknown.
         tool_profile_name: Selected tool-profile identifier, or ``None`` when
             tool profiles do not apply to the route.
         tool_profile: Effective catalog item states for the selected profile.
@@ -56,7 +56,7 @@ class ResolvedRoute:
     provider_name: str
     shim_name: str | None = None
     upstream_model: str | None = None
-    model_capabilities: list[str] = field(default_factory=lambda: ["text"])
+    input_modalities: list[str] | None = None
     tool_profile_name: str | None = None
     tool_profile: dict[str, str] = field(default_factory=dict)
     tool_profile_inputs: dict[str, dict[str, str]] = field(default_factory=dict)

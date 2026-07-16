@@ -2,7 +2,7 @@
 
 from codex_rosetta.gateway.model_presets import (
     detect_model_preset,
-    model_capabilities,
+    model_input_modalities,
     model_presets_for_admin,
 )
 
@@ -21,6 +21,13 @@ def test_admin_detection_combines_codex_catalog_and_third_party_presets() -> Non
         "ultra",
     ]
     assert presets["deepseek-v4-pro"]["display_name"] == "DeepSeek V4 Pro"
+    assert presets["minimax-m3"]["supports_reasoning_summaries"] is True
+    assert presets["minimax-m3"]["default_reasoning_summary"] == "none"
+    assert presets["minimax-m3"]["truncation_policy"] == {
+        "mode": "bytes",
+        "limit": 10000,
+    }
+    assert presets["minimax-m3"]["supports_parallel_tool_calls"] is True
 
 
 def test_model_detection_uses_exact_upstream_slug_then_exposed_slug() -> None:
@@ -34,5 +41,7 @@ def test_model_detection_uses_exact_upstream_slug_then_exposed_slug() -> None:
     assert detect_model_preset("glm-5.2-flash") is None
 
 
-def test_builtin_catalog_modalities_drive_runtime_capabilities() -> None:
-    assert model_capabilities("gpt-5.6-sol", {}) == ["text", "vision"]
+def test_compact_preset_modalities_drive_runtime_input_filtering() -> None:
+    assert model_input_modalities("qwen3.7-plus") == ["text", "image"]
+    assert model_input_modalities("gpt-5.6-sol") is None
+    assert model_input_modalities("unknown-model") is None

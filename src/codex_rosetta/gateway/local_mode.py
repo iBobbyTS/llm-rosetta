@@ -14,7 +14,11 @@ from importlib import resources
 from typing import Any
 
 from .config import _atomic_write_bytes, normalize_codex_settings
-from .model_presets import load_model_preset_resource, normalize_model_info
+from .model_presets import (
+    load_model_preset_resource,
+    normalize_model_info,
+    normalize_model_preset,
+)
 
 CATALOG_FILENAME = "model_catalog.json"
 CODEX_CONFIG_FILENAME = "config.toml"
@@ -40,7 +44,7 @@ _ROSETTA_COMPACTION_GROUPS = {
     "glm-5.2": "rosetta-comp-v1:glm-5.2",
     "qwen3.7-plus": "rosetta-comp-v1:qwen3.7-plus",
     "qwen3.7-max": "rosetta-comp-v1:qwen3.7-max",
-    "mimo-v2.5-flash": "rosetta-comp-v1:mimo-v2.5",
+    "mimo-v2.5": "rosetta-comp-v1:mimo-v2.5",
     "mimo-v2.5-pro": "rosetta-comp-v1:mimo-v2.5",
     "minimax-m3": "rosetta-comp-v1:minimax-m3",
     "kimi-k2.7-code": "rosetta-comp-v1:kimi-k2.7-code",
@@ -524,9 +528,10 @@ def _model_presets(terra: dict[str, Any]) -> dict[str, dict[str, Any]]:
         raise ValueError("bundled Codex model presets have invalid template metadata")
     shared_overrides = resource["shared_overrides"]
     presets: dict[str, dict[str, Any]] = {}
-    for raw_preset in resource["models"]:
-        if not isinstance(raw_preset, dict):
-            raise ValueError("bundled Codex model preset must be an object")
+    for index, value in enumerate(resource["models"]):
+        raw_preset = normalize_model_preset(
+            value, field=f"bundled model preset at index {index}"
+        )
         model = _materialize_model_preset(
             terra, shared_overrides, raw_preset, identity_source
         )

@@ -449,7 +449,7 @@ def test_gateway_config_resolves_group_profile_into_supported_route(api_type):
                 "provider": "test",
                 "type": "llm",
                 "tool_profile": "custom",
-                "models": {"gpt-test": {"capabilities": ["text"]}},
+                "models": {"gpt-test": {}},
             }
         },
         "server": {
@@ -521,7 +521,7 @@ def test_gateway_config_resolves_bundled_profile_input_overrides():
                 "provider": "test",
                 "type": "llm",
                 "tool_profile": "builtin",
-                "models": {"gpt-test": {"capabilities": ["text"]}},
+                "models": {"gpt-test": {}},
             }
         },
         "server": {

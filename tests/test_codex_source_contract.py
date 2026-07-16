@@ -17,7 +17,7 @@ SCRIPT = runpy.run_path(str(SCRIPT_PATH))
 
 _enum_variants = SCRIPT["_enum_variants"]
 _enum_variant_field_contracts = SCRIPT["_enum_variant_field_contracts"]
-_responses_lite_model_capabilities = SCRIPT["_responses_lite_model_capabilities"]
+_responses_lite_model_fields = SCRIPT["_responses_lite_model_fields"]
 _serde_enum_wire_types = SCRIPT["_serde_enum_wire_types"]
 _struct_field_contracts = SCRIPT["_struct_field_contracts"]
 _struct_fields = SCRIPT["_struct_fields"]
@@ -151,7 +151,7 @@ def test_responses_lite_snapshot_keeps_stable_capability_subset():
         }
     )
 
-    snapshot = _responses_lite_model_capabilities(models_json)
+    snapshot = _responses_lite_model_fields(models_json)
 
     assert [model["slug"] for model in snapshot] == ["lite-a", "lite-z"]
     assert snapshot[1]["supported_reasoning_levels"] == ["medium", "ultra"]
@@ -236,7 +236,7 @@ def test_new_complete_value_contracts_are_high_confidence():
         "response_item_additional_tools_fields": {
             "tools": {"type": "Vec<serde_json::Value>"}
         },
-        "responses_lite_model_capabilities": [
+        "responses_lite_model_fields": [
             {
                 "slug": "gpt-test",
                 "tool_mode": "code_mode_only",

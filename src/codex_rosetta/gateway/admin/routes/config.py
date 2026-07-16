@@ -20,7 +20,7 @@ from ...config import (
 )
 from ...local_mode import config_toml_has_model_catalog
 from ...model_presets import (
-    model_capabilities,
+    detect_model_preset,
     model_presets_for_admin,
     normalize_model_info,
 )
@@ -206,7 +206,13 @@ def _normalize_model_entry(
     else:
         return {}
 
-    entry["capabilities"] = model_capabilities(model_name, value)
+    preset = detect_model_preset(
+        model_name,
+        entry.get("upstream_model"),
+    )
+    entry["input_modalities"] = (
+        list(preset["input_modalities"]) if preset is not None else None
+    )
     return entry
 
 
@@ -279,20 +285,6 @@ def _clean_group_model_entry(value: Any) -> dict[str, Any]:
     model_info = value.get("model_info")
     if model_info is not None:
         entry["model_info"] = normalize_model_info(model_info, field="LLM model_info")
-
-    capabilities_value = value.get("capabilities")
-    if capabilities_value is not None:
-        capabilities = (
-            [str(capability) for capability in capabilities_value]
-            if isinstance(capabilities_value, list) and capabilities_value
-            else ["text"]
-        )
-        invalid = set(capabilities) - {"text", "vision"}
-        if invalid:
-            raise ValueError(
-                f"LLM model capabilities must be text/vision, got {sorted(invalid)}"
-            )
-        entry["capabilities"] = list(dict.fromkeys(capabilities))
 
     return entry
 

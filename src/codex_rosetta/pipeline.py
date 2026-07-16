@@ -68,7 +68,7 @@ def apply_ir_transforms(
     shim: ProviderShim | str | None,
     *,
     upstream_model: str | None = None,
-    model_capabilities: list[str] | None = None,
+    input_modalities: list[str] | None = None,
     request_id: str = "-",
 ) -> dict[str, Any]:
     """Apply all shim-driven IR-level transforms.
@@ -82,9 +82,9 @@ def apply_ir_transforms(
             others return a new dict — **always use the return value**.
         shim: ProviderShim instance, registered name, or None (no-op).
         upstream_model: The upstream model ID (for pattern matching).
-        model_capabilities: Model capability list (e.g. ``["text", "vision"]``).
-            When ``None``, transforms that check capabilities treat the
-            model as unknown and skip capability-dependent operations.
+        input_modalities: Preset input modalities (e.g. ``["text", "image"]``).
+            When ``None``, transforms treat the model as unknown and do not
+            strip images.
         request_id: Request identifier for logging.
 
     Returns:
@@ -97,7 +97,7 @@ def apply_ir_transforms(
 
     ctx = TransformContext(
         model=upstream_model or "",
-        model_capabilities=model_capabilities,
+        input_modalities=input_modalities,
         request_id=request_id,
     )
     return _apply_ir_transforms_exec(resolved.ir_transforms, ir_request, ctx)
@@ -186,7 +186,7 @@ class ConversionPipeline:
         target_provider: Upstream API format (e.g. ``"anthropic"``).
         shim: Provider shim instance, registered name, or ``None``.
         upstream_model: The upstream model ID (for shim pattern matching).
-        model_capabilities: Model capability list (e.g. ``["text", "vision"]``).
+        input_modalities: Input modalities declared by the bundled model preset.
         reasoning_mapping: Optional gateway reasoning mapping.
         provider_name: User-configured upstream provider name.
     """
@@ -198,7 +198,7 @@ class ConversionPipeline:
         shim: ProviderShim | str | None = None,
         *,
         upstream_model: str | None = None,
-        model_capabilities: list[str] | None = None,
+        input_modalities: list[str] | None = None,
         reasoning_mapping: str | None = None,
         provider_name: str | None = None,
         conversion_options: dict[str, Any] | None = None,
@@ -209,7 +209,7 @@ class ConversionPipeline:
         self._target_provider = target_provider
         self._shim = shim
         self._upstream_model = upstream_model
-        self._model_capabilities = model_capabilities
+        self._input_modalities = input_modalities
         self._reasoning_mapping = reasoning_mapping
         self._provider_name = provider_name
         self._conversion_options = dict(conversion_options or {})
@@ -366,7 +366,7 @@ class ConversionPipeline:
         t0 = time.perf_counter()
         ir_request = enforce_vision(
             ir_request,
-            model_capabilities=self._model_capabilities,
+            input_modalities=self._input_modalities,
             model=self._upstream_model or body.get("model") or "",
             request_id=request_id,
         )
@@ -376,7 +376,7 @@ class ConversionPipeline:
             ir_request,
             self._shim,
             upstream_model=self._upstream_model or body.get("model"),
-            model_capabilities=self._model_capabilities,
+            input_modalities=self._input_modalities,
             request_id=request_id,
         )
         self._profile["ir_transforms_ms"] = round((time.perf_counter() - t0) * 1000, 2)

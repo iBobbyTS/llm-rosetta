@@ -911,7 +911,7 @@ async def handle_list_models(request: Any) -> Response:
     for name in models:
         provider_name = config.models[name]
         api_standard = config.provider_types.get(provider_name, "unknown")
-        capabilities = config.model_capabilities.get(name, ["text"])
+        input_modalities = config.model_input_modalities.get(name)
         data.append(
             {
                 "id": name,
@@ -919,7 +919,7 @@ async def handle_list_models(request: Any) -> Response:
                 "created": 0,
                 "owned_by": provider_name,
                 "api_standard": api_standard,
-                "capabilities": capabilities,
+                "input_modalities": input_modalities,
                 "type": "model",
                 "display_name": name,
                 "created_at": "1970-01-01T00:00:00Z",

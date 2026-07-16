@@ -86,11 +86,14 @@ URLs.
 
 Rosetta also packages Terra-derived presets for `deepseek-v4-pro`,
 `deepseek-v4-flash`, `glm-5.2`, `qwen3.7-plus`, `qwen3.7-max`,
-`mimo-v2.5-flash`, `mimo-v2.5-pro`, `minimax-m3`, and `kimi-k2.7-code`.
+`qwen3.7-max-2026-06-08`, `mimo-v2.5`, `mimo-v2.5-pro`, `minimax-m3`, and
+`kimi-k2.7-code`.
 These are materialized only when the exact alias exists in an LLM model group;
 they are not part of the eight-entry upstream catalog. Each preset retains the
 Terra instruction structure with its model identity replaced and declares its
-own context, modalities, reasoning levels, and explicitly selected Codex capabilities.
+own context, modalities, reasoning levels, and explicitly selected Codex catalog
+fields. MiniMax M3 additionally overrides reasoning-summary support, the default
+summary, byte-based truncation, and parallel tool calls in its preset.
 
 The bundled JSON uses 41 distinct keys. `ModelInfo` also accepts
 `effective_context_window_percent`, which all bundled entries omit and
@@ -218,8 +221,11 @@ In the Admin model-group dialog, Rosetta checks the configured upstream model
 name first, or the exposed model name when no upstream mapping is present. An
 exact slug match in either `codex_models_0_144_4.json` or
 `codex_model_presets.json` displays the model's `display_name` and derives
-text/vision support from `input_modalities`; partial or suffixed names do not
-match. The always-visible manual button opens a panel
+text/vision badges from `input_modalities`; partial or suffixed names do not
+match. Gateway-side image filtering is narrower: it reads `input_modalities`
+only from an exact match in `codex_model_presets.json`. Full Codex catalog
+metadata and saved `model_info` remain Codex-facing metadata and do not impose
+runtime modality restrictions. The always-visible manual button opens a panel
 to the right with every per-model preset field: `slug`, `display_name`,
 `description`, `identity`, `priority`, `context_window`, `input_modalities`, and
 `supported_reasoning_levels`. A detected preset pre-fills the panel; an
