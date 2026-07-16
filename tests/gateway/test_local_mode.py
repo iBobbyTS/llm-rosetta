@@ -169,7 +169,7 @@ def test_catalog_forces_code_mode_for_mapped_auto_review_model(
     expected = dict(
         default,
         tool_mode="code_mode_only",
-        comp_hash="rosetta-comp-v1:deepseek-v4",
+        comp_hash="dsv4-pre",
     )
 
     assert build_model_catalog(raw)["models"] == [expected]
@@ -260,6 +260,17 @@ def test_catalog_materializes_named_third_party_presets_from_terra() -> None:
     }
 
     models = {model["slug"]: model for model in build_model_catalog(raw)["models"]}
+    expected_comp_hashes = {
+        "deepseek-v4-pro": "dsv4-pre",
+        "deepseek-v4-flash": "dsv4-pre",
+        "glm-5.2": "glm-5.2",
+        "qwen3.7-plus": "qwen3.7-plus",
+        "qwen3.7-max": "qwen3.7-max-text",
+        "mimo-v2.5": "mimo-2.5",
+        "mimo-v2.5-pro": "mimo-2.5",
+        "minimax-m3": "minimax-3",
+        "kimi-k2.7-code": "kimi-2.7",
+    }
 
     for slug, values in expected.items():
         display_name, description, identity, context, modalities, efforts = values
@@ -292,7 +303,7 @@ def test_catalog_materializes_named_third_party_presets_from_terra() -> None:
         assert model["service_tiers"] == []
         assert model["additional_speed_tiers"] == []
         assert model["effective_context_window_percent"] == 85
-        assert model["comp_hash"].startswith("rosetta-comp-v1:")
+        assert model["comp_hash"] == expected_comp_hashes[slug]
         assert identity in model["base_instructions"]
         assert "GPT-5" not in model["base_instructions"]
         messages = json.dumps(model["model_messages"], ensure_ascii=False)
@@ -316,7 +327,39 @@ def test_catalog_detects_preset_from_upstream_model_for_an_exposed_alias() -> No
     assert model["display_name"] == "DeepSeek V4 Pro"
     assert model["context_window"] == 1_000_000
     assert model["input_modalities"] == ["text"]
-    assert model["comp_hash"] == "rosetta-comp-v1:deepseek-v4"
+    assert model["comp_hash"] == "dsv4-pre"
+
+
+@pytest.mark.parametrize(
+    ("alias", "upstream", "expected_hash"),
+    [
+        ("qwen3.7-max", None, "qwen3.7-max-text"),
+        (
+            "qwen-image-alias",
+            "qwen3.7-max-2026-06-08",
+            "qwen3.7-max-image",
+        ),
+    ],
+)
+def test_catalog_honors_explicit_preset_compaction_hash(
+    alias: str, upstream: str | None, expected_hash: str
+) -> None:
+    model_config = {} if upstream is None else {"upstream_model": upstream}
+    for provider in ("provider-a", "provider-b"):
+        raw = {
+            "model_groups": {
+                "third-party": {
+                    "provider": provider,
+                    "type": "llm",
+                    "models": {alias: model_config},
+                }
+            }
+        }
+
+        [model] = build_model_catalog(raw)["models"]
+
+        assert model["slug"] == alias
+        assert model["comp_hash"] == expected_hash
 
 
 def test_catalog_compaction_hash_depends_only_on_upstream_model_name() -> None:

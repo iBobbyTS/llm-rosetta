@@ -87,7 +87,7 @@ Key points to confirm:
   `compaction` output with required string `encrypted_content`, metadata enum
   values, and the non-empty/unequal `comp_hash_changed` predicate;
 - `ModelInfo` and nested-struct fields, enum wire values, serde rename/default/skip behavior, instruction-template precedence, unknown-model fallback, and every runtime consumer;
-- local catalog `comp_hash` derivation from upstream model name only, including stability across exposed-alias and Provider changes plus a change when the upstream model changes;
+- local catalog `comp_hash` selection from the upstream model name, including explicit non-empty preset-hash precedence and alias inheritance, deterministic fallback, stability across exposed-alias and Provider changes, plus a change when the upstream model changes;
 - The complete bundled `models.json` key set and per-model values, including keys ignored by the current client and valid defaulted fields omitted from the JSON;
 - Whether catalog-selected tool surfaces changed, especially `web.run` versus hosted `web_search` and collaboration v2 versus `multi_agent_v1`.
 

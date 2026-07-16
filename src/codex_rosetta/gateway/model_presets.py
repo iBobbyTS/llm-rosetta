@@ -18,6 +18,7 @@ MODEL_INFO_FIELDS = frozenset(
 )
 MODEL_CATALOG_OVERRIDE_FIELDS = frozenset(
     {
+        "comp_hash",
         "supports_reasoning_summaries",
         "default_reasoning_summary",
         "truncation_policy",
@@ -135,6 +136,12 @@ def normalize_model_preset(value: Any, *, field: str) -> dict[str, Any]:
         {key: value.get(key) for key in MODEL_INFO_FIELDS},
         field=field,
     )
+    if "comp_hash" in value:
+        comp_hash = value["comp_hash"]
+        if not isinstance(comp_hash, str) or not comp_hash.strip():
+            raise ValueError(f"{field}.comp_hash must be a non-empty string")
+        normalized["comp_hash"] = comp_hash.strip()
+
     for key in ("supports_reasoning_summaries", "supports_parallel_tool_calls"):
         item = value.get(key)
         if item is not None:

@@ -24,14 +24,17 @@
 
 Rosetta 保留上游 catalog 资产原文，只在 materialization 时应用运行时
 `comp_hash` overlay。`gpt-5.6-sol`/`terra`/`luna` 保留已审查的上游组值（当前为
-`3000`），`gpt-5.5`/`5.4`/`5.4-mini` 也保留上游组值（当前为 `2911`）。其余组由
-Rosetta 管理：`gpt-5.2`、`codex-auto-review`、DeepSeek V4、GLM 5.2、两个 Qwen
-3.7、MiMo V2.5、MiniMax M3 和 Kimi K2.7 Code。每组都非空；同组共享值，不同组不得
-碰撞。未知 alias 使用确定性的
+`3000`），`gpt-5.5`/`5.4`/`5.4-mini` 也保留上游组值（当前为 `2911`）。紧凑的第三方
+preset 为 DeepSeek V4、GLM 5.2、各 Qwen 3.7 变体、MiMo V2.5、MiniMax M3 和 Kimi
+K2.7 Code 声明已审查值；Rosetta 为未声明此字段的 preset 以及 `gpt-5.2`、
+`codex-auto-review` 保留内置回退分组。每组都非空；同组共享值，不同组不得碰撞。未知
+alias 使用确定性的
 `rosetta-comp-v1:custom:<sha256(upstream_model)>`。overlay 的路由输入只取配置的上游
-模型名；未配置时才回退到暴露 alias。Provider 身份不会改变 hash，映射到同一上游模型
-的多个 alias 会共享 hash。上游 hash 缺失或未经审查的碰撞会使兼容检查失败，而不会
-静默关闭切模压缩。
+模型名并据此选择 preset；未配置时才回退到暴露 alias。Provider 身份不会改变 hash，
+映射到同一上游模型的多个 alias 会共享 hash。compact preset 可以声明非空
+`comp_hash`；该值优先于 Rosetta 内置分组和确定性回退，并会在暴露 alias 映射到此
+preset slug 时随 preset 一起继承。上游 hash 缺失、preset hash 非法或未经审查的碰撞
+都会使兼容检查失败，而不会静默关闭切模压缩。
 
 本地模式还会配置 Codex 使用 Rosetta，而不只是写入模型目录。它选择自定义 Provider
 ID `codex_rosetta`，但生成的 Provider `name` 会严格写成 `OpenAI`。这个区别是有意

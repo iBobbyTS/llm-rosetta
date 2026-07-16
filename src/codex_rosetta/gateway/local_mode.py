@@ -583,8 +583,9 @@ def _apply_compaction_hash_overlay(
     *,
     upstream_model_names: dict[str, str] | None = None,
     upstream_catalog: list[dict[str, Any]] | None = None,
+    preset_compaction_hashes: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Apply Rosetta-owned compaction groups without mutating catalog assets."""
+    """Apply preset or Rosetta-owned compaction groups to catalog candidates."""
     upstream_values: dict[str, str] = {}
     for model in upstream_catalog or models:
         slug = model.get("slug")
@@ -604,7 +605,10 @@ def _apply_compaction_hash_overlay(
     for model in models:
         slug = model["slug"]
         upstream_name = (upstream_model_names or {}).get(slug, slug)
-        if upstream_name in _UPSTREAM_COMPACTION_GROUPS:
+        preset_comp_hash = (preset_compaction_hashes or {}).get(slug)
+        if preset_comp_hash is not None:
+            comp_hash = preset_comp_hash
+        elif upstream_name in _UPSTREAM_COMPACTION_GROUPS:
             comp_hash = upstream_values[_UPSTREAM_COMPACTION_GROUPS[upstream_name]]
         else:
             comp_hash = _ROSETTA_COMPACTION_GROUPS.get(upstream_name)
@@ -667,6 +671,7 @@ def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
     }
 
     selected_models: list[dict[str, Any]] = []
+    preset_compaction_hashes: dict[str, str] = {}
     preset_resource = load_model_preset_resource()
     for name in sorted(configured_specs):
         spec = configured_specs[name]
@@ -682,11 +687,13 @@ def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
                 preset_resource["identity_source"],
             )
         else:
-            model = copy.deepcopy(
-                by_slug.get(name) or presets.get(detected_slug) or terra
-            )
-            if detected_slug in presets:
+            detected_preset = presets.get(detected_slug)
+            model = copy.deepcopy(by_slug.get(name) or detected_preset or terra)
+            if detected_preset is not None:
                 model["slug"] = name
+                preset_comp_hash = detected_preset.get("comp_hash")
+                if isinstance(preset_comp_hash, str):
+                    preset_compaction_hashes[name] = preset_comp_hash
         if (
             not isinstance(raw_model_info, dict)
             and name not in by_slug
@@ -706,6 +713,7 @@ def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
             models,
             upstream_model_names=upstream_model_names,
             upstream_catalog=base_models,
+            preset_compaction_hashes=preset_compaction_hashes,
         )
     }
 

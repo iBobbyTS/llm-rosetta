@@ -26,7 +26,8 @@
       "priority": 20,
       "context_window": 1000000,
       "input_modalities": ["text"],
-      "supported_reasoning_levels": ["high", "max"]
+      "supported_reasoning_levels": ["high", "max"],
+      "comp_hash": "dsv4-pre"
     },
     {
       "slug": "deepseek-v4-flash",
@@ -36,7 +37,8 @@
       "priority": 20,
       "context_window": 1000000,
       "input_modalities": ["text"],
-      "supported_reasoning_levels": ["high", "max"]
+      "supported_reasoning_levels": ["high", "max"],
+      "comp_hash": "dsv4-pre"
     },
     {
       "slug": "glm-5.2",
@@ -46,7 +48,8 @@
       "priority": 20,
       "context_window": 1000000,
       "input_modalities": ["text"],
-      "supported_reasoning_levels": ["high", "max"]
+      "supported_reasoning_levels": ["high", "max"],
+      "comp_hash": "glm-5.2"
     },
     {
       "slug": "qwen3.7-plus",
@@ -56,7 +59,8 @@
       "priority": 20,
       "context_window": 1000000,
       "input_modalities": ["text", "image"],
-      "supported_reasoning_levels": ["low", "medium", "high", "xhigh", "max"]
+      "supported_reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "comp_hash": "qwen3.7-plus"
     },
     {
       "slug": "qwen3.7-max",
@@ -66,7 +70,8 @@
       "priority": 20,
       "context_window": 1000000,
       "input_modalities": ["text"],
-      "supported_reasoning_levels": ["low", "medium", "high", "xhigh", "max"]
+      "supported_reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "comp_hash": "qwen3.7-max-text"
     },
     {
       "slug": "qwen3.7-max-2026-06-08",
@@ -76,7 +81,8 @@
       "priority": 20,
       "context_window": 1000000,
       "input_modalities": ["text", "image"],
-      "supported_reasoning_levels": ["low", "medium", "high", "xhigh", "max"]
+      "supported_reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "comp_hash": "qwen3.7-max-image"
     },
     {
       "slug": "mimo-v2.5",
@@ -86,7 +92,8 @@
       "priority": 20,
       "context_window": 1000000,
       "input_modalities": ["text", "image"],
-      "supported_reasoning_levels": ["high"]
+      "supported_reasoning_levels": ["high"],
+      "comp_hash": "mimo-2.5"
     },
     {
       "slug": "mimo-v2.5-pro",
@@ -96,7 +103,8 @@
       "priority": 20,
       "context_window": 1000000,
       "input_modalities": ["text", "image"],
-      "supported_reasoning_levels": ["high"]
+      "supported_reasoning_levels": ["high"],
+      "comp_hash": "mimo-2.5"
     },
     {
       "slug": "minimax-m3",
@@ -110,7 +118,8 @@
       "supports_reasoning_summaries": true,
       "default_reasoning_summary": "none",
       "truncation_policy": {"mode": "bytes", "limit": 10000},
-      "supports_parallel_tool_calls": true
+      "supports_parallel_tool_calls": true,
+      "comp_hash": "minimax-3"
     },
     {
       "slug": "kimi-k2.7-code",
@@ -120,7 +129,8 @@
       "priority": 20,
       "context_window": 262144,
       "input_modalities": ["text", "image"],
-      "supported_reasoning_levels": ["high"]
+      "supported_reasoning_levels": ["high"],
+      "comp_hash": "kimi-2.7"
     }
   ]
 }
