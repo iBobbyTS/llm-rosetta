@@ -82,7 +82,10 @@ upstream forwarding 之前收到对应格式的 HTTP 400，避免 terminal-contr
 10,000 条/64 MiB。达到 principal 上限会直接拒绝新状态；全局 entry map 满时，只能替换
 当前写入 principal 自己最旧的 entry，绝不会驱逐其他 principal 的状态。容量失败会在
 cache 部分变更前以 HTTP 413 返回。Code Mode 延迟工具发现不会新增跨轮 Gateway 状态：
-它通过 `exec` 搜索 Codex 当前请求的 `ALL_TOOLS` runtime catalog。
+它通过 `exec` 搜索 Codex 当前请求的 `ALL_TOOLS` runtime catalog。下一次请求携带的成对
+search call/result 可以把精确命中的 Node REPL 工具暴露为结构化 Chat Function，但
+Rosetta 只验证该历史中的实时声明，不保存独立 discovery cache。只搜索到 `js` 时不会
+顺带暴露 `js_reset` 或 `js_add_node_module_dir`，两个 helper 必须各自出现在结果中。
 
 ## 使用环境变量的示例配置
 

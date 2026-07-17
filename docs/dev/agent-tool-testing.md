@@ -68,12 +68,15 @@ For code-mode models the source discovery surface is runtime `ALL_TOOLS`. On a
 Responses-to-Chat route, Rosetta projects an ordinary `tool_search` Function
 only when the live `exec` description advertises deferred nested tools; calling
 it must round-trip as custom `exec` JavaScript that searches that request-local
-Array. The Responses/Chat request still carries raw `exec` so the selected
-`tools[name]` call remains native. Codex injects candidate metadata into the V8
-runtime, so live evidence covers projection, search, selection, call, and
-consumed result without relying on Gateway cache state. Browser, authenticated
-apps, and real user or third-party capabilities are deliberately outside this
-suite.
+Array. Generic matches still use raw `exec`. Exact matches for the three Node
+REPL tools are a specialized exception: on the next request Rosetta validates
+their declarations from the paired search history, exposes only the matched
+ordinary Functions, and converts structured model arguments back to custom
+`exec` with MCP text/image result forwarding. Codex injects candidate metadata
+into the V8 runtime, so live evidence covers projection, search, selection,
+call, and consumed result without a Gateway discovery cache. Browser,
+authenticated apps, and real user or third-party capabilities remain outside
+this deferred-tool suite and use their dedicated live tests.
 
 For Responses-to-Chat profile routes, the converted `exec(input: string)`
 function must remain model-callable whenever the Codex description advertises

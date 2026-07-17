@@ -244,18 +244,33 @@ deferred-tool guidance, Rosetta exposes an ordinary Chat `tool_search` Function.
 Its `query`, optional `limit`, and optional natural-language/regex mode are
 validated before Rosetta builds deterministic custom `exec` JavaScript. The
 script searches only the current runtime Array, returns bounded complete
-`{name, description}` entries through `text(...)`, and leaves raw `exec`
-available so the model can call the selected `tools[name]`. Invalid regex is a
-structured search result rather than a Gateway exception.
+`{name, description}` entries plus a versioned Rosetta protocol marker through
+`text(...)`, and leaves raw `exec` available for unsupported dynamic tools.
+Invalid regex is a structured search result rather than a Gateway exception.
+
+On the next Responses-to-Chat request, Rosetta can recover exactly paired
+search call/output items from the request history itself. For
+`mcp__node_repl__js`, `mcp__node_repl__js_reset`, and
+`mcp__node_repl__js_add_node_module_dir`, it accepts only exact-name matches
+whose returned description contains a parseable declaration for that same
+tool. Each accepted declaration becomes an ordinary structured Chat Function;
+the model supplies only its JSON arguments, and Rosetta generates the outer
+custom `exec` call with JSON-safe escaping. `CallToolResult.content` text and
+image blocks are forwarded with `text(...)` and `image(...)`; other blocks are
+serialized as text and `isError` remains model-visible. A result containing
+only `js` never exposes either helper. Direct same-named Functions still win.
 
 There is no discovered/deferred store, authenticated-window ownership, TTL,
 quota, namespace hiding, synthesized native `tool_search_call/output`, or later
-IR injection. Tool Profiles still own static namespace expansion and filtering;
-runtime plugin/MCP availability is owned by Codex's current `ALL_TOOLS` array.
+IR injection. The next request must carry the paired search history; compaction
+or a fresh request without that history requires another search. The generic
+localized-call mapping may restore the model-facing search name, but activation
+also recognizes Rosetta's marked raw `exec` history and therefore does not
+depend on that mapping cache. Tool Profiles still own static namespace expansion
+and filtering; runtime plugin/MCP availability is owned by Codex's `ALL_TOOLS`.
 The generic Responses converter continues to parse native
 `tool_search_call/output` for protocol compatibility, but that path does not
-load tools into a Rosetta cache. A fresh request therefore cannot inherit a
-prior search result unless Codex itself includes the relevant live tool again.
+load tools into a Rosetta discovery cache.
 
 For Namespace children expanded onto a flat Chat tool surface, Rosetta uses
 `namespace-function` as the canonical Chat-visible name. The return path also

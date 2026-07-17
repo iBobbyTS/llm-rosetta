@@ -21,8 +21,10 @@ from .code_mode_projection import (
     ExecDescriptionSection,
     ExecToolProjection,
     build_exec_script,
+    discovered_node_repl_exec_tools,
     exec_tool_section_names,
     exec_tool_projections_for_route,
+    node_repl_exec_projections,
     plan_exec_tool_definitions,
     prune_exec_tool_description,
 )
@@ -382,7 +384,26 @@ def localize_code_editing_chat_request(
     removed_native = False
     native_capabilities = capabilities or NativeToolCapabilities.from_chat_tools(tools)
     read_cache = ReadOutputCache()
-    requested_projections = exec_projections or {}
+    messages = adapted.get("messages")
+    if isinstance(messages, list) and (store is not None or mappings):
+        localized_messages: list[Any] = []
+        for message in messages:
+            localized = _localize_history_message(
+                message,
+                store,
+                mappings,
+                used_call_ids=used_call_ids,
+            )
+            _update_read_output_cache_from_message(localized, read_cache)
+            localized_messages.append(localized)
+        adapted["messages"] = localized_messages
+        adapted[READ_OUTPUT_CACHE_KEY] = read_cache
+        messages = localized_messages
+
+    discovered = discovered_node_repl_exec_tools(messages)
+    requested_projections = dict(exec_projections or {})
+    requested_projections.update(node_repl_exec_projections())
+    requested_projections.update(discovered.projections)
 
     if isinstance(tools, list):
         preserved_tools: list[Any] = []
@@ -403,6 +424,7 @@ def localize_code_editing_chat_request(
                 native_capabilities,
                 requested_projections,
                 profile_route,
+                discovered.definitions,
             )
         )
         localized_tools = [
@@ -458,21 +480,6 @@ def localize_code_editing_chat_request(
             adapted[LOCALIZATION_CAPABILITIES_KEY] = native_capabilities.to_metadata()
             if active_projections:
                 adapted[EXEC_PROJECTIONS_KEY] = active_projections
-
-    messages = adapted.get("messages")
-    if isinstance(messages, list) and (store is not None or mappings):
-        localized_messages: list[Any] = []
-        for message in messages:
-            localized = _localize_history_message(
-                message,
-                store,
-                mappings,
-                used_call_ids=used_call_ids,
-            )
-            _update_read_output_cache_from_message(localized, read_cache)
-            localized_messages.append(localized)
-        adapted["messages"] = localized_messages
-        adapted[READ_OUTPUT_CACHE_KEY] = read_cache
 
     return adapted
 
@@ -545,6 +552,7 @@ def _project_exec_chat_tools(
     capabilities: NativeToolCapabilities,
     projections: dict[str, ExecToolProjection],
     profile_route: Any | None,
+    discovered_definitions: dict[str, dict[str, Any]],
 ) -> tuple[
     dict[str, dict[str, Any]],
     dict[str, ExecToolProjection],
@@ -569,14 +577,17 @@ def _project_exec_chat_tools(
         projections,
         profile_route=profile_route,
     )
+    definitions = dict(discovered_definitions)
+    definitions.update(plan.definitions)
     active = {
         name: projections[name]
-        for name in plan.definitions
+        for name in definitions
+        if name in projections
         if name not in existing_names
     }
     visible_definitions = {
         name: definition
-        for name, definition in plan.definitions.items()
+        for name, definition in definitions.items()
         if name in active and projections[name].model_visible
     }
     active_sections = {

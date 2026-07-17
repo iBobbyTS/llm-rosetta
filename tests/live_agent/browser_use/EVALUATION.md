@@ -60,6 +60,27 @@ The judge, and only the judge, may use these evidence sources:
 3. Bounded Rosetta Gateway Logs for provider/model route, request ids,
    projected/raw Browser tool traffic when present, and terminal stream state.
 
+For a Responses-to-Chat route, additionally verify all of the following:
+
+- the first deferred lookup is the projected `tool_search`, returned to Codex
+  as the marked search `exec` rather than a native `tool_search_call`;
+- the following target Chat request exposes only Node REPL Functions whose exact
+  names and declarations appeared in that paired result;
+- every actual Browser runtime call is a structured
+  `mcp__node_repl__js` Function call at the model boundary, not model-authored
+  outer `exec` JavaScript;
+- Rosetta rebuilds each call as custom `exec` using the matching nested tool and
+  a content-block forwarder for text, image, and `isError`;
+- `mcp__node_repl__js_reset` and
+  `mcp__node_repl__js_add_node_module_dir` are absent unless each was returned
+  by the live search and used for its documented recovery/setup purpose.
+
+Treat a model-authored raw Browser wrapper after the structured Function became
+available as a tool-adaptation failure. The Rosetta-generated search `exec` is
+not a Browser runtime call and does not violate this rule. Direct
+Responses-to-Responses runs retain their native Code Mode behavior and are not
+judged against the Chat-boundary shape.
+
 Gateway Logs do not carry the Codex session id. Correlate by a bounded time
 window, provider/model, request id or request-log id, and call ordering. Mark
 correlation `ambiguous` when those fields are insufficient. Never copy complete

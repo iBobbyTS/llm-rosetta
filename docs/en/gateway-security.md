@@ -103,7 +103,11 @@ Rosetta may replace only the inserting principal's oldest entry; it never evicts
 another principal's state. Capacity failures are returned as HTTP 413 before
 partial cache mutation. Deferred Code Mode tool discovery does not add
 cross-turn Gateway state: it searches Codex's request-local `ALL_TOOLS` runtime
-catalog through `exec`.
+catalog through `exec`. A paired search call/result carried back in the next
+request may expose an exactly matched Node REPL tool as a structured Chat
+Function, but Rosetta validates the live declaration from that history and does
+not retain a separate discovery cache. A search result for `js` does not expose
+`js_reset` or `js_add_node_module_dir` unless each helper was returned itself.
 
 ## Environment-backed example config
 

@@ -59,6 +59,14 @@ class ExecToolDefinitionPlan:
 
 
 @dataclass(frozen=True)
+class DiscoveredExecToolPlan:
+    """Request-history definitions for deferred nested exec tools."""
+
+    definitions: dict[str, dict[str, Any]]
+    projections: dict[str, ExecToolProjection]
+
+
+@dataclass(frozen=True)
 class _Token:
     kind: str
     value: str
@@ -79,12 +87,30 @@ DEFERRED_EXEC_GUIDANCE = (
     "Some deferred nested tools may be omitted from this description."
 )
 ALL_TOOLS_SEARCH_CHAT_NAME = "tool_search"
+ALL_TOOLS_SEARCH_RESULT_PROTOCOL = "codex_rosetta.all_tools_search.v1"
 ALL_TOOLS_SEARCH_PROJECTION = ExecToolProjection(
     item_id="synthetic.all_tools_search",
     chat_name=ALL_TOOLS_SEARCH_CHAT_NAME,
     nested_name="",
     input_mode="all_tools_search",
 )
+NODE_REPL_TOOL_NAMES = (
+    "mcp__node_repl__js",
+    "mcp__node_repl__js_reset",
+    "mcp__node_repl__js_add_node_module_dir",
+)
+_NODE_REPL_EXEC_PROJECTIONS = {
+    name: ExecToolProjection(
+        item_id=f"deferred.{name}",
+        chat_name=name,
+        nested_name=name,
+        output_mode="mcp_content",
+    )
+    for name in NODE_REPL_TOOL_NAMES
+}
+_MAX_DISCOVERED_TOOL_DESCRIPTION_CHARS = 65_536
+_MAX_TOOL_RESULT_TEXT_CHARS = 262_144
+_MAX_DISCOVERY_HISTORY_CALLS = 64
 
 
 def _tokenize_typescript(source: str) -> list[_Token]:
@@ -424,15 +450,28 @@ def build_exec_script(
                 f"{list(projection.allowed_detail_values)}"
             )
     literal = _javascript_json_literal(nested_input)
+    invocation = f"const result = await tools.{projection.nested_name}({literal});\n"
+    if projection.output_mode == "mcp_content":
+        return (
+            invocation
+            + """if (Array.isArray(result?.content)) {
+  for (const item of result.content) {
+    if (item?.type === "text") text(item.text);
+    else if (item?.type === "image") image(item);
+    else text(item);
+  }
+} else {
+  text(result);
+}
+if (result?.isError) text({ isError: true });
+"""
+        )
     output_helper = {
         "text": "text",
         "image": "image",
         "generated_image": "generatedImage",
     }[projection.output_mode]
-    return (
-        f"const result = await tools.{projection.nested_name}({literal});\n"
-        f"{output_helper}(result);\n"
-    )
+    return invocation + f"{output_helper}(result);\n"
 
 
 def _all_tools_search_definition() -> dict[str, Any]:
@@ -445,8 +484,9 @@ def _all_tools_search_definition() -> dict[str, Any]:
                 "Search deferred tools in Codex's live ALL_TOOLS runtime catalog. "
                 "Use natural_language for capability searches and regex for exact "
                 "name or declaration patterns. Results include complete tool "
-                "descriptions and declarations; invoke a matched tool through the "
-                "raw exec tool."
+                "descriptions and declarations. Supported Node REPL matches become "
+                "structured functions on the next request; invoke other matches "
+                "through the raw exec tool."
             ),
             "parameters": {
                 "type": "object",
@@ -520,9 +560,11 @@ def _build_all_tools_search_script(arguments: dict[str, Any]) -> str:
 
     query_literal = _javascript_json_literal(query)
     mode_literal = _javascript_json_literal(search_mode)
+    protocol_literal = _javascript_json_literal(ALL_TOOLS_SEARCH_RESULT_PROTOCOL)
     return f"""const query = {query_literal};
 const searchMode = {mode_literal};
 const limit = {limit};
+const resultProtocol = {protocol_literal};
 const catalog = Array.isArray(ALL_TOOLS) ? ALL_TOOLS : [];
 const normalize = (value) => String(value ?? "").normalize("NFKC").toLowerCase();
 const queryText = normalize(query);
@@ -533,6 +575,7 @@ if (searchMode === "regex") {{
     pattern = new RegExp(query, "i");
   }} catch (error) {{
     text({{
+      protocol: resultProtocol,
       query,
       search_mode: searchMode,
       limit,
@@ -570,6 +613,7 @@ if (searchMode === "regex") {{
     .sort((left, right) => right.score - left.score || left.index - right.index);
 }}
 text({{
+  protocol: resultProtocol,
   query,
   search_mode: searchMode,
   limit,
@@ -580,6 +624,174 @@ text({{
   }})),
 }});
 """
+
+
+def node_repl_exec_projections() -> dict[str, ExecToolProjection]:
+    """Return isolated projection mappings for the three Node REPL tools."""
+    return dict(_NODE_REPL_EXEC_PROJECTIONS)
+
+
+def discovered_node_repl_exec_tools(messages: Any) -> DiscoveredExecToolPlan:
+    """Recover validated Node REPL definitions from paired search history."""
+    if not isinstance(messages, list):
+        return DiscoveredExecToolPlan(definitions={}, projections={})
+
+    search_call_ids = _all_tools_search_call_ids(messages)
+    if not search_call_ids:
+        return DiscoveredExecToolPlan(definitions={}, projections={})
+
+    candidates = node_repl_exec_projections()
+    matches = _latest_node_repl_search_matches(
+        messages,
+        search_call_ids=search_call_ids,
+        candidate_names=frozenset(candidates),
+    )
+    if matches is None:
+        return DiscoveredExecToolPlan(definitions={}, projections={})
+
+    definitions: dict[str, dict[str, Any]] = {}
+    projections: dict[str, ExecToolProjection] = {}
+    for match in matches:
+        projected = _project_discovered_node_repl_match(match, candidates)
+        if projected is None:
+            continue
+        name, definition, projection = projected
+        definitions[name] = definition
+        projections[name] = projection
+    return DiscoveredExecToolPlan(
+        definitions=definitions,
+        projections=projections,
+    )
+
+
+def _latest_node_repl_search_matches(
+    messages: list[Any],
+    *,
+    search_call_ids: set[str],
+    candidate_names: frozenset[str],
+) -> list[Any] | None:
+    for message in reversed(messages):
+        results = _paired_all_tools_search_results(message, search_call_ids)
+        if not results:
+            continue
+        for result in reversed(results):
+            matches = result.get("matches")
+            if not isinstance(matches, list):
+                continue
+            if not any(
+                isinstance(match, dict) and match.get("name") in candidate_names
+                for match in matches
+            ):
+                continue
+            return matches
+    return None
+
+
+def _paired_all_tools_search_results(
+    message: Any,
+    search_call_ids: set[str],
+) -> list[dict[str, Any]]:
+    if (
+        not isinstance(message, dict)
+        or message.get("role") != "tool"
+        or str(message.get("tool_call_id") or "") not in search_call_ids
+    ):
+        return []
+    return _all_tools_search_results(message.get("content"))
+
+
+def _project_discovered_node_repl_match(
+    match: Any,
+    candidates: dict[str, ExecToolProjection],
+) -> tuple[str, dict[str, Any], ExecToolProjection] | None:
+    if not isinstance(match, dict):
+        return None
+    name = match.get("name")
+    description = match.get("description")
+    projection = candidates.get(name) if isinstance(name, str) else None
+    if (
+        projection is None
+        or not isinstance(description, str)
+        or len(description) > _MAX_DISCOVERED_TOOL_DESCRIPTION_CHARS
+    ):
+        return None
+    definition = _project_one_definition(description, projection)
+    if definition is None:
+        return None
+    return name, definition, projection
+
+
+def _all_tools_search_call_ids(messages: list[Any]) -> set[str]:
+    call_ids: list[str] = []
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        tool_calls = message.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            continue
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+            function = tool_call.get("function")
+            if not isinstance(function, dict):
+                continue
+            name = function.get("name")
+            if name == ALL_TOOLS_SEARCH_CHAT_NAME or (
+                name == "exec"
+                and _raw_exec_is_all_tools_search(function.get("arguments"))
+            ):
+                call_id = str(tool_call.get("id") or "")
+                if call_id and call_id not in call_ids:
+                    call_ids.append(call_id)
+    return set(call_ids[-_MAX_DISCOVERY_HISTORY_CALLS:])
+
+
+def _raw_exec_is_all_tools_search(arguments: Any) -> bool:
+    if not isinstance(arguments, str):
+        return False
+    try:
+        value = json.loads(arguments or "{}")
+    except json.JSONDecodeError:
+        return False
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("input"), str)
+        and ALL_TOOLS_SEARCH_RESULT_PROTOCOL in value["input"]
+    )
+
+
+def _all_tools_search_results(content: Any) -> list[dict[str, Any]]:
+    return [
+        value
+        for value in _decoded_tool_result_values(content)
+        if isinstance(value, dict)
+        and value.get("protocol") == ALL_TOOLS_SEARCH_RESULT_PROTOCOL
+    ]
+
+
+def _decoded_tool_result_values(value: Any, *, depth: int = 0) -> list[Any]:
+    if depth > 5:
+        return []
+    if isinstance(value, str):
+        if len(value) > _MAX_TOOL_RESULT_TEXT_CHARS:
+            return []
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        return [decoded, *_decoded_tool_result_values(decoded, depth=depth + 1)]
+    if isinstance(value, list):
+        nested: list[Any] = []
+        for item in value:
+            nested.extend(_decoded_tool_result_values(item, depth=depth + 1))
+        return nested
+    if isinstance(value, dict):
+        nested = []
+        for key in ("text", "content", "output", "result"):
+            if key in value:
+                nested.extend(_decoded_tool_result_values(value[key], depth=depth + 1))
+        return nested
+    return []
 
 
 def _exec_description_section_spans(description: str) -> list[ExecDescriptionSection]:
@@ -910,12 +1122,16 @@ def _javascript_json_literal(value: Any) -> str:
 
 
 __all__ = [
+    "ALL_TOOLS_SEARCH_RESULT_PROTOCOL",
+    "DiscoveredExecToolPlan",
     "ExecDescriptionSection",
     "ExecToolDefinitionPlan",
     "ExecToolProjection",
     "build_exec_script",
+    "discovered_node_repl_exec_tools",
     "exec_tool_section_names",
     "exec_tool_projections_for_route",
+    "node_repl_exec_projections",
     "plan_exec_tool_definitions",
     "prune_exec_tool_description",
     "project_exec_tool_definitions",

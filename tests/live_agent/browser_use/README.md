@@ -37,6 +37,13 @@ execution report. It must not collect or inspect Gateway logs, Gateway traces
 or databases, Request Logs, session JSONL, or rollout JSONL. That evidence is
 reserved for the independent judge session.
 
+On a Responses-to-Chat route, the independent judge also verifies the Node
+tool-adaptation path. After `tool_search` finds the live Browser execution tool,
+the target Chat request must expose the exact matched Node REPL Function, the
+model must send structured arguments to that Function, and Rosetta must return
+the call to Codex as deterministic custom `exec`. This is judge-side wire
+evidence only; the executor must not inspect or report it.
+
 ## Files
 
 - `01/TASK.md`: exact prompt to paste into a fresh Codex GUI main task.
