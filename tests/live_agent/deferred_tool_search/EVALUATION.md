@@ -13,8 +13,8 @@ Use three bounded, credential-free sources:
    `<plugins_instructions>`, explicit `<skill>` injection, selected skill read,
    `exec` cells, nested MCP call, and consumed result.
 3. Gateway Logs: actual upstream model and route, source Responses request,
-   target Chat request when converted, the `exec` runtime-discovery contract,
-   contextual ordering, and terminal stream state.
+   target Chat request when converted, the projected `tool_search`, the `exec`
+   runtime-discovery contract, contextual ordering, and terminal stream state.
 
 Do not count installation output, prompt text, reasoning text, or a tool
 description as a tool call. A private body marker proves a skill body was read
@@ -32,11 +32,14 @@ host injection or selected skill read required by `expected.json`.
 - Generic `<plugins_instructions>` is expected whenever installed plugins are
   visible. The plugin-specific `Capabilities from the ... plugin` fragment is
   expected only for task `01` and prohibited for tasks `06` and `07`.
-- The source Responses request and converted Chat request carry the `exec`
-  description that defines `ALL_TOOLS`; deferred candidate names are not placed
-  in either model request by Codex 0.144.4. The `exec` output must instead
-  contain the three runtime `{name, description}` entries in Codex's stable
-  canonical-name order declared by `catalog_exposure.candidate_order`.
+- The source Responses request carries the `exec` description that defines
+  `ALL_TOOLS`; deferred candidate names are not placed in the model request.
+  The converted Chat request must retain raw `exec` and expose the synthetic
+  ordinary `tool_search` Function. A converted search call must return to Codex
+  as custom `exec`, with no native `tool_search_call/output` or Gateway-loaded
+  namespace. The final `exec` output must contain the three runtime
+  `{name, description}` entries in Codex's stable canonical-name order declared
+  by `catalog_exposure.candidate_order`.
 - For plugin MCP tasks, runtime names must retain the plugin/server namespace,
   and the selected `mcp_tool_call_end` event must retain `plugin_id` provenance.
 - Implicit task prompts must not name a capability, plugin URI, tool, private
@@ -53,9 +56,11 @@ Record these checks independently:
   contextual section and order.
 - `target_selected`: the archive candidate, and no distractor, was selected.
 - `body_read`: required skill body was host-injected or read by the agent.
-- `tool_exposed`: the source/target model request retained the `ALL_TOOLS`
-  discovery contract and the runtime catalog contained all three expected MCP
-  entries; for plugin tasks, also verify selected-call provenance.
+- `tool_exposed`: the source model request retained the `ALL_TOOLS` discovery
+  contract; on a converted route, the target request also exposed ordinary
+  `tool_search`, retained raw `exec`, and translated the search call back to
+  custom `exec`; the runtime catalog contained all three expected MCP entries;
+  for plugin tasks, also verify selected-call provenance.
 - `tool_called`: expected tool received the exact arguments.
 - `result_used`: final answer came from the body/tool result.
 

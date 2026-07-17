@@ -13,7 +13,7 @@ import codex_rosetta.gateway.app as app_module
 from codex_rosetta._vendor.httpserver import StreamingResponse
 from codex_rosetta.auto_detect import ProviderType
 from codex_rosetta.gateway.auth import api_key_principal_var
-from codex_rosetta.gateway.proxy import ProviderMetadataStore, WindowToolSearchStore
+from codex_rosetta.gateway.proxy import ProviderMetadataStore
 from codex_rosetta.gateway.tool_adaptation import (
     CodexToolLocalizationStore,
     LocalizedToolMapping,
@@ -42,7 +42,6 @@ def _request() -> SimpleNamespace:
     app = SimpleNamespace(
         metadata_store=ProviderMetadataStore(),
         codex_tool_store=CodexToolLocalizationStore(),
-        window_tool_search_store=WindowToolSearchStore(),
         transport=MagicMock(),
         metrics=MetricsCollector(),
         request_log=RequestLog(),
@@ -85,10 +84,6 @@ async def _open_stream(
         kwargs["codex_tool_store"].scoped(scope).remember(
             LocalizedToolMapping("call-stream", "Read", {}, "exec_command", {})
         )
-        kwargs["window_tool_search_store"].scoped(scope).remember_deferred_tools(
-            "request-local",
-            [{"type": "function", "name": "request-local-tool"}],
-        )
         return StreamingResponse(generator(), content_type="text/event-stream"), {
             "stream_connect_ms": 1.0
         }
@@ -107,9 +102,6 @@ async def _open_stream(
 def _assert_request_state_empty(request: SimpleNamespace) -> None:
     assert len(request.app.metadata_store) == 0
     assert len(request.app.codex_tool_store) == 0
-    assert request.app.window_tool_search_store._store == {}
-    assert request.app.window_tool_search_store._deferred_store == {}
-    assert request.app.window_tool_search_store._state.global_bytes == 0
 
 
 def test_stream_metrics_remain_open_until_normal_generator_completion(monkeypatch):

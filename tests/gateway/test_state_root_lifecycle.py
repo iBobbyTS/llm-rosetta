@@ -78,27 +78,16 @@ def _metadata_response() -> dict:
     }
 
 
-def _namespace_tool() -> dict:
-    return {
-        "type": "namespace",
-        "name": "github",
-        "description": "GitHub tools",
-        "tools": [],
-    }
-
-
 def test_close_resources_clears_every_app_owned_state_root():
     app = cast(Any, create_app(_config()))
     scope = _scope()
     metadata = app.metadata_store.scoped(scope)
     localization = app.codex_tool_store.scoped(scope)
-    window_tools = app.window_tool_search_store.scoped(scope)
 
     metadata.cache_from_response(_metadata_response())
     localization.remember(
         LocalizedToolMapping("call-1", "Read", {}, "exec_command", {})
     )
-    window_tools.remember_deferred_tools("window-1", [_namespace_tool()])
     search_scope = CodexSearchReferenceScope("test-client", "search-session")
     app.codex_search_reference_store.remember_search(
         search_scope,
@@ -117,25 +106,12 @@ def test_close_resources_clears_every_app_owned_state_root():
         close_resources(
             metadata_store=app.metadata_store,
             codex_tool_store=app.codex_tool_store,
-            window_tool_search_store=app.window_tool_search_store,
             codex_search_reference_store=app.codex_search_reference_store,
         )
     )
 
     assert len(metadata) == 0
     assert localization.get("call-1") is None
-    search_body = {
-        "input": [
-            {
-                "type": "tool_search_call",
-                "call_id": "search-1",
-                "arguments": {"query": "github"},
-            },
-            {"type": "tool_search_output", "call_id": "search-1", "tools": []},
-        ]
-    }
-    window_tools.enrich_tool_search_outputs("window-1", search_body)
-    assert search_body["input"][1]["tools"] == []
     assert (
         app.codex_search_reference_store.resolve(search_scope, "turn0search0") is None
     )
@@ -147,7 +123,6 @@ def test_create_app_uses_fresh_state_roots_after_same_process_shutdown():
         close_resources(
             metadata_store=old_app.metadata_store,
             codex_tool_store=old_app.codex_tool_store,
-            window_tool_search_store=old_app.window_tool_search_store,
             codex_search_reference_store=old_app.codex_search_reference_store,
         )
     )
@@ -156,7 +131,6 @@ def test_create_app_uses_fresh_state_roots_after_same_process_shutdown():
 
     assert new_app.metadata_store is not old_app.metadata_store
     assert new_app.codex_tool_store is not old_app.codex_tool_store
-    assert new_app.window_tool_search_store is not old_app.window_tool_search_store
     assert (
         new_app.codex_search_reference_store is not old_app.codex_search_reference_store
     )
@@ -169,7 +143,6 @@ def test_scoped_views_cannot_clear_their_shared_root():
     for scoped_store in (
         app.metadata_store.scoped(scope),
         app.codex_tool_store.scoped(scope),
-        app.window_tool_search_store.scoped(scope),
     ):
         with pytest.raises(RuntimeError, match="root store"):
             scoped_store.clear_all()

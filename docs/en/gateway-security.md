@@ -97,14 +97,13 @@ injection and repeated trace metadata from amplifying diagnostic storage.
 
 Cross-turn in-memory state has principal-fair hard limits. Provider continuation
 metadata is limited to 1 MiB per entry, 8 MiB per scope, 1,024 entries and
-16 MiB per principal, and 10,000 entries and 64 MiB for the app. Deferred tool
-discovery is limited to 1,024 nested tools and 16 MiB per scope, 256 unique
-scopes per principal across the loaded and deferred maps, 1,000 retained scopes
-per map, and 64 MiB for the app. A scope present in both tool maps counts once
-toward the principal limit. Reaching a principal limit rejects the new state.
-When a global count map is full, Rosetta may replace only the inserting
-principal's oldest entry or scope; it never evicts another principal's state.
-Capacity failures are returned as HTTP 413 before partial cache mutation.
+16 MiB per principal, and 10,000 entries and 64 MiB for the app. Reaching a
+principal limit rejects the new state. When the global entry map is full,
+Rosetta may replace only the inserting principal's oldest entry; it never evicts
+another principal's state. Capacity failures are returned as HTTP 413 before
+partial cache mutation. Deferred Code Mode tool discovery does not add
+cross-turn Gateway state: it searches Codex's request-local `ALL_TOOLS` runtime
+catalog through `exec`.
 
 ## Environment-backed example config
 

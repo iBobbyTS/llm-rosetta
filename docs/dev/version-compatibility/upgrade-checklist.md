@@ -216,7 +216,7 @@ The following behavior can be automatically verified using the fixed Codex reque
   global row+byte budgets, replacement accounting, TTL release, transaction
   rollback, abnormal replay bounds, failure results and subsequent-round replay;
 - provider continuation metadata principal entry quotas, same-principal global-oldest replacement, no cross-principal eviction, replacement/TTL/clear accounting, and concurrent saturation;
-- namespace defer, `tool_search_call/output`, multiple searches, window isolation, atomic per-scope/principal/global retained-state budgets, same-principal global-oldest replacement, no cross-principal eviction, and lifecycle accounting;
+- request-local `ALL_TOOLS` search exposure only with live deferred guidance; `query`/`limit`/`search_mode` schema and validation; natural-language/regex generated JavaScript; bounded complete match output; custom `exec` round trip; raw `exec` retention; direct-name conflict; and absence of Gateway discovery state. Keep native `tool_search_call/output` converter fixtures separately as protocol compatibility coverage;
 - Captured wire fixtures for `multi_agent_v1`, `multi_agent_v2/collaboration`;
 - Captured wire fixtures for code mode `exec/wait`, nested call and wait continuation;
 - web search multi-round event reconstruction, downgrade paths for disabled/missing search executors, bounded identity-encoded auxiliary HTTP responses, Tavily and self-hosted Google result normalization into the unchanged Codex string `output`, and standalone Search `turnXsearchY` allocation/open scoped by authenticated principal plus `SearchRequest.id`, including retry stability, concurrent allocation, cross-session failure, TTL/capacity cleanup, and app shutdown cleanup;
@@ -259,7 +259,7 @@ conda run -n "$CONDA_ENV" python -m pytest \
   tests/gateway/test_http_transport_limits.py \
   tests/gateway/test_responses_passthrough.py \
   tests/gateway/test_stream_phase_buffer.py \
-  tests/gateway/test_window_tool_search_store.py \
+  tests/gateway/test_code_mode_projection.py \
   tests/gateway/test_tool_adaptation.py \
   tests/gateway/test_codex_page.py \
   tests/gateway/test_codex_search.py \
@@ -283,7 +283,7 @@ The current development machine inherits the historical environment name `llm-ro
 The following projects can also be fully automated and do not require real models:
 
 - Start the local gateway and play back multiple rounds of fixtures on fake Responses/Chat upstream;
-- Send two windows concurrently to verify that phase, tool mapping, and deferred tools are not in the same state;
+- Send two windows concurrently to verify that phase and tool mapping are not in the same state; verify independently that `ALL_TOOLS` search allocates no Gateway discovery state and cannot reuse a prior request's catalog;
 - Play back the desensitization Codex request captured before and after the upgrade, and compare the conversion results with the SSE transcript;
 - Run four-way regression of request, response, stream, and history for each newly added wire shape;
 - lint, format, type/build, full warehouse non-integration testing;

@@ -102,7 +102,6 @@ class _RunningGateway:
                 transport=app.transport,
                 metadata_store=app.metadata_store,
                 codex_tool_store=app.codex_tool_store,
-                window_tool_search_store=app.window_tool_search_store,
                 image_fetch_workers=app.image_fetch_workers,
             )
         )

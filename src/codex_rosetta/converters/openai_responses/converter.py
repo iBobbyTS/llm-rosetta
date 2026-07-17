@@ -721,9 +721,7 @@ class OpenAIResponsesConverter(BaseConverter):
             metadata = tool.get("metadata") or {}
             provider_type = metadata.get("provider_type")
             tool_name = tool.get("name")
-            if provider_type in ("custom", "tool_search", "web_search") and isinstance(
-                tool_name, str
-            ):
+            if provider_type in ("custom", "web_search") and isinstance(tool_name, str):
                 mapping[tool_name] = provider_type
         ctx.store_responses_native_tool_type_map(mapping)
 
@@ -1689,16 +1687,7 @@ class OpenAIResponsesConverter(BaseConverter):
             child_name = context.get_responses_child_name_for_tool(tool_name)
             if child_name:
                 tool_name = child_name
-        if provider_metadata.get("responses_tool_type") == "tool_search":
-            item_id = provider_metadata.get("responses_item_id") or (
-                "tsc_" + call_id[5:]
-                if call_id.startswith("call_")
-                else f"tsc_{call_id}"
-            )
-        elif provider_metadata.get("responses_tool_type") == "web_search":
-            item_id = provider_metadata.get("responses_item_id") or call_id
-        else:
-            item_id = provider_metadata.get("responses_item_id") or call_id
+        item_id = provider_metadata.get("responses_item_id") or call_id
 
         # Register in context for later done events
         if context is not None and call_id:
@@ -1712,14 +1701,7 @@ class OpenAIResponsesConverter(BaseConverter):
             context, tc_index, provider_metadata
         )
 
-        if provider_metadata.get("responses_tool_type") == "tool_search":
-            item = self._build_tool_search_call_item(
-                call_id=call_id,
-                item_id=item_id,
-                arguments="",
-                status="in_progress",
-            )
-        elif provider_metadata.get("responses_tool_type") == "web_search":
+        if provider_metadata.get("responses_tool_type") == "web_search":
             item = self._build_web_search_call_item(
                 item_id=item_id,
                 arguments="",
@@ -1794,10 +1776,7 @@ class OpenAIResponsesConverter(BaseConverter):
             if context is not None and call_id
             else "function"
         )
-        if provider_metadata.get("responses_tool_type") in (
-            "tool_search",
-            "web_search",
-        ):
+        if provider_metadata.get("responses_tool_type") == "web_search":
             return {}
         if (
             tool_type == "custom"
@@ -1928,14 +1907,7 @@ class OpenAIResponsesConverter(BaseConverter):
             tool_type = context.get_tool_type(call_id)
             provider_metadata = context.get_tool_call_provider_metadata(call_id)
 
-            if provider_metadata.get("responses_tool_type") == "tool_search":
-                item = self._build_tool_search_call_item(
-                    call_id=call_id,
-                    item_id=tc_item_id,
-                    arguments=arguments,
-                    status="completed",
-                )
-            elif provider_metadata.get("responses_tool_type") == "web_search":
+            if provider_metadata.get("responses_tool_type") == "web_search":
                 item = self._build_web_search_call_item(
                     item_id=tc_item_id,
                     arguments=arguments,
@@ -2186,21 +2158,7 @@ class OpenAIResponsesConverter(BaseConverter):
             tool_type = context.get_tool_type(call_id)
             provider_metadata = context.get_tool_call_provider_metadata(call_id)
 
-            if provider_metadata.get("responses_tool_type") == "tool_search":
-                item = self._build_tool_search_call_item(
-                    call_id=call_id,
-                    item_id=item_id,
-                    arguments=arguments,
-                    status="completed",
-                )
-                results.append(
-                    {
-                        "type": ResponsesEventType.OUTPUT_ITEM_DONE,
-                        "output_index": output_index,
-                        "item": item,
-                    }
-                )
-            elif provider_metadata.get("responses_tool_type") == "web_search":
+            if provider_metadata.get("responses_tool_type") == "web_search":
                 item = self._build_web_search_call_item(
                     item_id=item_id,
                     arguments=arguments,
@@ -2299,29 +2257,6 @@ class OpenAIResponsesConverter(BaseConverter):
         if not isinstance(parsed, dict) or list(parsed.keys()) != ["input"]:
             return arguments
         return OpenAIResponsesToolOps.custom_tool_input_to_text(parsed)
-
-    @staticmethod
-    def _build_tool_search_call_item(
-        *,
-        call_id: str,
-        item_id: str,
-        arguments: str,
-        status: str,
-    ) -> dict[str, Any]:
-        try:
-            parsed_arguments = json.loads(arguments) if arguments else {}
-        except json.JSONDecodeError, TypeError:
-            parsed_arguments = {"raw_arguments": arguments}
-        if not isinstance(parsed_arguments, dict):
-            parsed_arguments = {"input": parsed_arguments}
-        return {
-            "type": "tool_search_call",
-            "id": item_id,
-            "call_id": call_id,
-            "status": status,
-            "execution": "client",
-            "arguments": parsed_arguments,
-        }
 
     @staticmethod
     def _build_web_search_call_item(

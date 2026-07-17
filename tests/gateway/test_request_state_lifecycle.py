@@ -14,8 +14,6 @@ from codex_rosetta.gateway.auth import api_key_principal_var
 from codex_rosetta.gateway.proxy import (
     ProviderMetadataCapacityError,
     ProviderMetadataStore,
-    ToolSearchCapacityError,
-    WindowToolSearchStore,
 )
 from codex_rosetta.gateway.tool_adaptation import (
     CodexToolLocalizationStore,
@@ -46,7 +44,6 @@ def _request(*, marker: str, window_id: str | None = None) -> SimpleNamespace:
     app = SimpleNamespace(
         metadata_store=ProviderMetadataStore(),
         codex_tool_store=CodexToolLocalizationStore(),
-        window_tool_search_store=WindowToolSearchStore(),
         transport=MagicMock(),
         metrics=None,
         request_log=None,
@@ -95,7 +92,6 @@ def _remember_all_state(kwargs: dict[str, Any], marker: str) -> str | None:
     scope = kwargs["state_scope"]
     metadata = kwargs["metadata_store"].scoped(scope)
     localization = kwargs["codex_tool_store"].scoped(scope)
-    window_tools = kwargs["window_tool_search_store"].scoped(scope)
     request_body = _metadata_request()
     metadata.inject_into_request(request_body)
     signature = (
@@ -107,19 +103,12 @@ def _remember_all_state(kwargs: dict[str, Any], marker: str) -> str | None:
     localization.remember(
         LocalizedToolMapping("same-call-id", "Read", {}, "exec_command", {})
     )
-    window_tools.remember_deferred_tools(
-        "ignored-by-scoped-store",
-        [{"type": "function", "name": f"tool-{marker}"}],
-    )
     return signature
 
 
 def _assert_request_state_empty(request: SimpleNamespace) -> None:
     assert len(request.app.metadata_store) == 0
     assert len(request.app.codex_tool_store) == 0
-    assert request.app.window_tool_search_store._store == {}
-    assert request.app.window_tool_search_store._deferred_store == {}
-    assert request.app.window_tool_search_store._state.global_bytes == 0
 
 
 def test_reused_request_id_is_sequentially_isolated_and_cleaned(monkeypatch):
@@ -214,27 +203,6 @@ def test_real_window_scope_retains_continuity(monkeypatch):
     assert observed[0][0].persistent is True
     assert [signature for _scope, signature in observed] == [None, "first"]
     assert len(request.app.metadata_store) == 1
-
-
-def test_capacity_error_maps_to_stable_413(monkeypatch):
-    async def _reject(*args: Any, **kwargs: Any):
-        raise ToolSearchCapacityError(
-            "Deferred tool-search capacity exceeded: scope tool limit is 1024"
-        )
-
-    monkeypatch.setattr(app_module, "handle_non_streaming", _reject)
-    request = _request(marker="rejected")
-    token = api_key_principal_var.set("shared-principal")
-    try:
-        response = asyncio.run(app_module._proxy_handler(request, "openai_responses"))
-    finally:
-        api_key_principal_var.reset(token)
-
-    assert response.status_code == 413
-    assert isinstance(response, JSONResponse)
-    assert b"scope tool limit is 1024" in response.body
-    assert response.headers["x-request-id"] == "reused-correlation-id"
-    _assert_request_state_empty(request)
 
 
 def test_provider_metadata_capacity_error_maps_to_stable_413(monkeypatch):

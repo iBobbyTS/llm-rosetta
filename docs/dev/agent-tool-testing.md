@@ -64,12 +64,16 @@ controls; tasks `04` through `07` use only natural-language intent and never
 name the target capability. Evaluation separately records catalog exposure,
 selection, skill-body access, deferred tool exposure, call, and consumed result
 across the Codex rollout, source Responses request, and converted Chat request.
-For code-mode models the deferred discovery surface is runtime `ALL_TOOLS`, not
-a required top-level `tool_search`. The Responses/Chat request carries the
-`exec` description and discovery contract; Codex injects candidate metadata
-into the V8 runtime, so live evidence covers both boundaries. Browser,
-authenticated apps, and real user or third-party capabilities are deliberately
-outside this suite.
+For code-mode models the source discovery surface is runtime `ALL_TOOLS`. On a
+Responses-to-Chat route, Rosetta projects an ordinary `tool_search` Function
+only when the live `exec` description advertises deferred nested tools; calling
+it must round-trip as custom `exec` JavaScript that searches that request-local
+Array. The Responses/Chat request still carries raw `exec` so the selected
+`tools[name]` call remains native. Codex injects candidate metadata into the V8
+runtime, so live evidence covers projection, search, selection, call, and
+consumed result without relying on Gateway cache state. Browser, authenticated
+apps, and real user or third-party capabilities are deliberately outside this
+suite.
 
 For Responses-to-Chat profile routes, the converted `exec(input: string)`
 function must remain model-callable whenever the Codex description advertises

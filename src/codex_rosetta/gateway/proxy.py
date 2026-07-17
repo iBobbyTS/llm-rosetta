@@ -15,9 +15,7 @@ Downstream SSE formatting lives in :mod:`transport.sse_format`.
 from __future__ import annotations
 
 import asyncio
-import copy
 import json
-import re
 import threading
 import time
 import uuid
@@ -233,7 +231,6 @@ async def _run_rosetta_compaction(
     persistence: Any | None,
     state_scope: GatewayStateScope,
     codex_window_id: str | None,
-    window_tool_search_store: WindowToolSearchStore | None,
     image_fetch_workers: ImageFetchWorkerPool | None,
     stream: bool,
 ) -> tuple[Response | StreamingResponse, dict[str, Any]]:
@@ -259,7 +256,6 @@ async def _run_rosetta_compaction(
         persistence=persistence,
         state_scope=state_scope,
         codex_window_id=codex_window_id,
-        window_tool_search_store=window_tool_search_store,
         upstream_error_log_state=None,
         body_log_state=None,
         image_fetch_workers=image_fetch_workers,
@@ -330,7 +326,6 @@ async def _prepare_codex_compaction_request(
     persistence: Any | None,
     state_scope: GatewayStateScope,
     codex_window_id: str | None,
-    window_tool_search_store: WindowToolSearchStore | None,
     image_fetch_workers: ImageFetchWorkerPool | None,
     stream: bool,
     enabled: bool = True,
@@ -371,7 +366,6 @@ async def _prepare_codex_compaction_request(
         persistence=persistence,
         state_scope=state_scope,
         codex_window_id=codex_window_id,
-        window_tool_search_store=window_tool_search_store,
         image_fetch_workers=image_fetch_workers,
         stream=stream,
     )
@@ -438,100 +432,6 @@ def _uses_responses_chat_bridge(route: ResolvedRoute) -> bool:
     )
 
 
-_DIRECT_RESPONSES_NAMESPACE_TOOLS = {
-    "codex_app",
-    "multi_agent_v1",
-}
-
-_TOOL_SEARCH_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
-def _is_responses_tool_search_definition(tool: Any) -> bool:
-    """Return true when a Responses tool definition exposes native tool search."""
-    return isinstance(tool, dict) and tool.get("type") == "tool_search"
-
-
-def _should_defer_responses_namespace_tool(tool: Any) -> bool:
-    """Return true for namespace tools that should be discovered via tool_search."""
-    if not isinstance(tool, dict) or tool.get("type") != "namespace":
-        return False
-    name = tool.get("name")
-    return isinstance(name, str) and name not in _DIRECT_RESPONSES_NAMESPACE_TOOLS
-
-
-def _synthetic_responses_tool_search_definition(
-    deferred_tools: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Build a minimal native Responses tool_search definition for Chat bridges."""
-    source_lines: list[str] = []
-    for tool in deferred_tools:
-        name = tool.get("name")
-        if not isinstance(name, str) or not name:
-            continue
-        description = tool.get("description")
-        if isinstance(description, str) and description:
-            normalized = " ".join(description.split())
-            if len(normalized) > 240:
-                normalized = normalized[:237].rstrip() + "..."
-            source_lines.append(f"- {name}: {normalized}")
-        else:
-            source_lines.append(f"- {name}")
-
-    source_hint = (
-        "\n\nAvailable deferred tool sources:\n" + "\n".join(source_lines)
-        if source_lines
-        else ""
-    )
-    return {
-        "type": "tool_search",
-        "execution": "client",
-        "description": (
-            "Search deferred Codex tools by capability or provider name and expose "
-            "the matching tools for a later model request. The query is for tool "
-            "discovery only: include generic capability/source terms, not task data. "
-            "Do not include repository names, PR/issue numbers, URLs, file paths, "
-            "user text, or other runtime arguments; pass those later to the loaded "
-            "tool."
-            f"{source_hint}"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": (
-                        "Tool-discovery query using generic capability/source terms "
-                        "only. Do not include task-specific values such as repo names, "
-                        "PR numbers, issue IDs, URLs, file paths, or user content."
-                    ),
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Use 8 unless previous search didn't give enough tools.",
-                },
-            },
-            "required": ["query"],
-        },
-    }
-
-
-def _minimal_responses_tool_search_definition() -> dict[str, Any]:
-    """Build a minimal native Responses tool_search definition for Chat bridges."""
-    return {
-        "type": "tool_search",
-        "execution": "client",
-        "description": "Search deferred Codex tools.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer"},
-            },
-            "required": ["query"],
-        },
-    }
-
-
 def _responses_tool_containers(
     body: dict[str, Any],
 ) -> list[tuple[dict[str, Any], list[Any]]]:
@@ -558,49 +458,6 @@ def _flatten_responses_tools(body: dict[str, Any]) -> list[Any]:
     return [
         tool for _container, tools in _responses_tool_containers(body) for tool in tools
     ]
-
-
-def _defer_responses_namespace_tools_for_chat(
-    body: dict[str, Any],
-    *,
-    optimize_tool_descriptions: bool = True,
-) -> list[dict[str, Any]]:
-    """Hide deferred Responses namespaces from Chat until tool_search loads them."""
-    containers = _responses_tool_containers(body)
-    if not containers:
-        return []
-
-    deferred_tools: list[dict[str, Any]] = []
-    has_tool_search = False
-    filtered_containers: list[tuple[dict[str, Any], list[Any]]] = []
-    for container, tools in containers:
-        filtered_tools: list[Any] = []
-        for tool in tools:
-            if _is_responses_tool_search_definition(tool):
-                has_tool_search = True
-                filtered_tools.append(tool)
-            elif _should_defer_responses_namespace_tool(tool):
-                deferred_tools.append(tool)
-            else:
-                filtered_tools.append(tool)
-        filtered_containers.append((container, filtered_tools))
-
-    if not deferred_tools:
-        return []
-
-    if not has_tool_search:
-        if optimize_tool_descriptions:
-            filtered_containers[0][1].append(
-                _synthetic_responses_tool_search_definition(deferred_tools)
-            )
-        else:
-            filtered_containers[0][1].append(
-                _minimal_responses_tool_search_definition()
-            )
-
-    for container, filtered_tools in filtered_containers:
-        container["tools"] = filtered_tools
-    return deferred_tools
 
 
 def _tool_identifier(tool: Any) -> str | None:
@@ -709,15 +566,18 @@ def _apply_tool_adaptation(
     body: dict[str, Any], route: ResolvedRoute
 ) -> dict[str, Any]:
     """Apply the selected profile before passthrough or conversion."""
+    adapted = body
+    if route.target_provider == "openai_chat":
+        adapted = _remove_tool_definition(adapted, "tool_search")
     if getattr(route, "tool_profile", None):
-        return _apply_tool_profile_to_request(body, route)
+        return _apply_tool_profile_to_request(adapted, route)
     if route.target_provider == "openai_chat":
         return _remove_tool_definition(
-            body,
+            adapted,
             "image_generation",
             aliases=frozenset({"image_gen", "imagegen", "image_gen__imagegen"}),
         )
-    return body
+    return adapted
 
 
 def _profile_item_id(tool: Any, *, namespace: str | None = None) -> str | None:
@@ -1152,7 +1012,6 @@ async def close_resources(
     transport: UpstreamTransport | None = None,
     metadata_store: ProviderMetadataStore | None = None,
     codex_tool_store: CodexToolLocalizationStore | None = None,
-    window_tool_search_store: WindowToolSearchStore | None = None,
     codex_search_reference_store: CodexSearchReferenceStore | None = None,
     image_fetch_workers: ImageFetchWorkerPool | None = None,
 ) -> None:
@@ -1167,12 +1026,6 @@ async def close_resources(
         codex_tool_store if codex_tool_store is not None else _default_codex_tool_store
     )
     tools.clear_all()
-    window_tools = (
-        window_tool_search_store
-        if window_tool_search_store is not None
-        else _default_window_tool_search_store
-    )
-    window_tools.clear_all()
     if codex_search_reference_store is not None:
         codex_search_reference_store.clear_all()
 
@@ -1505,987 +1358,8 @@ class ProviderMetadataStore:
             return sum(1 for scope, _call_id in self._store if scope == self._scope)
 
 
-MAX_WINDOW_TOOL_SEARCH_TOOLS_PER_SCOPE = 1_024
-MAX_WINDOW_TOOL_SEARCH_SCOPES_PER_PRINCIPAL = 256
-MAX_WINDOW_TOOL_SEARCH_BYTES_PER_SCOPE = 16 * 1024 * 1024
-MAX_WINDOW_TOOL_SEARCH_BYTES_GLOBAL = 64 * 1024 * 1024
-
-
-class ToolSearchCapacityError(RuntimeError):
-    """Raised before deferred tool state would exceed a configured budget."""
-
-
-@dataclass
-class _ToolSearchMapAccounting:
-    item_bytes: dict[str, int] = field(default_factory=dict)
-    item_tools: dict[str, int] = field(default_factory=dict)
-
-    @property
-    def byte_size(self) -> int:
-        if not self.item_bytes:
-            return 0
-        return 2 + sum(self.item_bytes.values()) + len(self.item_bytes) - 1
-
-    @property
-    def tool_count(self) -> int:
-        return sum(self.item_tools.values())
-
-
-@dataclass
-class _WindowToolSearchState:
-    store: dict[GatewayStateScope, _CacheEntry]
-    deferred_store: dict[GatewayStateScope, _CacheEntry]
-    accounting: dict[tuple[str, GatewayStateScope], _ToolSearchMapAccounting] = field(
-        default_factory=dict
-    )
-    scope_bytes: dict[GatewayStateScope, int] = field(default_factory=dict)
-    scope_tools: dict[GatewayStateScope, int] = field(default_factory=dict)
-    scope_refs: dict[GatewayStateScope, int] = field(default_factory=dict)
-    principal_scopes: dict[str, int] = field(default_factory=dict)
-    global_bytes: int = 0
-    lock: threading.RLock = field(default_factory=threading.RLock)
-
-
-class WindowToolSearchStore:
-    """Stores loadable Responses tools within bounded Codex window state."""
-
-    def __init__(
-        self,
-        *,
-        ttl: float = 1800.0,
-        max_size: int = 1_000,
-        max_scopes_per_principal: int = MAX_WINDOW_TOOL_SEARCH_SCOPES_PER_PRINCIPAL,
-        max_tools_per_scope: int = MAX_WINDOW_TOOL_SEARCH_TOOLS_PER_SCOPE,
-        max_bytes_per_scope: int = MAX_WINDOW_TOOL_SEARCH_BYTES_PER_SCOPE,
-        max_bytes_global: int = MAX_WINDOW_TOOL_SEARCH_BYTES_GLOBAL,
-        _store: dict[GatewayStateScope, _CacheEntry] | None = None,
-        _deferred_store: dict[GatewayStateScope, _CacheEntry] | None = None,
-        _scope: GatewayStateScope | None = None,
-        _state: _WindowToolSearchState | None = None,
-        _standalone_principal: str | None = None,
-    ) -> None:
-        self._is_root = _state is None and _store is None and _deferred_store is None
-        if _state is None:
-            _state = _WindowToolSearchState(
-                store=_store if _store is not None else {},
-                deferred_store=_deferred_store if _deferred_store is not None else {},
-            )
-        self._state = _state
-        self._store = _state.store
-        self._deferred_store = _state.deferred_store
-        self._ttl = ttl
-        self._max_size = max_size
-        self._max_scopes_per_principal = max_scopes_per_principal
-        self._max_tools_per_scope = max_tools_per_scope
-        self._max_bytes_per_scope = max_bytes_per_scope
-        self._max_bytes_global = max_bytes_global
-        self._scope = _scope
-        self._standalone_principal = _standalone_principal or (
-            f"__standalone_store__:{uuid.uuid4().hex}"
-        )
-        if not self._state.accounting and (self._store or self._deferred_store):
-            with self._state.lock:
-                self._rebuild_accounting_locked()
-
-    def scoped(self, scope: GatewayStateScope) -> WindowToolSearchStore:
-        """Return a view whose window state is namespaced to *scope*."""
-        return WindowToolSearchStore(
-            ttl=self._ttl,
-            max_size=self._max_size,
-            max_scopes_per_principal=self._max_scopes_per_principal,
-            max_tools_per_scope=self._max_tools_per_scope,
-            max_bytes_per_scope=self._max_bytes_per_scope,
-            max_bytes_global=self._max_bytes_global,
-            _scope=scope,
-            _state=self._state,
-            _standalone_principal=self._standalone_principal,
-        )
-
-    def _scope_key(self, window_id: str) -> GatewayStateScope:
-        if self._scope is not None:
-            return self._scope
-        return GatewayStateScope(
-            principal_id=self._standalone_principal,
-            provider_name="",
-            model="",
-            conversation_id=window_id,
-            persistent=False,
-        )
-
-    @staticmethod
-    def _canonical_json_size(value: Any) -> int:
-        return len(
-            json.dumps(
-                value,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-                allow_nan=False,
-            ).encode("utf-8")
-        )
-
-    @classmethod
-    def _item_byte_size(cls, key: str, tool: dict[str, Any]) -> int:
-        return cls._canonical_json_size(key) + 1 + cls._canonical_json_size(tool)
-
-    @classmethod
-    def _tool_count(cls, tool: dict[str, Any]) -> int:
-        count = 1
-        children = tool.get("tools")
-        if isinstance(children, list):
-            count += sum(
-                cls._tool_count(child) for child in children if isinstance(child, dict)
-            )
-        return count
-
-    @classmethod
-    def _accounting_for_data(cls, data: dict[str, Any]) -> _ToolSearchMapAccounting:
-        accounting = _ToolSearchMapAccounting()
-        for key, tool in data.items():
-            if not isinstance(key, str) or not isinstance(tool, dict):
-                continue
-            accounting.item_bytes[key] = cls._item_byte_size(key, tool)
-            accounting.item_tools[key] = cls._tool_count(tool)
-        return accounting
-
-    def _rebuild_accounting_locked(self) -> None:
-        self._state.accounting.clear()
-        self._state.scope_bytes.clear()
-        self._state.scope_tools.clear()
-        self._state.scope_refs.clear()
-        self._state.principal_scopes.clear()
-        self._state.global_bytes = 0
-        for kind, store in (
-            ("loaded", self._store),
-            ("deferred", self._deferred_store),
-        ):
-            for scope, entry in store.items():
-                data = entry.data if isinstance(entry.data, dict) else {}
-                accounting = self._accounting_for_data(data)
-                self._add_accounting_locked(kind, scope, accounting)
-
-    def _store_for_kind(self, kind: str) -> dict[GatewayStateScope, _CacheEntry]:
-        return self._store if kind == "loaded" else self._deferred_store
-
-    def _add_accounting_locked(
-        self,
-        kind: str,
-        scope: GatewayStateScope,
-        accounting: _ToolSearchMapAccounting,
-    ) -> None:
-        self._state.accounting[(kind, scope)] = accounting
-        previous_refs = self._state.scope_refs.get(scope, 0)
-        self._state.scope_refs[scope] = previous_refs + 1
-        if previous_refs == 0:
-            principal_id = scope.principal_id
-            self._state.principal_scopes[principal_id] = (
-                self._state.principal_scopes.get(principal_id, 0) + 1
-            )
-        self._state.scope_bytes[scope] = (
-            self._state.scope_bytes.get(scope, 0) + accounting.byte_size
-        )
-        self._state.scope_tools[scope] = (
-            self._state.scope_tools.get(scope, 0) + accounting.tool_count
-        )
-        self._state.global_bytes += accounting.byte_size
-
-    def _remove_ref_locked(self, ref: tuple[str, GatewayStateScope]) -> None:
-        kind, scope = ref
-        self._store_for_kind(kind).pop(scope, None)
-        accounting = self._state.accounting.pop(ref, None)
-        if accounting is None:
-            return
-        remaining_refs = self._state.scope_refs.get(scope, 0) - 1
-        if remaining_refs > 0:
-            self._state.scope_refs[scope] = remaining_refs
-        else:
-            self._state.scope_refs.pop(scope, None)
-            principal_id = scope.principal_id
-            remaining_scopes = self._state.principal_scopes.get(principal_id, 0) - 1
-            if remaining_scopes > 0:
-                self._state.principal_scopes[principal_id] = remaining_scopes
-            else:
-                self._state.principal_scopes.pop(principal_id, None)
-        remaining_bytes = self._state.scope_bytes.get(scope, 0) - accounting.byte_size
-        remaining_tools = self._state.scope_tools.get(scope, 0) - accounting.tool_count
-        if remaining_bytes > 0:
-            self._state.scope_bytes[scope] = remaining_bytes
-        else:
-            self._state.scope_bytes.pop(scope, None)
-        if remaining_tools > 0:
-            self._state.scope_tools[scope] = remaining_tools
-        else:
-            self._state.scope_tools.pop(scope, None)
-        self._state.global_bytes -= accounting.byte_size
-
-    def _expired_refs_locked(self, now: float) -> set[tuple[str, GatewayStateScope]]:
-        return {
-            (kind, scope)
-            for kind, store in (
-                ("loaded", self._store),
-                ("deferred", self._deferred_store),
-            )
-            for scope, entry in store.items()
-            if now - entry.created > self._ttl
-        }
-
-    def _evict_expired(self) -> None:
-        with self._state.lock:
-            for ref in self._expired_refs_locked(time.monotonic()):
-                self._remove_ref_locked(ref)
-
-    def _candidate_data(
-        self,
-        existing_data: dict[str, Any],
-        tools: list[dict[str, Any]],
-    ) -> tuple[dict[str, Any], set[str]]:
-        candidate = dict(existing_data)
-        changed: set[str] = set()
-        for tool in tools:
-            key = self._tool_key(tool)
-            if not key:
-                continue
-            candidate[key] = self._preview_merge_loadable_tool(candidate.get(key), tool)
-            changed.add(key)
-        return candidate, changed
-
-    def _candidate_accounting(
-        self,
-        *,
-        kind: str,
-        scope: GatewayStateScope,
-        data: dict[str, Any],
-        changed: set[str],
-        use_existing: bool,
-    ) -> _ToolSearchMapAccounting:
-        existing = self._state.accounting.get((kind, scope)) if use_existing else None
-        if existing is None:
-            accounting = _ToolSearchMapAccounting()
-        else:
-            accounting = _ToolSearchMapAccounting(
-                item_bytes=dict(existing.item_bytes),
-                item_tools=dict(existing.item_tools),
-            )
-        for key in changed:
-            tool = data[key]
-            accounting.item_bytes[key] = self._item_byte_size(key, tool)
-            accounting.item_tools[key] = self._tool_count(tool)
-        return accounting
-
-    def _planned_evictions_locked(
-        self,
-        candidate_refs: set[tuple[str, GatewayStateScope]],
-        expired: set[tuple[str, GatewayStateScope]],
-    ) -> set[tuple[str, GatewayStateScope]]:
-        evictions: set[tuple[str, GatewayStateScope]] = set()
-        for kind, scope in candidate_refs:
-            store = self._store_for_kind(kind)
-            active = {
-                key: entry for key, entry in store.items() if (kind, key) not in expired
-            }
-            if scope in active or len(active) < self._max_size:
-                continue
-            own_scopes = [
-                key
-                for key in active
-                if key.principal_id == scope.principal_id
-                and (kind, key) not in candidate_refs
-            ]
-            if not own_scopes:
-                raise ToolSearchCapacityError(
-                    "Deferred tool-search capacity exceeded: "
-                    f"global scope limit is {self._max_size}"
-                )
-            oldest = min(own_scopes, key=lambda key: active[key].created)
-            evictions.add((kind, oldest))
-        return evictions
-
-    def _validate_principal_scope_candidates_locked(
-        self,
-        candidate_refs: set[tuple[str, GatewayStateScope]],
-        expired: set[tuple[str, GatewayStateScope]],
-    ) -> None:
-        """Reject new scopes before mutation when a principal reaches its cap."""
-        active_refs = set(self._state.accounting) - expired
-        active_scopes = {scope for _kind, scope in active_refs}
-        candidate_scopes = {scope for _kind, scope in candidate_refs}
-        new_by_principal: dict[str, int] = {}
-        for scope in candidate_scopes - active_scopes:
-            new_by_principal[scope.principal_id] = (
-                new_by_principal.get(scope.principal_id, 0) + 1
-            )
-        expired_scopes = {
-            scope
-            for _kind, scope in expired
-            if not any(
-                active_scope == scope and (active_kind, active_scope) not in expired
-                for active_kind, active_scope in self._state.accounting
-            )
-        }
-        expired_by_principal: dict[str, int] = {}
-        for scope in expired_scopes:
-            expired_by_principal[scope.principal_id] = (
-                expired_by_principal.get(scope.principal_id, 0) + 1
-            )
-        for principal_id, added in new_by_principal.items():
-            projected = (
-                self._state.principal_scopes.get(principal_id, 0)
-                - expired_by_principal.get(principal_id, 0)
-                + added
-            )
-            if projected > self._max_scopes_per_principal:
-                raise ToolSearchCapacityError(
-                    "Deferred tool-search capacity exceeded: principal scope limit "
-                    f"is {self._max_scopes_per_principal}"
-                )
-
-    def _validate_candidates_locked(
-        self,
-        candidates: dict[
-            tuple[str, GatewayStateScope],
-            tuple[dict[str, Any], _ToolSearchMapAccounting],
-        ],
-        removed: set[tuple[str, GatewayStateScope]],
-    ) -> None:
-        projected_scope_bytes = dict(self._state.scope_bytes)
-        projected_scope_tools = dict(self._state.scope_tools)
-        projected_global = self._state.global_bytes
-
-        for ref in removed | set(candidates):
-            accounting = self._state.accounting.get(ref)
-            if accounting is None:
-                continue
-            scope = ref[1]
-            projected_scope_bytes[scope] = (
-                projected_scope_bytes.get(scope, 0) - accounting.byte_size
-            )
-            projected_scope_tools[scope] = (
-                projected_scope_tools.get(scope, 0) - accounting.tool_count
-            )
-            projected_global -= accounting.byte_size
-
-        for (_kind, scope), (_data, accounting) in candidates.items():
-            projected_scope_bytes[scope] = (
-                projected_scope_bytes.get(scope, 0) + accounting.byte_size
-            )
-            projected_scope_tools[scope] = (
-                projected_scope_tools.get(scope, 0) + accounting.tool_count
-            )
-            projected_global += accounting.byte_size
-
-        for _kind, scope in candidates:
-            tool_count = projected_scope_tools.get(scope, 0)
-            byte_size = projected_scope_bytes.get(scope, 0)
-            if tool_count > self._max_tools_per_scope:
-                raise ToolSearchCapacityError(
-                    "Deferred tool-search capacity exceeded: "
-                    f"scope tool limit is {self._max_tools_per_scope}"
-                )
-            if byte_size > self._max_bytes_per_scope:
-                raise ToolSearchCapacityError(
-                    "Deferred tool-search capacity exceeded: "
-                    f"scope byte limit is {self._max_bytes_per_scope}"
-                )
-        if projected_global > self._max_bytes_global:
-            raise ToolSearchCapacityError(
-                "Deferred tool-search capacity exceeded: "
-                f"global byte limit is {self._max_bytes_global}"
-            )
-
-    def _remember_batches_locked(
-        self,
-        scope: GatewayStateScope,
-        batches: list[tuple[str, list[dict[str, Any]]]],
-    ) -> None:
-        now = time.monotonic()
-        expired = self._expired_refs_locked(now)
-        candidates: dict[
-            tuple[str, GatewayStateScope],
-            tuple[dict[str, Any], _ToolSearchMapAccounting],
-        ] = {}
-        for kind, tools in batches:
-            if not tools:
-                continue
-            ref = (kind, scope)
-            entry = self._store_for_kind(kind).get(scope)
-            use_existing = entry is not None and ref not in expired
-            existing_data = (
-                entry.data if use_existing and isinstance(entry.data, dict) else {}
-            )
-            candidate_data, changed = self._candidate_data(existing_data, tools)
-            if not changed:
-                continue
-            accounting = self._candidate_accounting(
-                kind=kind,
-                scope=scope,
-                data=candidate_data,
-                changed=changed,
-                use_existing=use_existing,
-            )
-            candidates[ref] = (candidate_data, accounting)
-
-        if not candidates:
-            return
-        self._validate_principal_scope_candidates_locked(set(candidates), expired)
-        evictions = self._planned_evictions_locked(set(candidates), expired)
-        removed = expired | evictions
-        self._validate_candidates_locked(candidates, removed)
-        materialized = {
-            ref: (copy.deepcopy(data), accounting)
-            for ref, (data, accounting) in candidates.items()
-        }
-
-        for ref in removed:
-            self._remove_ref_locked(ref)
-        for (kind, candidate_scope), (data, accounting) in materialized.items():
-            self._remove_ref_locked((kind, candidate_scope))
-            self._store_for_kind(kind)[candidate_scope] = _CacheEntry(data=data)
-            self._add_accounting_locked(kind, candidate_scope, accounting)
-
-    @staticmethod
-    def _tool_key(tool: Any) -> str | None:
-        if not isinstance(tool, dict):
-            return None
-        tool_type = tool.get("type")
-        tool_name = tool.get("name")
-        if tool_type == "namespace" and tool_name:
-            return f"namespace:{tool_name}"
-        if tool_type == "function" and tool_name:
-            return f"function:{tool_name}"
-        if tool_name:
-            return f"{tool_type or 'tool'}:{tool_name}"
-        if tool_type:
-            return f"type:{tool_type}"
-        return None
-
-    @staticmethod
-    def _extract_tool_search_tools(body: dict[str, Any]) -> list[dict[str, Any]]:
-        input_items = body.get("input")
-        if not isinstance(input_items, list):
-            return []
-        tools: list[dict[str, Any]] = []
-        for item in input_items:
-            if not isinstance(item, dict) or item.get("type") != "tool_search_output":
-                continue
-            item_tools = item.get("tools")
-            if not isinstance(item_tools, list):
-                continue
-            tools.extend(tool for tool in item_tools if isinstance(tool, dict))
-        return tools
-
-    @staticmethod
-    def _tool_search_calls_by_id(body: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        input_items = body.get("input")
-        if not isinstance(input_items, list):
-            return {}
-        calls: dict[str, dict[str, Any]] = {}
-        for item in input_items:
-            if not isinstance(item, dict) or item.get("type") != "tool_search_call":
-                continue
-            call_id = item.get("call_id")
-            if isinstance(call_id, str) and call_id:
-                calls[call_id] = item
-        return calls
-
-    @staticmethod
-    def _tool_search_query(call: dict[str, Any] | None) -> str:
-        if not isinstance(call, dict):
-            return ""
-        arguments = call.get("arguments")
-        if isinstance(arguments, str):
-            raw_arguments = arguments
-            try:
-                arguments = json.loads(arguments) if arguments else {}
-            except json.JSONDecodeError:
-                return raw_arguments
-        if not isinstance(arguments, dict):
-            return ""
-        query = arguments.get("query")
-        return query if isinstance(query, str) else ""
-
-    @staticmethod
-    def _tool_search_limit(call: dict[str, Any] | None) -> int:
-        if not isinstance(call, dict):
-            return 8
-        arguments = call.get("arguments")
-        if isinstance(arguments, str):
-            try:
-                arguments = json.loads(arguments) if arguments else {}
-            except json.JSONDecodeError:
-                return 8
-        if not isinstance(arguments, dict):
-            return 8
-        limit = arguments.get("limit")
-        if isinstance(limit, int):
-            return max(1, min(limit, 50))
-        return 8
-
-    @staticmethod
-    def _search_tokens(value: str) -> list[str]:
-        return [
-            token for token in _TOOL_SEARCH_TOKEN_RE.findall(value.lower()) if token
-        ]
-
-    @classmethod
-    def _tool_search_text(cls, tool: dict[str, Any]) -> str:
-        values: list[str] = []
-        for key in ("name", "description"):
-            value = tool.get(key)
-            if isinstance(value, str):
-                values.append(value)
-        children = tool.get("tools")
-        if isinstance(children, list):
-            for child in children:
-                if not isinstance(child, dict):
-                    continue
-                for key in ("name", "description"):
-                    value = child.get(key)
-                    if isinstance(value, str):
-                        values.append(value)
-                parameters = child.get("parameters")
-                if isinstance(parameters, dict):
-                    values.extend(cls._schema_search_text(parameters))
-        return " ".join(values)
-
-    @classmethod
-    def _schema_search_text(cls, schema: dict[str, Any]) -> list[str]:
-        values: list[str] = []
-        title = schema.get("title")
-        description = schema.get("description")
-        if isinstance(title, str):
-            values.append(title)
-        if isinstance(description, str):
-            values.append(description)
-        properties = schema.get("properties")
-        if isinstance(properties, dict):
-            for prop_name, prop_schema in properties.items():
-                if isinstance(prop_name, str):
-                    values.append(prop_name)
-                if isinstance(prop_schema, dict):
-                    values.extend(cls._schema_search_text(prop_schema))
-        items = schema.get("items")
-        if isinstance(items, dict):
-            values.extend(cls._schema_search_text(items))
-        elif isinstance(items, list):
-            for item_schema in items:
-                if isinstance(item_schema, dict):
-                    values.extend(cls._schema_search_text(item_schema))
-        for keyword in ("anyOf", "oneOf", "allOf"):
-            variants = schema.get(keyword)
-            if not isinstance(variants, list):
-                continue
-            for variant in variants:
-                if isinstance(variant, dict):
-                    values.extend(cls._schema_search_text(variant))
-        return values
-
-    @classmethod
-    def _score_tool_for_query(cls, tool: dict[str, Any], query: str) -> int:
-        query_tokens = set(cls._search_tokens(query))
-        if not query_tokens:
-            return 0
-        tool_text = cls._tool_search_text(tool)
-        tool_tokens = set(cls._search_tokens(tool_text))
-        if not tool_tokens:
-            return 0
-        score = 0
-        namespace = tool.get("name")
-        namespace_tokens = (
-            set(cls._search_tokens(namespace)) if isinstance(namespace, str) else set()
-        )
-        for token in query_tokens:
-            if token in namespace_tokens:
-                score += 8
-            elif token in tool_tokens:
-                score += 3
-            elif any(tool_token.startswith(token) for tool_token in tool_tokens):
-                score += 1
-        return score
-
-    @classmethod
-    def _score_namespace_child_for_query(
-        cls, namespace: dict[str, Any], child: dict[str, Any], query: str
-    ) -> int:
-        query_tokens = set(cls._expanded_query_tokens(query))
-        if not query_tokens:
-            return 0
-
-        namespace_text = " ".join(
-            value
-            for key in ("name", "description")
-            if isinstance((value := namespace.get(key)), str)
-        )
-        raw_child_name = child.get("name")
-        child_name = raw_child_name if isinstance(raw_child_name, str) else ""
-        raw_child_description = child.get("description")
-        child_description = (
-            raw_child_description if isinstance(raw_child_description, str) else ""
-        )
-        schema_text = " ".join(
-            cls._schema_search_text(child.get("parameters", {}))
-            if isinstance(child.get("parameters"), dict)
-            else []
-        )
-
-        namespace_tokens = set(cls._search_tokens(namespace_text))
-        child_name_tokens = set(cls._search_tokens(child_name.replace("_", " ")))
-        description_tokens = set(cls._search_tokens(child_description))
-        schema_tokens = set(cls._search_tokens(schema_text))
-        all_tokens = (
-            namespace_tokens | child_name_tokens | description_tokens | schema_tokens
-        )
-        if not all_tokens:
-            return 0
-
-        score = 0
-        for token in query_tokens:
-            if token in child_name_tokens:
-                score += 12
-            elif any(tool_token.startswith(token) for tool_token in child_name_tokens):
-                score += 5
-            if token in description_tokens:
-                score += 5
-            if token in schema_tokens:
-                score += 3
-            if token in namespace_tokens:
-                score += 3
-
-        normalized_query = " ".join(cls._search_tokens(query))
-        normalized_description = " ".join(cls._search_tokens(child_description))
-        if normalized_query and normalized_query in normalized_description:
-            score += 10
-        return score
-
-    @classmethod
-    def _expanded_query_tokens(cls, query: str) -> list[str]:
-        tokens = cls._search_tokens(query)
-        expanded = list(tokens)
-        token_set = set(tokens)
-        if {"pull", "request"}.issubset(token_set):
-            expanded.extend(["pr", "prs"])
-        return expanded
-
-    def _remember_tools(
-        self,
-        store: dict[GatewayStateScope, _CacheEntry],
-        window_id: str,
-        tools: list[dict[str, Any]],
-    ) -> None:
-        if not tools:
-            return
-        scope_key = self._scope_key(window_id)
-        kind = "loaded" if store is self._store else "deferred"
-        with self._state.lock:
-            self._remember_batches_locked(scope_key, [(kind, tools)])
-
-    @staticmethod
-    def _preview_merge_loadable_tool(
-        existing: Any, incoming: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Build a merge candidate without copying retained payloads first."""
-        if (
-            not isinstance(existing, dict)
-            or existing.get("type") != "namespace"
-            or incoming.get("type") != "namespace"
-        ):
-            return incoming
-
-        existing_children = existing.get("tools")
-        incoming_children = incoming.get("tools")
-        if not isinstance(existing_children, list) or not isinstance(
-            incoming_children, list
-        ):
-            return incoming
-
-        existing_names = {
-            child.get("name")
-            for child in existing_children
-            if isinstance(child, dict) and isinstance(child.get("name"), str)
-        }
-        additions: list[dict[str, Any]] = []
-        for child in incoming_children:
-            if not isinstance(child, dict):
-                continue
-            child_name = child.get("name")
-            if isinstance(child_name, str) and child_name in existing_names:
-                continue
-            additions.append(child)
-            if isinstance(child_name, str):
-                existing_names.add(child_name)
-        if not additions:
-            return existing
-        merged = dict(existing)
-        merged["tools"] = [*existing_children, *additions]
-        return merged
-
-    @staticmethod
-    def _merge_loadable_tool(existing: Any, incoming: dict[str, Any]) -> dict[str, Any]:
-        return copy.deepcopy(
-            WindowToolSearchStore._preview_merge_loadable_tool(existing, incoming)
-        )
-
-    def remember_deferred_tools(
-        self, window_id: str | None, tools: list[dict[str, Any]]
-    ) -> None:
-        """Remember Responses namespace tools hidden from Chat for this window."""
-        if not window_id:
-            return
-        self._remember_tools(self._deferred_store, window_id, tools)
-
-    def remember_from_request(
-        self, window_id: str | None, body: dict[str, Any]
-    ) -> None:
-        """Remember loadable tools from tool_search_output items in this request."""
-        if not window_id:
-            return
-        discovered_tools = self._extract_tool_search_tools(body)
-        if not discovered_tools:
-            return
-        self._remember_tools(self._store, window_id, discovered_tools)
-
-    def prepare_request(
-        self,
-        window_id: str | None,
-        deferred_tools: list[dict[str, Any]],
-        body: dict[str, Any],
-    ) -> None:
-        """Atomically enrich and retain all deferred-tool state for one request."""
-        if not window_id:
-            return
-        scope_key = self._scope_key(window_id)
-        with self._state.lock:
-            now = time.monotonic()
-            deferred_ref = ("deferred", scope_key)
-            deferred_entry = self._deferred_store.get(scope_key)
-            deferred_existing = (
-                deferred_entry.data
-                if deferred_entry is not None
-                and deferred_ref not in self._expired_refs_locked(now)
-                and isinstance(deferred_entry.data, dict)
-                else {}
-            )
-            candidate_deferred, _changed = self._candidate_data(
-                deferred_existing, deferred_tools
-            )
-            self._enrich_tool_search_outputs_from_data(body, candidate_deferred)
-            discovered_tools = self._extract_tool_search_tools(body)
-            self._remember_batches_locked(
-                scope_key,
-                [
-                    ("deferred", deferred_tools),
-                    ("loaded", discovered_tools),
-                ],
-            )
-
-    def _enrich_tool_search_outputs_from_data(
-        self,
-        body: dict[str, Any],
-        deferred_data: dict[str, Any],
-    ) -> None:
-        input_items = body.get("input")
-        if not isinstance(input_items, list) or not deferred_data:
-            return
-
-        calls_by_id = self._tool_search_calls_by_id(body)
-        deferred_tools = [
-            tool for tool in deferred_data.values() if isinstance(tool, dict)
-        ]
-        if not deferred_tools:
-            return
-
-        for item in input_items:
-            if not isinstance(item, dict) or item.get("type") != "tool_search_output":
-                continue
-            tools = item.get("tools")
-            if not isinstance(tools, list) or tools:
-                continue
-            call = calls_by_id.get(item.get("call_id"))
-            query = self._tool_search_query(call)
-            limit = self._tool_search_limit(call)
-            matches = self._match_deferred_tools(deferred_tools, query, limit)
-            if matches:
-                item["tools"] = [copy.deepcopy(tool) for tool in matches]
-
-    def enrich_tool_search_outputs(
-        self, window_id: str | None, body: dict[str, Any]
-    ) -> None:
-        """Fill empty tool_search_output tools from Rosetta-hidden namespaces."""
-        if not window_id:
-            return
-        input_items = body.get("input")
-        if not isinstance(input_items, list):
-            return
-        with self._state.lock:
-            for ref in self._expired_refs_locked(time.monotonic()):
-                self._remove_ref_locked(ref)
-            entry = self._deferred_store.get(self._scope_key(window_id))
-            if entry is None or not isinstance(entry.data, dict):
-                return
-            self._enrich_tool_search_outputs_from_data(body, entry.data)
-
-    @classmethod
-    def _match_deferred_tools(
-        cls, deferred_tools: list[dict[str, Any]], query: str, limit: int
-    ) -> list[dict[str, Any]]:
-        scored: list[tuple[int, int, int, dict[str, Any]]] = []
-        for tool_index, tool in enumerate(deferred_tools):
-            if tool.get("type") == "namespace" and isinstance(tool.get("tools"), list):
-                for child_index, child in enumerate(tool["tools"]):
-                    if not isinstance(child, dict):
-                        continue
-                    if child.get("type", "function") != "function":
-                        continue
-                    score = cls._score_namespace_child_for_query(tool, child, query)
-                    if score <= 0:
-                        continue
-                    namespace_match = {
-                        "type": "namespace",
-                        "name": tool.get("name", ""),
-                        "description": tool.get("description", ""),
-                        "tools": [copy.deepcopy(child)],
-                    }
-                    scored.append((score, tool_index, child_index, namespace_match))
-                continue
-
-            score = cls._score_tool_for_query(tool, query)
-            if score <= 0:
-                continue
-            scored.append((score, tool_index, -1, copy.deepcopy(tool)))
-
-        scored.sort(key=lambda item: (-item[0], item[1], item[2]))
-        return cls._coalesce_loadable_tools([tool for _, _, _, tool in scored[:limit]])
-
-    @classmethod
-    def _coalesce_loadable_tools(
-        cls, tools: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        coalesced: list[dict[str, Any]] = []
-        namespace_indexes: dict[str, int] = {}
-        for tool in tools:
-            if tool.get("type") != "namespace":
-                coalesced.append(copy.deepcopy(tool))
-                continue
-            namespace_name = tool.get("name")
-            if not isinstance(namespace_name, str):
-                coalesced.append(copy.deepcopy(tool))
-                continue
-            if namespace_name not in namespace_indexes:
-                namespace_indexes[namespace_name] = len(coalesced)
-                coalesced.append(copy.deepcopy(tool))
-                continue
-            existing = coalesced[namespace_indexes[namespace_name]]
-            coalesced[namespace_indexes[namespace_name]] = cls._merge_loadable_tool(
-                existing, tool
-            )
-        return coalesced
-
-    def inject_into_request(
-        self,
-        window_id: str | None,
-        ir_request: dict[str, Any],
-        pipeline: ConversionPipeline,
-        *,
-        optimize_tool_descriptions: bool = True,
-    ) -> None:
-        """Append remembered loadable tools to an IR request for the same window."""
-        if not window_id:
-            return
-        with self._state.lock:
-            for ref in self._expired_refs_locked(time.monotonic()):
-                self._remove_ref_locked(ref)
-            entry = self._store.get(self._scope_key(window_id))
-            if entry is None:
-                return
-            tools_by_key = entry.data
-            if not isinstance(tools_by_key, dict) or not tools_by_key:
-                return
-
-            response_converter = pipeline._source_converter
-            converted: list[Any] = []
-            for tool in tools_by_key.values():
-                converted_tool = response_converter.tool_ops.p_tool_definition_to_ir(
-                    tool
-                )
-                if isinstance(converted_tool, list):
-                    converted.extend(converted_tool)
-                else:
-                    converted.append(converted_tool)
-            if not converted:
-                return
-
-        existing_tools = ir_request.setdefault("tools", [])
-        existing_names = {
-            tool.get("name")
-            for tool in existing_tools
-            if isinstance(tool, dict) and isinstance(tool.get("name"), str)
-        }
-        added: list[Any] = []
-        for tool in converted:
-            if not isinstance(tool, dict):
-                continue
-            name = tool.get("name")
-            if not isinstance(name, str) or name in existing_names:
-                continue
-            existing_tools.append(tool)
-            existing_names.add(name)
-            added.append(tool)
-
-        if added and hasattr(response_converter, "_store_namespace_tool_map"):
-            response_converter._store_namespace_tool_map(added, pipeline.context)
-        if added and hasattr(response_converter, "_store_native_tool_type_map"):
-            response_converter._store_native_tool_type_map(added, pipeline.context)
-
-    def clear(self) -> None:
-        with self._state.lock:
-            if self._scope is None:
-                for ref in list(self._state.accounting):
-                    self._remove_ref_locked(ref)
-                return
-            self._remove_ref_locked(("loaded", self._scope))
-            self._remove_ref_locked(("deferred", self._scope))
-
-    def clear_all(self) -> None:
-        """Remove all discovered and deferred tools owned by this root store."""
-        if not self._is_root:
-            raise RuntimeError("clear_all() is only available on a root store")
-        self.clear()
-
-    def __len__(self) -> int:
-        with self._state.lock:
-            if self._scope is None:
-                return len(self._store)
-            return int(self._scope in self._store)
-
-
 _default_metadata_store = ProviderMetadataStore()
 _default_codex_tool_store = CodexToolLocalizationStore()
-_default_window_tool_search_store = WindowToolSearchStore()
-
-
-def _prepare_window_tool_search_request(
-    *,
-    route: ResolvedRoute,
-    codex_window_id: str | None,
-    body: dict[str, Any],
-    window_tools: WindowToolSearchStore,
-) -> bool:
-    """Update per-window loadable-tool state and return whether injection applies."""
-    if not (_uses_responses_chat_bridge(route) and codex_window_id):
-        return False
-    if getattr(route, "tool_profile", None):
-        # Profile-managed namespaces are either removed or eagerly expanded by
-        # the Responses converter; Chat has no native namespace wire shape.
-        # Runtime plugin/MCP tools returned by Codex in tool_search_output are
-        # not part of that static catalog, so the window store must still own
-        # their discovery and injection into this and subsequent requests.
-        deferred_tools: list[dict[str, Any]] = []
-    else:
-        deferred_tools = _defer_responses_namespace_tools_for_chat(
-            body,
-            optimize_tool_descriptions=True,
-        )
-    window_tools.prepare_request(codex_window_id, deferred_tools, body)
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -2500,12 +1374,10 @@ def _resolve_state_stores(
     state_scope: GatewayStateScope | None,
     metadata_store: ProviderMetadataStore | None,
     codex_tool_store: CodexToolLocalizationStore | None,
-    window_tool_search_store: WindowToolSearchStore | None,
 ) -> tuple[
     GatewayStateScope,
     ProviderMetadataStore,
     CodexToolLocalizationStore,
-    WindowToolSearchStore,
 ]:
     """Resolve one ownership scope across all cross-request state stores."""
     scope = state_scope or GatewayStateScope.for_request(
@@ -2520,20 +1392,14 @@ def _resolve_state_stores(
     tool_store_root = (
         codex_tool_store if codex_tool_store is not None else _default_codex_tool_store
     )
-    window_tools_root = (
-        window_tool_search_store
-        if window_tool_search_store is not None
-        else _default_window_tool_search_store
-    )
     if state_scope is None:
         # Direct library callers have no authenticated request context. Keep
         # explicitly supplied stores compatible but never persist them.
-        return scope, store_root, tool_store_root, window_tools_root
+        return scope, store_root, tool_store_root
     return (
         scope,
         store_root.scoped(scope),
         tool_store_root.scoped(scope),
-        window_tools_root.scoped(scope),
     )
 
 
@@ -2549,7 +1415,6 @@ async def handle_non_streaming(
     persistence: Any | None = None,
     state_scope: GatewayStateScope | None = None,
     codex_window_id: str | None = None,
-    window_tool_search_store: WindowToolSearchStore | None = None,
     upstream_error_log_state: UpstreamErrorLogState | None = None,
     body_log_state: BodyLogState | None = None,
     image_fetch_workers: ImageFetchWorkerPool | None = None,
@@ -2564,13 +1429,12 @@ async def handle_non_streaming(
         gateway-level measurements (upstream latency).
     """
     model = body.get("model", "")
-    scope, store, tool_store, window_tools = _resolve_state_stores(
+    scope, store, tool_store = _resolve_state_stores(
         route=route,
         model=model,
         state_scope=state_scope,
         metadata_store=metadata_store,
         codex_tool_store=codex_tool_store,
-        window_tool_search_store=window_tool_search_store,
     )
     persistent_mappings: list[LocalizedToolMapping] = []
     used_mapping_call_ids: set[str] = set()
@@ -2591,7 +1455,6 @@ async def handle_non_streaming(
         persistence=persistence,
         state_scope=scope,
         codex_window_id=codex_window_id,
-        window_tool_search_store=window_tool_search_store,
         image_fetch_workers=image_fetch_workers,
         stream=False,
         enabled=not skip_codex_compaction,
@@ -2606,13 +1469,6 @@ async def handle_non_streaming(
     source_tool_capabilities = _source_tool_capabilities_after_profile(
         original_body, body, route
     )
-    use_window_tool_search = _prepare_window_tool_search_request(
-        route=route,
-        codex_window_id=codex_window_id,
-        body=body,
-        window_tools=window_tools,
-    )
-
     if is_responses_passthrough(route):
         log_original_request(body, state=body_log_state)
         t_upstream = time.perf_counter()
@@ -2701,13 +1557,6 @@ async def handle_non_streaming(
     # Phase 1+2: Source → IR → Target
     def _on_request_ir_ready(ir_request: dict[str, Any]) -> None:
         store.inject_into_request(ir_request)
-        if use_window_tool_search:
-            window_tools.inject_into_request(
-                codex_window_id,
-                ir_request,
-                pipeline,
-                optimize_tool_descriptions=True,
-            )
 
     try:
         target_body = await _convert_request(
@@ -3480,7 +2329,6 @@ async def handle_streaming(  # noqa: C901
     persistence: Any | None = None,
     state_scope: GatewayStateScope | None = None,
     codex_window_id: str | None = None,
-    window_tool_search_store: WindowToolSearchStore | None = None,
     stream_trace_state: StreamTraceState | None = None,
     upstream_error_log_state: UpstreamErrorLogState | None = None,
     body_log_state: BodyLogState | None = None,
@@ -3501,13 +2349,12 @@ async def handle_streaming(  # noqa: C901
         after the stream completes.
     """
     model = body.get("model", "")
-    scope, store, tool_store, window_tools = _resolve_state_stores(
+    scope, store, tool_store = _resolve_state_stores(
         route=route,
         model=model,
         state_scope=state_scope,
         metadata_store=metadata_store,
         codex_tool_store=codex_tool_store,
-        window_tool_search_store=window_tool_search_store,
     )
     persistent_mappings: list[LocalizedToolMapping] = []
     used_mapping_call_ids: set[str] = set()
@@ -3527,7 +2374,6 @@ async def handle_streaming(  # noqa: C901
         persistence=persistence,
         state_scope=scope,
         codex_window_id=codex_window_id,
-        window_tool_search_store=window_tool_search_store,
         image_fetch_workers=image_fetch_workers,
         stream=True,
     )
@@ -3545,13 +2391,6 @@ async def handle_streaming(  # noqa: C901
     source_tool_capabilities = _source_tool_capabilities_after_profile(
         original_body, body, route
     )
-    use_window_tool_search = _prepare_window_tool_search_request(
-        route=route,
-        codex_window_id=codex_window_id,
-        body=body,
-        window_tools=window_tools,
-    )
-
     if is_responses_passthrough(route):
         return await _handle_direct_responses_streaming(
             route,
@@ -3590,13 +2429,6 @@ async def handle_streaming(  # noqa: C901
     # Phase 1+2: Source → IR → Target
     def _on_request_ir_ready(ir_request: dict[str, Any]) -> None:
         store.inject_into_request(ir_request)
-        if use_window_tool_search:
-            window_tools.inject_into_request(
-                codex_window_id,
-                ir_request,
-                pipeline,
-                optimize_tool_descriptions=True,
-            )
 
     try:
         target_body = await _convert_request(

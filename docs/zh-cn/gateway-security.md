@@ -79,12 +79,10 @@ upstream forwarding 之前收到对应格式的 HTTP 400，避免 terminal-contr
 
 跨轮内存状态执行按 principal 公平的硬限制。Provider continuation metadata 每条上限
 1 MiB、每个 scope 上限 8 MiB、每个 principal 上限 1,024 条/16 MiB，整个 app 上限
-10,000 条/64 MiB。延迟工具发现状态每个 scope 上限 1,024 个嵌套 tool/16 MiB；loaded
-与 deferred 两张 map 合并后，每个 principal 最多 256 个唯一 scope；每张 map 最多保留
-1,000 个 scope，整个 app 上限 64 MiB。同一 scope 同时出现在两张 tool map 时只计一次
-principal quota。达到 principal 上限会直接拒绝新状态；全局 count map 满时，只能替换
-当前写入 principal 自己最旧的 entry 或 scope，绝不会驱逐其他 principal 的状态。
-容量失败会在 cache 部分变更前以 HTTP 413 返回。
+10,000 条/64 MiB。达到 principal 上限会直接拒绝新状态；全局 entry map 满时，只能替换
+当前写入 principal 自己最旧的 entry，绝不会驱逐其他 principal 的状态。容量失败会在
+cache 部分变更前以 HTTP 413 返回。Code Mode 延迟工具发现不会新增跨轮 Gateway 状态：
+它通过 `exec` 搜索 Codex 当前请求的 `ALL_TOOLS` runtime catalog。
 
 ## 使用环境变量的示例配置
 

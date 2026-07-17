@@ -306,7 +306,6 @@ def test_internal_summary_retains_persistence_but_disables_body_logging(
                 window_id="thread-a:0",
             ),
             codex_window_id="thread-a:0",
-            window_tool_search_store=None,
             image_fetch_workers=None,
             stream=False,
         )

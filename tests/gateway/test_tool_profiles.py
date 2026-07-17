@@ -1123,6 +1123,42 @@ def test_chat_default_disables_hosted_web_search():
     assert adapted["tools"] == [{"type": "function", "name": "wait", "parameters": {}}]
 
 
+def test_responses_to_chat_removes_native_tool_search_mapping():
+    body = {
+        "tools": [
+            {"type": "tool_search", "parameters": {"type": "object"}},
+            {"type": "function", "name": "wait", "parameters": {}},
+        ],
+        "input": [
+            {
+                "type": "additional_tools",
+                "role": "developer",
+                "tools": [
+                    {"type": "tool_search", "parameters": {"type": "object"}},
+                    {"type": "function", "name": "update_plan", "parameters": {}},
+                ],
+            }
+        ],
+    }
+
+    adapted = _apply_tool_adaptation(body, _route(_profile()))
+
+    assert [tool["name"] for tool in adapted["tools"]] == ["wait"]
+    assert [tool["name"] for tool in adapted["input"][0]["tools"]] == ["update_plan"]
+    assert all(
+        tool.get("type") != "tool_search"
+        for container in (adapted["tools"], adapted["input"][0]["tools"])
+        for tool in container
+    )
+
+
+def test_responses_passthrough_keeps_native_tool_search_protocol():
+    body = {"tools": [{"type": "tool_search", "parameters": {"type": "object"}}]}
+    route = _route(_profile(), target_provider="openai_responses")
+
+    assert _apply_tool_adaptation(body, route) is body
+
+
 def test_profile_limits_localized_native_and_injected_tools():
     profile = _profile()
     for item_id in copy.copy(profile):

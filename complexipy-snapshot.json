@@ -82,10 +82,6 @@
       {
         "name": "OpenAIResponsesConverter::_capture_preserve_metadata",
         "complexity": 29
-      },
-      {
-        "name": "OpenAIResponsesConverter::_handle_tool_call_start_to_p",
-        "complexity": 29
       }
     ]
   },
@@ -137,14 +133,6 @@
     "functions": [
       {
         "name": "ProviderMetadataStore::_put_many",
-        "complexity": 26
-      },
-      {
-        "name": "WindowToolSearchStore::_schema_search_text",
-        "complexity": 26
-      },
-      {
-        "name": "WindowToolSearchStore::inject_into_request",
         "complexity": 26
       },
       {

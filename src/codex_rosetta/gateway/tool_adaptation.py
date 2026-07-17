@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .code_mode_projection import (
+    DEFERRED_EXEC_GUIDANCE,
     ExecDescriptionSection,
     ExecToolProjection,
     build_exec_script,
@@ -41,9 +42,6 @@ NATIVE_CODE_TOOL_NAMES = frozenset(
 LOCALIZATION_CAPABILITIES_KEY = "_codex_tool_localization_capabilities"
 READ_OUTPUT_CACHE_KEY = "_codex_read_output_cache"
 EXEC_PROJECTIONS_KEY = "_codex_exec_tool_projections"
-DEFERRED_EXEC_GUIDANCE = (
-    "Some deferred nested tools may be omitted from this description."
-)
 
 
 @dataclass(frozen=True)

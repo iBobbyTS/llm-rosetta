@@ -56,8 +56,6 @@ from .logging import (
 from .proxy import (
     ProviderMetadataCapacityError,
     ProviderMetadataStore,
-    ToolSearchCapacityError,
-    WindowToolSearchStore,
     close_resources,
     detect_stream_request,
     error_response_for_source,
@@ -406,7 +404,6 @@ def _clear_request_local_state(
     *,
     metadata_store: ProviderMetadataStore,
     codex_tool_store: CodexToolLocalizationStore,
-    window_tool_search_store: WindowToolSearchStore,
 ) -> None:
     """Clear every in-memory store owned by one non-persistent request scope."""
     if scope.persistent:
@@ -414,7 +411,6 @@ def _clear_request_local_state(
     for name, store in (
         ("provider metadata", metadata_store),
         ("tool localization", codex_tool_store),
-        ("deferred tool search", window_tool_search_store),
     ):
         try:
             store.scoped(scope).clear()
@@ -686,9 +682,6 @@ async def _proxy_handler(
 
     store: ProviderMetadataStore = request.app.metadata_store
     codex_tool_store: CodexToolLocalizationStore = request.app.codex_tool_store
-    window_tool_search_store: WindowToolSearchStore = (
-        request.app.window_tool_search_store
-    )
 
     # Forward only explicitly supported client headers to upstream.
     extra_headers = build_upstream_extra_headers(request, request_id)
@@ -727,7 +720,6 @@ async def _proxy_handler(
                 persistence=persistence,
                 state_scope=state_scope,
                 codex_window_id=codex_window_id,
-                window_tool_search_store=window_tool_search_store,
                 stream_trace_state=getattr(request.app, "stream_trace_state", None),
                 upstream_error_log_state=getattr(
                     request.app, "upstream_error_log_state", None
@@ -748,7 +740,6 @@ async def _proxy_handler(
                 persistence=persistence,
                 state_scope=state_scope,
                 codex_window_id=codex_window_id,
-                window_tool_search_store=window_tool_search_store,
                 upstream_error_log_state=getattr(
                     request.app, "upstream_error_log_state", None
                 ),
@@ -776,7 +767,6 @@ async def _proxy_handler(
                     state_scope,
                     metadata_store=store,
                     codex_tool_store=codex_tool_store,
-                    window_tool_search_store=window_tool_search_store,
                 ),
             )
             stream_telemetry_deferred = True
@@ -784,11 +774,11 @@ async def _proxy_handler(
         response.headers["x-request-id"] = request_id
         logger.info("[%s] response status=%s", request_id, status_code)
         return response
-    except (ToolSearchCapacityError, ProviderMetadataCapacityError) as exc:
+    except ProviderMetadataCapacityError as exc:
         error_detail = str(exc)
         status_code = 413
         pre_entry_id = None
-        logger.warning("[%s] deferred tool-search capacity rejected", request_id)
+        logger.warning("[%s] provider metadata capacity rejected", request_id)
         resp = error_response_for_source(source_provider, 413, str(exc))
         resp.headers["x-request-id"] = request_id
         return resp
@@ -820,7 +810,6 @@ async def _proxy_handler(
                 state_scope,
                 metadata_store=store,
                 codex_tool_store=codex_tool_store,
-                window_tool_search_store=window_tool_search_store,
             )
         if not stream_telemetry_deferred:
             _try_stop_profiler(
@@ -1053,7 +1042,6 @@ def create_app(
 
     metadata_store = ProviderMetadataStore()
     codex_tool_store = CodexToolLocalizationStore()
-    window_tool_search_store = WindowToolSearchStore()
     codex_search_reference_store = CodexSearchReferenceStore()
     image_fetch_workers = ImageFetchWorkerPool()
     web_run_health_state = WebRunHealthState()
@@ -1169,7 +1157,6 @@ def create_app(
     app.transport = transport  # type: ignore
     app.metadata_store = metadata_store  # type: ignore
     app.codex_tool_store = codex_tool_store  # type: ignore
-    app.window_tool_search_store = window_tool_search_store  # type: ignore
     app.codex_search_reference_store = codex_search_reference_store  # type: ignore
     app.image_fetch_workers = image_fetch_workers  # type: ignore
     app.internal_token = internal_token  # type: ignore
@@ -1210,7 +1197,6 @@ async def run_gateway(
             transport=app.transport,  # type: ignore
             metadata_store=app.metadata_store,  # type: ignore
             codex_tool_store=app.codex_tool_store,  # type: ignore
-            window_tool_search_store=app.window_tool_search_store,  # type: ignore
             codex_search_reference_store=app.codex_search_reference_store,  # type: ignore
             image_fetch_workers=app.image_fetch_workers,  # type: ignore
         )

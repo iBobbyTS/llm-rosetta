@@ -75,6 +75,16 @@ _WHITESPACE_RE = re.compile(r"\s+")
 _EXEC_SECTION_HEADING_RE = re.compile(r"(?m)^### `([^`]+)`(?: \(`[^`]+`\))?[ \t]*$")
 _EXEC_DECLARATION_FENCE_RE = re.compile(r"(?m)^```ts[ \t]*$")
 _EXEC_CLOSING_FENCE_RE = re.compile(r"(?m)^```[ \t]*$")
+DEFERRED_EXEC_GUIDANCE = (
+    "Some deferred nested tools may be omitted from this description."
+)
+ALL_TOOLS_SEARCH_CHAT_NAME = "tool_search"
+ALL_TOOLS_SEARCH_PROJECTION = ExecToolProjection(
+    item_id="synthetic.all_tools_search",
+    chat_name=ALL_TOOLS_SEARCH_CHAT_NAME,
+    nested_name="",
+    input_mode="all_tools_search",
+)
 
 
 def _tokenize_typescript(source: str) -> list[_Token]:
@@ -310,6 +320,7 @@ def exec_tool_projections_for_route(route: Any) -> dict[str, ExecToolProjection]
             **projection_definition,
         )
         projections[projection.chat_name] = projection
+    projections[ALL_TOOLS_SEARCH_CHAT_NAME] = ALL_TOOLS_SEARCH_PROJECTION
     return projections
 
 
@@ -341,9 +352,11 @@ def plan_exec_tool_definitions(
     duplicate_names = frozenset(
         name for name, sections in sections_by_name.items() if len(sections) > 1
     )
-    definitions: dict[str, dict[str, Any]] = {}
+    section_projections = dict(projections)
+    all_tools_search = section_projections.pop(ALL_TOOLS_SEARCH_CHAT_NAME, None)
+    definitions = _all_tools_search_definitions(exec_description, all_tools_search)
     projected_sections: dict[str, ExecDescriptionSection] = {}
-    for chat_name, projection in projections.items():
+    for chat_name, projection in section_projections.items():
         matching_sections = sections_by_name.get(projection.nested_name, [])
         if len(matching_sections) != 1:
             continue
@@ -391,6 +404,8 @@ def build_exec_script(
     arguments: dict[str, Any],
 ) -> str:
     """Build deterministic JavaScript for one projected nested-tool call."""
+    if projection.input_mode == "all_tools_search":
+        return _build_all_tools_search_script(arguments)
     if projection.input_mode == "freeform":
         value = arguments.get(projection.input_field)
         if not isinstance(value, str):
@@ -418,6 +433,153 @@ def build_exec_script(
         f"const result = await tools.{projection.nested_name}({literal});\n"
         f"{output_helper}(result);\n"
     )
+
+
+def _all_tools_search_definition() -> dict[str, Any]:
+    """Build the Chat function used to search Codex's live ALL_TOOLS catalog."""
+    return {
+        "type": "function",
+        "function": {
+            "name": ALL_TOOLS_SEARCH_CHAT_NAME,
+            "description": (
+                "Search deferred tools in Codex's live ALL_TOOLS runtime catalog. "
+                "Use natural_language for capability searches and regex for exact "
+                "name or declaration patterns. Results include complete tool "
+                "descriptions and declarations; invoke a matched tool through the "
+                "raw exec tool."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500,
+                        "description": (
+                            "Capability, provider, tool name, or declaration text "
+                            "to find. Regex patterns are limited to 200 characters."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 8,
+                        "description": "Maximum number of matching tools to return.",
+                    },
+                    "search_mode": {
+                        "type": "string",
+                        "enum": ["natural_language", "regex"],
+                        "default": "natural_language",
+                        "description": (
+                            "Natural-language token ranking or case-insensitive "
+                            "JavaScript regular-expression matching."
+                        ),
+                    },
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def _all_tools_search_definitions(
+    exec_description: str,
+    projection: ExecToolProjection | None,
+) -> dict[str, dict[str, Any]]:
+    """Return the synthetic search definition only for a live deferred exec."""
+    if (
+        projection is None
+        or projection.input_mode != "all_tools_search"
+        or DEFERRED_EXEC_GUIDANCE not in exec_description
+    ):
+        return {}
+    return {projection.chat_name: _all_tools_search_definition()}
+
+
+def _build_all_tools_search_script(arguments: dict[str, Any]) -> str:
+    """Build bounded JavaScript that searches only the live ALL_TOOLS array."""
+    query = arguments.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("tool_search requires a non-empty string field 'query'")
+    search_mode = arguments.get("search_mode", "natural_language")
+    if search_mode not in {"natural_language", "regex"}:
+        raise ValueError(
+            "tool_search search_mode must be 'natural_language' or 'regex'"
+        )
+    max_query_length = 200 if search_mode == "regex" else 500
+    if len(query) > max_query_length:
+        raise ValueError(
+            f"tool_search {search_mode} query must be at most "
+            f"{max_query_length} characters"
+        )
+    limit = arguments.get("limit", 8)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+        raise ValueError("tool_search limit must be an integer from 1 to 50")
+
+    query_literal = _javascript_json_literal(query)
+    mode_literal = _javascript_json_literal(search_mode)
+    return f"""const query = {query_literal};
+const searchMode = {mode_literal};
+const limit = {limit};
+const catalog = Array.isArray(ALL_TOOLS) ? ALL_TOOLS : [];
+const normalize = (value) => String(value ?? "").normalize("NFKC").toLowerCase();
+const queryText = normalize(query);
+let ranked;
+if (searchMode === "regex") {{
+  let pattern;
+  try {{
+    pattern = new RegExp(query, "i");
+  }} catch (error) {{
+    text({{
+      query,
+      search_mode: searchMode,
+      limit,
+      total_matches: 0,
+      matches: [],
+      error: {{ code: "invalid_pattern", message: String(error) }},
+    }});
+    exit();
+  }}
+  ranked = catalog
+    .map((entry, index) => ({{ entry, index }}))
+    .filter(({{ entry }}) =>
+      pattern.test(String(entry.name ?? "")) ||
+      pattern.test(String(entry.description ?? ""))
+    );
+}} else {{
+  const tokens = [...new Set(queryText.match(/[\\p{{L}}\\p{{N}}_]+/gu) ?? [])];
+  ranked = catalog
+    .map((entry, index) => {{
+      const name = normalize(entry.name);
+      const description = normalize(entry.description);
+      const nameTokens = new Set(name.match(/[\\p{{L}}\\p{{N}}_]+/gu) ?? []);
+      let score = 0;
+      if (name === queryText) score += 1000;
+      if (queryText && name.includes(queryText)) score += 400;
+      if (queryText && description.includes(queryText)) score += 100;
+      for (const token of tokens) {{
+        if (nameTokens.has(token)) score += 60;
+        else if (name.includes(token)) score += 30;
+        if (description.includes(token)) score += 10;
+      }}
+      return {{ entry, index, score }};
+    }})
+    .filter(({{ score }}) => score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+}}
+text({{
+  query,
+  search_mode: searchMode,
+  limit,
+  total_matches: ranked.length,
+  matches: ranked.slice(0, limit).map(({{ entry }}) => ({{
+    name: entry.name,
+    description: entry.description,
+  }})),
+}});
+"""
 
 
 def _exec_description_section_spans(description: str) -> list[ExecDescriptionSection]:

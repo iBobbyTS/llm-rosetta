@@ -551,25 +551,9 @@ class OpenAIResponsesToolOps(BaseToolOps):
     def _hosted_tool_definition_to_ir(
         provider_tool: dict[str, Any],
         tool_type: str,
-    ) -> ToolDefinition | None:
+    ) -> ToolDefinition | list[ToolDefinition] | None:
         if tool_type == "tool_search":
-            params = provider_tool.get("parameters")
-            synth_params = params if isinstance(params, dict) else {}
-            return cast(
-                ToolDefinition,
-                {
-                    "type": "function",
-                    "name": "tool_search",
-                    "description": provider_tool.get("description", ""),
-                    "parameters": synth_params,
-                    "_passthrough": dict(provider_tool),
-                    "metadata": {"provider_type": tool_type},
-                    "required_parameters": synth_params.get("required", [])
-                    if synth_params
-                    else [],
-                },
-            )
-
+            return []
         if tool_type not in ("web_search", "web_search_preview"):
             return None
 
@@ -598,12 +582,6 @@ class OpenAIResponsesToolOps(BaseToolOps):
         tool_input: Any,
         metadata: dict[str, Any],
     ) -> dict[str, Any] | None:
-        if metadata.get("responses_tool_type") == "tool_search":
-            return OpenAIResponsesToolOps._ir_tool_search_call_to_p(
-                tool_call_id,
-                tool_input,
-                metadata,
-            )
         if metadata.get("responses_tool_type") != "web_search":
             return None
 
@@ -617,30 +595,6 @@ class OpenAIResponsesToolOps(BaseToolOps):
         if query:
             item["action"] = {"type": "search", "query": query}
         return item
-
-    @staticmethod
-    def _ir_tool_search_call_to_p(
-        tool_call_id: str,
-        tool_input: Any,
-        metadata: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Build a native Responses tool_search_call item."""
-        item_id = metadata.get("responses_item_id")
-        if not item_id:
-            if tool_call_id and tool_call_id.startswith("tsc_"):
-                item_id = tool_call_id
-            elif tool_call_id and tool_call_id.startswith("call_"):
-                item_id = "tsc_" + tool_call_id[5:]
-            else:
-                item_id = "tsc_" + tool_call_id
-        return {
-            "type": "tool_search_call",
-            "id": item_id,
-            "call_id": tool_call_id,
-            "status": "completed",
-            "execution": "client",
-            "arguments": tool_input if isinstance(tool_input, dict) else {},
-        }
 
     @staticmethod
     def p_tool_call_to_ir(provider_tool_call: Any, **kwargs: Any) -> ToolCallPart:

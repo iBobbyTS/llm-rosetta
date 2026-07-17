@@ -475,6 +475,7 @@ def test_chat_default_retains_apply_patch_as_an_internal_exec_projection():
         "skills-list",
         "skills-read",
         "spawn_agents_on_csv",
+        "tool_search",
         "update_goal",
         "update_plan",
         "view_image",
@@ -497,7 +498,7 @@ def test_exec_description_projects_precise_normal_function_schemas():
         _exec_description(), projections, profile_route=route
     )
 
-    assert set(definitions) == set(projections)
+    assert set(definitions) == set(projections) - {"tool_search"}
     exec_schema = definitions["exec_command"]["function"]["parameters"]
     assert exec_schema["required"] == ["cmd"]
     assert exec_schema["properties"]["cmd"] == {
@@ -553,6 +554,205 @@ def test_conditional_exec_projection_only_exposes_live_codex_declarations():
         "required": ["server", "uri"],
         "additionalProperties": False,
     }
+
+
+def test_deferred_exec_projects_stateless_all_tools_search_definition():
+    route = _route()
+    definitions = project_exec_tool_definitions(
+        _deferred_exec_description(),
+        exec_tool_projections_for_route(route),
+        profile_route=route,
+    )
+
+    function = definitions["tool_search"]["function"]
+    assert "ALL_TOOLS" in function["description"]
+    assert "raw exec tool" in function["description"]
+    assert function["parameters"] == {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": (
+                    "Capability, provider, tool name, or declaration text to find. "
+                    "Regex patterns are limited to 200 characters."
+                ),
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "default": 8,
+                "description": "Maximum number of matching tools to return.",
+            },
+            "search_mode": {
+                "type": "string",
+                "enum": ["natural_language", "regex"],
+                "default": "natural_language",
+                "description": (
+                    "Natural-language token ranking or case-insensitive JavaScript "
+                    "regular-expression matching."
+                ),
+            },
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    }
+
+
+def test_all_tools_search_is_not_invented_without_deferred_guidance():
+    definitions = project_exec_tool_definitions(
+        _exec_description(),
+        exec_tool_projections_for_route(_route()),
+    )
+
+    assert "tool_search" not in definitions
+
+
+def test_all_tools_search_script_uses_live_catalog_without_gateway_cache():
+    projection = exec_tool_projections_for_route(_route())["tool_search"]
+
+    script = build_exec_script(
+        projection,
+        {"query": "node repl browser", "limit": 3},
+    )
+
+    assert 'const query = "node repl browser";' in script
+    assert 'const searchMode = "natural_language";' in script
+    assert "const catalog = Array.isArray(ALL_TOOLS) ? ALL_TOOLS : [];" in script
+    assert "ranked.slice(0, limit)" in script
+    assert "name: entry.name" in script
+    assert "description: entry.description" in script
+    assert "tools." not in script
+
+
+def test_all_tools_regex_search_script_and_argument_validation():
+    projection = exec_tool_projections_for_route(_route())["tool_search"]
+
+    script = build_exec_script(
+        projection,
+        {
+            "query": r"^mcp__node_repl__js(?:_reset)?$",
+            "search_mode": "regex",
+            "limit": 2,
+        },
+    )
+
+    assert 'const searchMode = "regex";' in script
+    assert 'new RegExp(query, "i")' in script
+    assert 'pattern.test(String(entry.name ?? ""))' in script
+    assert 'pattern.test(String(entry.description ?? ""))' in script
+    assert 'code: "invalid_pattern"' in script
+    with pytest.raises(ValueError, match="non-empty"):
+        build_exec_script(projection, {"query": " "})
+    with pytest.raises(ValueError, match="1 to 50"):
+        build_exec_script(projection, {"query": "browser", "limit": 0})
+    with pytest.raises(ValueError, match="at most 200"):
+        build_exec_script(
+            projection,
+            {"query": "x" * 201, "search_mode": "regex"},
+        )
+
+
+def test_deferred_exec_request_exposes_tool_search_and_keeps_raw_exec():
+    body = {
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "exec",
+                    "description": _deferred_exec_description(),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"input": {"type": "string"}},
+                        "required": ["input"],
+                    },
+                },
+            }
+        ]
+    }
+
+    adapted = localize_code_editing_chat_request(
+        body,
+        capabilities=NativeToolCapabilities(has_custom_exec=True),
+        native_tool_names=frozenset(),
+        injected_tool_names=frozenset(),
+        exec_projections=exec_tool_projections_for_route(_route()),
+        hide_exec_container=True,
+    )
+
+    names = [tool["function"]["name"] for tool in adapted["tools"]]
+    assert "exec" in names
+    assert "tool_search" in names
+    assert "tool_search" in adapted[EXEC_PROJECTIONS_KEY]
+    exec_description = next(
+        tool["function"]["description"]
+        for tool in adapted["tools"]
+        if tool["function"]["name"] == "exec"
+    )
+    assert "deferred nested tools" in exec_description
+
+
+def test_direct_tool_search_name_wins_over_synthetic_projection():
+    body = {
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "exec",
+                    "description": _deferred_exec_description(),
+                    "parameters": {"type": "object"},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "tool_search",
+                    "description": "Direct provider search.",
+                    "parameters": {"type": "object"},
+                },
+            },
+        ]
+    }
+
+    adapted = localize_code_editing_chat_request(
+        body,
+        capabilities=NativeToolCapabilities(has_custom_exec=True),
+        native_tool_names=frozenset(),
+        injected_tool_names=frozenset(),
+        exec_projections=exec_tool_projections_for_route(_route()),
+        hide_exec_container=True,
+    )
+
+    search_tools = [
+        tool for tool in adapted["tools"] if tool["function"]["name"] == "tool_search"
+    ]
+    assert len(search_tools) == 1
+    assert search_tools[0]["function"]["description"] == "Direct provider search."
+    assert "tool_search" not in adapted.get(EXEC_PROJECTIONS_KEY, {})
+    assert any(tool["function"]["name"] == "exec" for tool in adapted["tools"])
+
+
+def test_all_tools_search_call_translates_to_native_custom_exec():
+    projection = exec_tool_projections_for_route(_route())["tool_search"]
+
+    translated = translate_localized_tool_call_part(
+        {
+            "type": "tool_call",
+            "tool_call_id": "call_search",
+            "tool_name": "tool_search",
+            "tool_input": {"query": "browser", "limit": 4},
+        },
+        exec_projections={"tool_search": projection},
+    )
+
+    assert translated is not None
+    assert translated.part["tool_name"] == "exec"
+    assert translated.part["tool_type"] == "custom"
+    assert "ALL_TOOLS" in translated.part["tool_input"]["input"]
+    assert translated.mapping.localized_name == "tool_search"
+    assert translated.mapping.native_name == "exec"
 
 
 def test_exec_description_projects_full_codex_rendered_typescript_grammar():
@@ -882,13 +1082,15 @@ def test_request_projection_preserves_direct_tools_and_records_only_added_tools(
 
     assert {"wait", "request_user_input", "collaboration-spawn_agent"}.issubset(names)
     visible_projection_names = {
-        name for name, projection in projections.items() if projection.model_visible
+        name
+        for name, projection in projections.items()
+        if projection.model_visible and name != "tool_search"
     }
     assert visible_projection_names.issubset(names)
     assert "exec" not in names
     assert "apply_patch" not in names
     assert adapted["tool_choice"] == "auto"
-    assert set(adapted[EXEC_PROJECTIONS_KEY]) == set(projections)
+    assert set(adapted[EXEC_PROJECTIONS_KEY]) == set(projections) - {"tool_search"}
 
 
 def test_modified_web_run_request_sends_pruned_function_to_upstream_model():
@@ -1047,6 +1249,105 @@ def test_gateway_preserves_deferred_exec_container_and_custom_round_trip():
     assert output["type"] == "custom_tool_call"
     assert output["name"] == "exec"
     assert output["input"] == script
+
+
+def test_gateway_all_tools_search_round_trips_as_custom_exec():
+    captured_body: dict = {}
+    upstream_response = {
+        "id": "chatcmpl-all-tools-search",
+        "object": "chat.completion",
+        "created": 1,
+        "model": "deepseek-v4-flash",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_search",
+                            "type": "function",
+                            "function": {
+                                "name": "tool_search",
+                                "arguments": json.dumps(
+                                    {
+                                        "query": "browser javascript repl",
+                                        "limit": 4,
+                                    }
+                                ),
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+    }
+
+    async def send_request(
+        provider_info, target_provider, body, model, *, extra_headers=None
+    ):
+        captured_body.update(body)
+        return UpstreamResponse(
+            status_code=200,
+            body=upstream_response,
+            raw_content=json.dumps(upstream_response).encode(),
+        )
+
+    transport = MagicMock()
+    transport.send_request = AsyncMock(side_effect=send_request)
+    provider_info = MagicMock()
+    provider_info.base_url = "https://example.test"
+    body = {
+        "model": "deepseek-v4-flash",
+        "input": [
+            {
+                "type": "additional_tools",
+                "role": "developer",
+                "tools": [
+                    {
+                        "type": "custom",
+                        "name": "exec",
+                        "description": _deferred_exec_description(),
+                    },
+                    {
+                        "type": "tool_search",
+                        "description": "Legacy native mapping must be removed.",
+                        "parameters": {"type": "object"},
+                    },
+                ],
+            },
+            {"role": "user", "content": "find the browser JavaScript tool"},
+        ],
+    }
+
+    async def run():
+        return await handle_non_streaming(
+            _route(),
+            provider_info,
+            body,
+            transport=transport,
+            metadata_store=ProviderMetadataStore(),
+            codex_tool_store=CodexToolLocalizationStore(),
+        )
+
+    response, _ = asyncio.run(run())
+
+    target_tools = {
+        tool["function"]["name"]: tool["function"]
+        for tool in captured_body["tools"]
+        if isinstance(tool.get("function"), dict)
+    }
+    assert "tool_search" in target_tools
+    assert "ALL_TOOLS" in target_tools["tool_search"]["description"]
+    assert "Legacy native mapping" not in target_tools["tool_search"]["description"]
+    assert "exec" in target_tools
+    output = json.loads(response.body)["output"][0]
+    assert output["type"] == "custom_tool_call"
+    assert output["name"] == "exec"
+    assert "Array.isArray(ALL_TOOLS)" in output["input"]
+    assert 'const query = "browser javascript repl";' in output["input"]
+    assert "const limit = 4;" in output["input"]
 
 
 def test_projected_call_translates_to_custom_exec_and_round_trips_mapping():
@@ -1427,7 +1728,9 @@ def test_gateway_projects_direct_tools_and_persists_exec_round_trip_with_ttl(tmp
     )
     projections = exec_tool_projections_for_route(route)
     assert {
-        name for name, projection in projections.items() if projection.model_visible
+        name
+        for name, projection in projections.items()
+        if projection.model_visible and name != "tool_search"
     }.issubset(first_names)
     assert {"Edit", "Write"}.issubset(first_names)
     assert "apply_patch" not in first_names

@@ -10,8 +10,10 @@ standalone skill.
   archive, arithmetic, and palette candidates intentionally have unrelated
   purposes; do not inspect fixture source to identify an answer.
 - `ALL_TOOLS` is a JavaScript global array inside the `exec` runtime. It is not
-  a shell environment variable. For a matching deferred tool, filter that array
-  inside `exec`, then invoke the discovered entry through
+  a shell environment variable. If an ordinary `tool_search` Function is
+  available, use it first with a generic capability query and then invoke the
+  selected runtime entry through raw `exec`. Otherwise filter `ALL_TOOLS`
+  directly inside `exec`. In either case call the match through
   `tools[entry.name](args)`; do not launch Node or a shell through
   `exec_command` as a substitute.
 - For an MCP task, include a compact `catalog` array in the same `text()` output

@@ -152,7 +152,6 @@ def test_invalid_request_id_is_rejected_before_gateway_side_effects(
     request.app.stream_trace_state = MagicMock()
     request.app.metadata_store = MagicMock()
     request.app.codex_tool_store = MagicMock()
-    request.app.window_tool_search_store = MagicMock()
 
     response = asyncio.run(app_module._proxy_handler(request, "openai_responses"))
 
@@ -166,7 +165,6 @@ def test_invalid_request_id_is_rejected_before_gateway_side_effects(
     assert request.app.stream_trace_state.mock_calls == []
     assert request.app.metadata_store.mock_calls == []
     assert request.app.codex_tool_store.mock_calls == []
-    assert request.app.window_tool_search_store.mock_calls == []
     assert gateway_logger.mock_calls == []
     stats.assert_not_called()
 
@@ -549,7 +547,6 @@ def test_proxy_success_survives_request_log_persistence_failure(monkeypatch):
     request.json.return_value = {"model": "gpt-test", "messages": []}
     request.app.metadata_store = MagicMock()
     request.app.codex_tool_store = MagicMock()
-    request.app.window_tool_search_store = MagicMock()
     request.app.transport = MagicMock()
     request.app.metrics = None
     request.app.request_log.add.side_effect = RuntimeError("sqlite unavailable")
@@ -741,7 +738,6 @@ def test_proxy_handler_accepts_exact_window_id_byte_limit(monkeypatch):
     request.json.return_value = {"model": "glm-5.2", "input": []}
     request.app.metadata_store = MagicMock()
     request.app.codex_tool_store = MagicMock()
-    request.app.window_tool_search_store = MagicMock()
     request.app.metrics = None
     request.app.request_log = None
     request.app.persistence = None

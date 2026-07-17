@@ -81,9 +81,11 @@ passes.
 | `gpt-5.6-terra` | direct OpenAI Responses Lite/code-mode baseline |
 | `deepseek-v4-flash` | Responses-to-Chat with generated 0.144.4 model catalog |
 
-For code-mode models, deferred MCP discovery is `exec -> runtime ALL_TOOLS ->
-nested tool`; a top-level `tool_search` call is not required. Codex 0.144.4
-places only the `ALL_TOOLS` contract in the model request; candidate metadata is
-injected into the V8 runtime and is captured by the fixture's compact catalog
-output. Follow
+For the direct Responses baseline, deferred MCP discovery remains `exec ->
+runtime ALL_TOOLS -> nested tool`. On the Responses-to-Chat route, Rosetta must
+add an ordinary `tool_search` Function from the live deferred guidance; its call
+must return to Codex as custom `exec` JavaScript, after which the selected
+runtime tool is invoked through raw `exec`. Codex places candidate metadata only
+in the V8 runtime, and the fixture's compact catalog output captures it without
+Gateway discovery state. Follow
 [`EVALUATION.md`](EVALUATION.md) for structural evidence and result fields.
