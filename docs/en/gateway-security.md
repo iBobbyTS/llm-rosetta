@@ -108,6 +108,10 @@ request may expose an exactly matched Node REPL tool as a structured Chat
 Function, but Rosetta validates the live declaration from that history and does
 not retain a separate discovery cache. A search result for `js` does not expose
 `js_reset` or `js_add_node_module_dir` unless each helper was returned itself.
+Search responses contain only whole matches within a 24,000-character
+serialized budget. After a Node Function is projected, its declaration is
+removed only from the model-facing history copy; unknown matches and the source
+request are unchanged.
 
 ## Environment-backed example config
 

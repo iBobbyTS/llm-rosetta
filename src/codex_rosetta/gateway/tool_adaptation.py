@@ -27,6 +27,7 @@ from .code_mode_projection import (
     node_repl_exec_projections,
     plan_exec_tool_definitions,
     prune_exec_tool_description,
+    sanitize_projected_node_repl_history,
 )
 from .state_scope import GatewayStateScope
 from .tool_profiles import route_tool_state, tool_catalog_lookups, tool_profile_contract
@@ -427,6 +428,13 @@ def localize_code_editing_chat_request(
                 discovered.definitions,
             )
         )
+        messages = _sanitize_projected_discovery_history(
+            adapted,
+            messages,
+            discovered_names=frozenset(discovered.projections),
+            active_names=frozenset(active_projections),
+            visible_names=frozenset(projected_tools),
+        )
         localized_tools = [
             tool
             for tool in _localized_chat_tool_definitions()
@@ -482,6 +490,22 @@ def localize_code_editing_chat_request(
                 adapted[EXEC_PROJECTIONS_KEY] = active_projections
 
     return adapted
+
+
+def _sanitize_projected_discovery_history(
+    adapted: dict[str, Any],
+    messages: Any,
+    *,
+    discovered_names: frozenset[str],
+    active_names: frozenset[str],
+    visible_names: frozenset[str],
+) -> Any:
+    projected_names = discovered_names & active_names & visible_names
+    if not projected_names or not isinstance(messages, list):
+        return messages
+    sanitized = sanitize_projected_node_repl_history(messages, projected_names)
+    adapted["messages"] = sanitized
+    return sanitized
 
 
 def _rewrite_or_hide_exec_projection_container(

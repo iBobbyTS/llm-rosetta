@@ -88,6 +88,7 @@ DEFERRED_EXEC_GUIDANCE = (
 )
 ALL_TOOLS_SEARCH_CHAT_NAME = "tool_search"
 ALL_TOOLS_SEARCH_RESULT_PROTOCOL = "codex_rosetta.all_tools_search.v1"
+ALL_TOOLS_SEARCH_MAX_RESULT_CHARS = 24_000
 ALL_TOOLS_SEARCH_PROJECTION = ExecToolProjection(
     item_id="synthetic.all_tools_search",
     chat_name=ALL_TOOLS_SEARCH_CHAT_NAME,
@@ -565,6 +566,7 @@ def _build_all_tools_search_script(arguments: dict[str, Any]) -> str:
 const searchMode = {mode_literal};
 const limit = {limit};
 const resultProtocol = {protocol_literal};
+const maxResultChars = {ALL_TOOLS_SEARCH_MAX_RESULT_CHARS};
 const catalog = Array.isArray(ALL_TOOLS) ? ALL_TOOLS : [];
 const normalize = (value) => String(value ?? "").normalize("NFKC").toLowerCase();
 const queryText = normalize(query);
@@ -580,6 +582,8 @@ if (searchMode === "regex") {{
       search_mode: searchMode,
       limit,
       total_matches: 0,
+      returned_matches: 0,
+      truncated: false,
       matches: [],
       error: {{ code: "invalid_pattern", message: String(error) }},
     }});
@@ -612,17 +616,28 @@ if (searchMode === "regex") {{
     .filter(({{ score }}) => score > 0)
     .sort((left, right) => right.score - left.score || left.index - right.index);
 }}
-text({{
+const buildResult = (matches, truncated) => ({{
   protocol: resultProtocol,
   query,
   search_mode: searchMode,
   limit,
   total_matches: ranked.length,
-  matches: ranked.slice(0, limit).map(({{ entry }}) => ({{
-    name: entry.name,
-    description: entry.description,
-  }})),
+  returned_matches: matches.length,
+  truncated,
+  matches,
 }});
+const selectedMatches = [];
+for (const {{ entry }} of ranked) {{
+  if (selectedMatches.length >= limit) break;
+  const candidate = {{
+    name: String(entry.name ?? ""),
+    description: String(entry.description ?? ""),
+  }};
+  const candidateResult = buildResult([...selectedMatches, candidate], false);
+  if (JSON.stringify(candidateResult).length > maxResultChars) continue;
+  selectedMatches.push(candidate);
+}}
+text(buildResult(selectedMatches, selectedMatches.length < ranked.length));
 """
 
 
@@ -662,6 +677,164 @@ def discovered_node_repl_exec_tools(messages: Any) -> DiscoveredExecToolPlan:
         definitions=definitions,
         projections=projections,
     )
+
+
+def sanitize_projected_node_repl_history(
+    messages: Any,
+    projected_names: frozenset[str] | set[str],
+) -> Any:
+    """Hide projected Node declarations only in the model-facing history copy."""
+    if not isinstance(messages, list) or not projected_names:
+        return messages
+    search_call_ids = _all_tools_search_call_ids(messages)
+    if not search_call_ids:
+        return messages
+
+    changed = False
+    sanitized_messages: list[Any] = []
+    names = frozenset(projected_names)
+    for message in messages:
+        sanitized = _sanitize_search_result_message(
+            message,
+            search_call_ids=search_call_ids,
+            projected_names=names,
+        )
+        changed = changed or sanitized is not message
+        sanitized_messages.append(sanitized)
+    return sanitized_messages if changed else messages
+
+
+def _sanitize_search_result_message(
+    message: Any,
+    *,
+    search_call_ids: set[str],
+    projected_names: frozenset[str],
+) -> Any:
+    if (
+        not isinstance(message, dict)
+        or message.get("role") != "tool"
+        or str(message.get("tool_call_id") or "") not in search_call_ids
+    ):
+        return message
+    content, changed = _sanitize_search_result_value(
+        message.get("content"),
+        projected_names=projected_names,
+    )
+    if not changed:
+        return message
+    sanitized = dict(message)
+    sanitized["content"] = content
+    return sanitized
+
+
+def _sanitize_search_result_value(
+    value: Any,
+    *,
+    projected_names: frozenset[str],
+    depth: int = 0,
+) -> tuple[Any, bool]:
+    if depth > 5:
+        return value, False
+    if isinstance(value, str):
+        if len(value) > _MAX_TOOL_RESULT_TEXT_CHARS:
+            return value, False
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return value, False
+        sanitized, changed = _sanitize_search_result_value(
+            decoded,
+            projected_names=projected_names,
+            depth=depth + 1,
+        )
+        if not changed:
+            return value, False
+        return (
+            json.dumps(sanitized, ensure_ascii=False, separators=(",", ":")),
+            True,
+        )
+    if isinstance(value, list):
+        return _sanitize_search_result_list(
+            value,
+            projected_names=projected_names,
+            depth=depth,
+        )
+    if isinstance(value, dict):
+        if value.get("protocol") == ALL_TOOLS_SEARCH_RESULT_PROTOCOL:
+            return _sanitize_all_tools_search_result(value, projected_names)
+        return _sanitize_search_result_container(
+            value,
+            projected_names=projected_names,
+            depth=depth,
+        )
+    return value, False
+
+
+def _sanitize_search_result_list(
+    values: list[Any],
+    *,
+    projected_names: frozenset[str],
+    depth: int,
+) -> tuple[list[Any], bool]:
+    changed = False
+    sanitized_values: list[Any] = []
+    for value in values:
+        sanitized, item_changed = _sanitize_search_result_value(
+            value,
+            projected_names=projected_names,
+            depth=depth + 1,
+        )
+        changed = changed or item_changed
+        sanitized_values.append(sanitized)
+    return (sanitized_values, True) if changed else (values, False)
+
+
+def _sanitize_search_result_container(
+    value: dict[str, Any],
+    *,
+    projected_names: frozenset[str],
+    depth: int,
+) -> tuple[dict[str, Any], bool]:
+    sanitized = dict(value)
+    changed = False
+    for key in ("text", "content", "output", "result"):
+        if key not in value:
+            continue
+        child, child_changed = _sanitize_search_result_value(
+            value[key],
+            projected_names=projected_names,
+            depth=depth + 1,
+        )
+        if child_changed:
+            sanitized[key] = child
+            changed = True
+    return (sanitized, True) if changed else (value, False)
+
+
+def _sanitize_all_tools_search_result(
+    result: dict[str, Any],
+    projected_names: frozenset[str],
+) -> tuple[dict[str, Any], bool]:
+    matches = result.get("matches")
+    if not isinstance(matches, list):
+        return result, False
+    changed = False
+    sanitized_matches: list[Any] = []
+    for match in matches:
+        if not isinstance(match, dict) or match.get("name") not in projected_names:
+            sanitized_matches.append(match)
+            continue
+        sanitized_match = {
+            key: value for key, value in match.items() if key != "description"
+        }
+        sanitized_match["status"] = "projected_as_structured_function"
+        sanitized_matches.append(sanitized_match)
+        changed = True
+    if not changed:
+        return result, False
+    sanitized_result = dict(result)
+    sanitized_result["matches"] = sanitized_matches
+    return sanitized_result, True
 
 
 def _latest_node_repl_search_matches(
@@ -1122,6 +1295,7 @@ def _javascript_json_literal(value: Any) -> str:
 
 
 __all__ = [
+    "ALL_TOOLS_SEARCH_MAX_RESULT_CHARS",
     "ALL_TOOLS_SEARCH_RESULT_PROTOCOL",
     "DiscoveredExecToolPlan",
     "ExecDescriptionSection",
@@ -1136,4 +1310,5 @@ __all__ = [
     "prune_exec_tool_description",
     "project_exec_tool_definitions",
     "project_modified_exec_web_run_description",
+    "sanitize_projected_node_repl_history",
 ]

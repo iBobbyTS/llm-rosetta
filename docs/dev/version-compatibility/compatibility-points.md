@@ -245,8 +245,12 @@ Its `query`, optional `limit`, and optional natural-language/regex mode are
 validated before Rosetta builds deterministic custom `exec` JavaScript. The
 script searches only the current runtime Array, returns bounded complete
 `{name, description}` entries plus a versioned Rosetta protocol marker through
-`text(...)`, and leaves raw `exec` available for unsupported dynamic tools.
-Invalid regex is a structured search result rather than a Gateway exception.
+`text(...)`, and leaves raw `exec` available for unsupported dynamic tools. The
+serialized result has a 24,000-character budget: only whole matches are added,
+an individually oversized match is skipped rather than sliced, and
+`returned_matches` plus `truncated` distinguish the returned subset from
+`total_matches`. Invalid regex is a structured zero-match result rather than a
+Gateway exception.
 
 On the next Responses-to-Chat request, Rosetta can recover exactly paired
 search call/output items from the request history itself. For
@@ -259,6 +263,12 @@ custom `exec` call with JSON-safe escaping. `CallToolResult.content` text and
 image blocks are forwarded with `text(...)` and `image(...)`; other blocks are
 serialized as text and `isError` remains model-visible. A result containing
 only `js` never exposes either helper. Direct same-named Functions still win.
+After validation and projection are complete, Rosetta creates the model-facing
+history copy and removes the description only from exact paired matches whose
+Node Function was actually projected, replacing it with
+`status="projected_as_structured_function"`. The source request remains
+unchanged, malformed/direct-conflict matches are not sanitized, and unknown
+tool descriptions remain available for raw `exec`.
 
 There is no discovered/deferred store, authenticated-window ownership, TTL,
 quota, namespace hiding, synthesized native `tool_search_call/output`, or later

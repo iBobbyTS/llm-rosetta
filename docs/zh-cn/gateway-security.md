@@ -85,7 +85,9 @@ cache 部分变更前以 HTTP 413 返回。Code Mode 延迟工具发现不会新
 它通过 `exec` 搜索 Codex 当前请求的 `ALL_TOOLS` runtime catalog。下一次请求携带的成对
 search call/result 可以把精确命中的 Node REPL 工具暴露为结构化 Chat Function，但
 Rosetta 只验证该历史中的实时声明，不保存独立 discovery cache。只搜索到 `js` 时不会
-顺带暴露 `js_reset` 或 `js_add_node_module_dir`，两个 helper 必须各自出现在结果中。
+顺带暴露 `js_reset` 或 `js_add_node_module_dir`，两个 helper 必须各自出现在结果中。搜索
+响应执行 24,000 字符的序列化预算，只返回完整 match。Node Function 投影成功后，仅在
+发给模型的历史副本中移除其 declaration；未知 match 和源请求保持不变。
 
 ## 使用环境变量的示例配置
 

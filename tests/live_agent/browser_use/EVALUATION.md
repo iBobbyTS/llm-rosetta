@@ -66,6 +66,11 @@ For a Responses-to-Chat route, additionally verify all of the following:
   as the marked search `exec` rather than a native `tool_search_call`;
 - the following target Chat request exposes only Node REPL Functions whose exact
   names and declarations appeared in that paired result;
+- the search result is valid complete JSON with accurate `returned_matches`,
+  `total_matches`, and `truncated`, and never contains a partially sliced match;
+- after projection, the target Chat history replaces each projected Node
+  description with `projected_as_structured_function` while retaining unknown
+  match descriptions; the source Responses history remains complete;
 - every actual Browser runtime call is a structured
   `mcp__node_repl__js` Function call at the model boundary, not model-authored
   outer `exec` JavaScript;

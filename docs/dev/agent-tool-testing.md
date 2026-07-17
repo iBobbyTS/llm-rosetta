@@ -72,9 +72,12 @@ Array. Generic matches still use raw `exec`. Exact matches for the three Node
 REPL tools are a specialized exception: on the next request Rosetta validates
 their declarations from the paired search history, exposes only the matched
 ordinary Functions, and converts structured model arguments back to custom
-`exec` with MCP text/image result forwarding. Codex injects candidate metadata
-into the V8 runtime, so live evidence covers projection, search, selection,
-call, and consumed result without a Gateway discovery cache. Browser,
+`exec` with MCP text/image result forwarding. Search output admits only whole
+matches within a 24,000-character serialized budget. Once a Node match is
+projected, its declaration is replaced by a short projected-status marker only
+in the model-facing history copy; unknown matches retain their full declaration.
+Codex injects candidate metadata into the V8 runtime, so live evidence covers
+projection, search, selection, call, and consumed result without a Gateway discovery cache. Browser,
 authenticated apps, and real user or third-party capabilities remain outside
 this deferred-tool suite and use their dedicated live tests.
 

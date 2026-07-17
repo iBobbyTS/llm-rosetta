@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from codex_rosetta.gateway.code_mode_projection import (
+    ALL_TOOLS_SEARCH_MAX_RESULT_CHARS,
     ALL_TOOLS_SEARCH_RESULT_PROTOCOL,
     ExecToolProjection,
     build_exec_script,
@@ -20,6 +23,7 @@ from codex_rosetta.gateway.code_mode_projection import (
     prune_exec_tool_description,
     project_exec_tool_definitions,
     project_modified_exec_web_run_description,
+    sanitize_projected_node_repl_history,
 )
 from codex_rosetta.gateway.tool_adaptation import (
     CodexToolLocalizationStore,
@@ -654,11 +658,54 @@ def test_all_tools_search_script_uses_live_catalog_without_gateway_cache():
 
     assert 'const query = "node repl browser";' in script
     assert 'const searchMode = "natural_language";' in script
+    assert f"const maxResultChars = {ALL_TOOLS_SEARCH_MAX_RESULT_CHARS};" in script
     assert "const catalog = Array.isArray(ALL_TOOLS) ? ALL_TOOLS : [];" in script
-    assert "ranked.slice(0, limit)" in script
-    assert "name: entry.name" in script
-    assert "description: entry.description" in script
+    assert "for (const { entry } of ranked)" in script
+    assert "if (selectedMatches.length >= limit) break;" in script
+    assert 'name: String(entry.name ?? "")' in script
+    assert 'description: String(entry.description ?? "")' in script
+    assert "returned_matches: matches.length" in script
+    assert "JSON.stringify(candidateResult).length > maxResultChars" in script
+    assert "length > maxResultChars) continue;" in script
+    assert "selectedMatches.length < ranked.length" in script
+    assert "matches: ranked.slice(0, limit).map" not in script
     assert "tools." not in script
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is not installed")
+def test_all_tools_search_runtime_enforces_whole_match_budget():
+    projection = exec_tool_projections_for_route(_route())["tool_search"]
+    catalog = [
+        {"name": "browser_oversized", "description": "x" * 30_000},
+        *[
+            {"name": f"browser_{index}", "description": str(index) * 5_000}
+            for index in range(10)
+        ],
+    ]
+    script = build_exec_script(projection, {"query": "browser", "limit": 10})
+    harness = (
+        f"const ALL_TOOLS = {json.dumps(catalog)};\n"
+        "const text = (value) => console.log(JSON.stringify(value));\n"
+        f"{script}"
+    )
+
+    completed = subprocess.run(
+        ["node", "--input-type=module"],
+        input=harness,
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=5,
+    )
+    result = json.loads(completed.stdout)
+    serialized = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+
+    assert len(serialized) <= ALL_TOOLS_SEARCH_MAX_RESULT_CHARS
+    assert result["total_matches"] == 11
+    assert result["returned_matches"] == len(result["matches"]) == 4
+    assert result["truncated"] is True
+    assert result["matches"][0]["name"] == "browser_0"
+    assert all(len(match["description"]) == 5_000 for match in result["matches"])
 
 
 def test_all_tools_regex_search_script_and_argument_validation():
@@ -678,6 +725,8 @@ def test_all_tools_regex_search_script_and_argument_validation():
     assert 'pattern.test(String(entry.name ?? ""))' in script
     assert 'pattern.test(String(entry.description ?? ""))' in script
     assert 'code: "invalid_pattern"' in script
+    assert "returned_matches: 0" in script
+    assert "truncated: false" in script
     with pytest.raises(ValueError, match="non-empty"):
         build_exec_script(projection, {"query": " "})
     with pytest.raises(ValueError, match="1 to 50"):
@@ -1016,6 +1065,110 @@ def test_raw_exec_search_history_activates_node_repl_without_mapping_cache():
     }
 
 
+def test_projected_node_history_sanitizes_only_paired_exact_matches_copy_on_write():
+    result = _all_tools_result("mcp__node_repl__js")
+    result["matches"].append(
+        {
+            "name": "mcp__archive__lookup",
+            "description": "Unknown declaration remains available to raw exec.",
+        }
+    )
+    paired_content = json.dumps(
+        [
+            {"type": "text", "text": "Script completed\n"},
+            {"type": "text", "text": json.dumps(result)},
+        ]
+    )
+    messages = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "call_search",
+                    "type": "function",
+                    "function": {"name": "tool_search", "arguments": "{}"},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_search",
+            "content": paired_content,
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_unpaired",
+            "content": paired_content,
+        },
+    ]
+
+    sanitized = sanitize_projected_node_repl_history(
+        messages,
+        {"mcp__node_repl__js"},
+    )
+
+    assert sanitized is not messages
+    assert sanitized[0] is messages[0]
+    assert sanitized[2] is messages[2]
+    original_outer = json.loads(messages[1]["content"])
+    original_result = json.loads(original_outer[1]["text"])
+    assert "description" in original_result["matches"][0]
+    sanitized_outer = json.loads(sanitized[1]["content"])
+    sanitized_result = json.loads(sanitized_outer[1]["text"])
+    assert sanitized_result["matches"][0] == {
+        "name": "mcp__node_repl__js",
+        "status": "projected_as_structured_function",
+    }
+    assert sanitized_result["matches"][1] == result["matches"][1]
+
+
+def test_invalid_node_declaration_is_not_sanitized_without_projection():
+    result = _all_tools_result("mcp__node_repl__js")
+    result["matches"][0]["description"] = "Not a parseable declaration."
+    body = {
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "exec",
+                    "description": _deferred_exec_description(),
+                    "parameters": {"type": "object"},
+                },
+            }
+        ],
+        "messages": [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_search",
+                        "type": "function",
+                        "function": {"name": "tool_search", "arguments": "{}"},
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_search",
+                "content": json.dumps(result),
+            },
+        ],
+    }
+
+    adapted = localize_code_editing_chat_request(
+        body,
+        capabilities=NativeToolCapabilities(has_custom_exec=True),
+        native_tool_names=frozenset(),
+        injected_tool_names=frozenset(),
+        exec_projections=exec_tool_projections_for_route(_route()),
+    )
+
+    assert adapted["messages"] == body["messages"]
+    assert "mcp__node_repl__js" not in {
+        tool["function"]["name"] for tool in adapted["tools"]
+    }
+
+
 def test_node_repl_projection_generates_mcp_content_forwarder():
     plan = discovered_node_repl_exec_tools(
         [
@@ -1196,6 +1349,14 @@ def test_localized_request_exposes_only_discovered_node_repl_tools():
     assert "mcp__node_repl__js_reset" not in names
     assert "mcp__node_repl__js_add_node_module_dir" not in names
     assert "mcp__node_repl__js" in adapted[EXEC_PROJECTIONS_KEY]
+    sanitized_result = json.loads(adapted["messages"][1]["content"])
+    assert sanitized_result["matches"] == [
+        {
+            "name": "mcp__node_repl__js",
+            "status": "projected_as_structured_function",
+        }
+    ]
+    assert "description" in json.loads(body["messages"][1]["content"])["matches"][0]
 
 
 def test_same_named_direct_node_repl_function_wins_over_discovery():
@@ -1253,6 +1414,7 @@ def test_same_named_direct_node_repl_function_wins_over_discovery():
     ]
     assert node_tools == [direct]
     assert "mcp__node_repl__js" not in adapted[EXEC_PROJECTIONS_KEY]
+    assert adapted["messages"] == body["messages"]
 
 
 def test_exec_description_projects_full_codex_rendered_typescript_grammar():
@@ -2000,6 +2162,10 @@ def test_gateway_search_history_exposes_and_translates_structured_node_repl():
     assert "mcp__node_repl__js" in second_names
     assert "mcp__node_repl__js_reset" not in second_names
     assert "mcp__node_repl__js_add_node_module_dir" not in second_names
+    model_history = json.dumps(captured_bodies[1]["messages"])
+    assert "projected_as_structured_function" in model_history
+    assert "exec tool declaration" not in model_history
+    assert "description" in search_result["matches"][0]
     second_output = json.loads(second_response.body)["output"][0]
     assert second_output["type"] == "custom_tool_call"
     assert second_output["name"] == "exec"
