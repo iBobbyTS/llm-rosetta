@@ -4,10 +4,94 @@ import pytest
 
 from codex_rosetta.gateway.model_presets import (
     detect_model_preset,
+    load_model_preset_resource,
     model_input_modalities,
     model_presets_for_admin,
     normalize_model_preset,
 )
+
+
+ALPHA_20_TERRA_SHARED_OVERRIDES = {
+    "prefer_websockets": True,
+    "support_verbosity": True,
+    "default_verbosity": "low",
+    "apply_patch_tool_type": "freeform",
+    "web_search_tool_type": "text_and_image",
+    "supports_image_detail_original": True,
+    "truncation_policy": {"mode": "tokens", "limit": 10000},
+    "supports_parallel_tool_calls": True,
+    "tool_mode": "code_mode_only",
+    "multi_agent_version": "v2",
+    "use_responses_lite": True,
+    "include_skills_usage_instructions": False,
+    "auto_review_model_override": None,
+    "auto_compact_token_limit": None,
+    "reasoning_summary_format": "experimental",
+    "default_reasoning_summary": "none",
+    "shell_type": "shell_command",
+    "visibility": "list",
+    "minimal_client_version": "0.144.0",
+    "supported_in_api": True,
+    "availability_nux": None,
+    "upgrade": None,
+    "experimental_supported_tools": [],
+    "available_in_plans": [
+        "business",
+        "edu",
+        "edu_plus",
+        "edu_pro",
+        "education",
+        "enterprise",
+        "enterprise_cbp_automation",
+        "enterprise_cbp_usage_based",
+        "finserv",
+        "free",
+        "free_workspace",
+        "go",
+        "hc",
+        "k12",
+        "plus",
+        "pro",
+        "prolite",
+        "quorum",
+        "sci",
+        "self_serve_business_usage_based",
+        "team",
+    ],
+    "supports_search_tool": True,
+    "default_service_tier": None,
+    "service_tiers": [
+        {
+            "id": "priority",
+            "name": "Fast",
+            "description": "1.5x speed, increased usage",
+        }
+    ],
+    "additional_speed_tiers": ["fast"],
+}
+
+
+def test_shared_overrides_match_alpha_20_terra_catalog_snapshot() -> None:
+    resource = load_model_preset_resource()
+
+    assert resource["template_slug"] == "gpt-5.6-terra"
+    assert resource["shared_overrides"] == ALPHA_20_TERRA_SHARED_OVERRIDES
+
+
+def test_every_shared_override_is_allowed_in_each_model_preset() -> None:
+    resource = load_model_preset_resource()
+    shared_overrides = resource["shared_overrides"]
+    raw_preset = dict(resource["models"][0], **shared_overrides)
+
+    normalized = normalize_model_preset(
+        raw_preset,
+        field="test preset",
+        shared_overrides=shared_overrides,
+    )
+
+    for key, value in shared_overrides.items():
+        assert key in normalized
+        assert normalized[key] == value
 
 
 def test_admin_detection_combines_codex_catalog_and_third_party_presets() -> None:

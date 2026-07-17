@@ -15,6 +15,10 @@ from typing import Any
 
 from .config import _atomic_write_bytes, normalize_codex_settings
 from .model_presets import (
+    MODEL_INFO_FIELDS,
+    MODEL_PRESET_EXTRA_OVERRIDE_FIELDS,
+    MODEL_PRESET_LEGACY_FIELDS,
+    MODEL_PRESET_TEMPLATE_FIELDS,
     load_model_preset_resource,
     normalize_model_info,
     normalize_model_preset,
@@ -493,10 +497,21 @@ def _materialize_model_preset(
     ):
         raise ValueError("bundled Codex model preset has invalid reasoning levels")
 
-    model = copy.deepcopy(terra)
+    explicit_fields = (
+        MODEL_INFO_FIELDS
+        | MODEL_PRESET_EXTRA_OVERRIDE_FIELDS
+        | MODEL_PRESET_LEGACY_FIELDS
+        | MODEL_PRESET_TEMPLATE_FIELDS
+        | frozenset(shared_overrides)
+    )
+    model = {
+        key: copy.deepcopy(value)
+        for key, value in terra.items()
+        if key not in explicit_fields
+    }
     identity = raw_preset["identity"]
     for field in ("base_instructions", "model_messages"):
-        model[field] = _replace_identity(model.get(field), identity_source, identity)
+        model[field] = _replace_identity(terra.get(field), identity_source, identity)
 
     model.update(copy.deepcopy(shared_overrides))
     model.update(
@@ -530,7 +545,9 @@ def _model_presets(terra: dict[str, Any]) -> dict[str, dict[str, Any]]:
     presets: dict[str, dict[str, Any]] = {}
     for index, value in enumerate(resource["models"]):
         raw_preset = normalize_model_preset(
-            value, field=f"bundled model preset at index {index}"
+            value,
+            field=f"bundled model preset at index {index}",
+            shared_overrides=shared_overrides,
         )
         model = _materialize_model_preset(
             terra, shared_overrides, raw_preset, identity_source

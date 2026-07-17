@@ -100,6 +100,18 @@ own context, modalities, reasoning levels, and explicitly selected Codex catalog
 fields. MiniMax M3 additionally overrides reasoning-summary support, the default
 summary, byte-based truncation, and parallel tool calls in its preset.
 
+The preset resource's `shared_overrides` is pinned to the 28 identity-independent
+fields from the official `gpt-5.6-terra` catalog in Codex
+`0.145.0-alpha.20`. Identity, context, modalities, reasoning levels and their
+default, priority, `comp_hash`, and the identity-bearing instruction payloads
+remain model-specific or are materialized through the dedicated identity
+substitution path. Every key present in `shared_overrides` is also accepted on
+an individual `models[]` entry and takes precedence there. `template_slug`
+provides a forward-compatible fallback only for catalog fields that Rosetta
+does not yet recognize; a known field removed from the newer catalog is not
+silently inherited from an older template. This scoped snapshot does not by
+itself declare full Codex `0.145` compatibility.
+
 The bundled JSON uses 41 distinct keys. `ModelInfo` also accepts
 `effective_context_window_percent`, which all bundled entries omit and
 therefore receive the default value `95`. This reference consequently covers

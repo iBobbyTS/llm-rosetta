@@ -163,6 +163,14 @@ otherwise it writes only configured aliases in stable name order. Exact aliases 
 `codex_model_presets.json` receive their declared Terra-derived preset,
 including prompt identity substitution; other aliases use the generic Terra
 copy with only `slug`, `display_name`, and `description` replaced. The runtime
+shared preset fields are an explicit snapshot of the target Terra catalog,
+currently the 28 identity-independent fields reviewed from official
+`0.145.0-alpha.20`. Every shared key may be overridden by a model entry. Known
+fields are materialized from model-specific values, dedicated prompt/reasoning
+logic, or this shared snapshot; `template_slug` copies only unknown future
+fields as a forward-compatible fallback and cannot resurrect a known field
+removed by the target catalog. This catalog-only review is not a full `0.145`
+compatibility classification. The runtime
 `comp_hash` overlay uses the configured upstream model name to select a preset,
 falling back to the exposed alias when no mapping exists. A preset's explicit
 non-empty hash takes precedence; otherwise the name selects a reviewed group or

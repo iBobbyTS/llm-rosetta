@@ -11,11 +11,16 @@ import pytest
 
 from codex_rosetta.gateway.local_mode import (
     CodexLocalModeTransaction,
+    _materialize_model_preset,
     build_model_catalog,
     catalog_path,
     codex_api_key_value,
     config_toml_has_model_catalog,
     ensure_codex_api_key,
+)
+from codex_rosetta.gateway.model_presets import (
+    load_model_preset_resource,
+    normalize_model_preset,
 )
 
 
@@ -284,31 +289,86 @@ def test_catalog_materializes_named_third_party_presets_from_terra() -> None:
         )
         if slug == "minimax-m3":
             assert model["supports_reasoning_summaries"] is True
-            assert model["default_reasoning_summary"] == "none"
             assert model["truncation_policy"] == {"mode": "bytes", "limit": 10000}
-            assert model["supports_parallel_tool_calls"] is True
+        else:
+            assert "supports_reasoning_summaries" not in model
+            assert model["truncation_policy"] == {
+                "mode": "tokens",
+                "limit": 10000,
+            }
+        assert model["default_reasoning_summary"] == "none"
         assert model["default_reasoning_level"] == (
             "medium" if "medium" in efforts else efforts[0]
         )
-        assert model["supports_image_detail_original"] is False
+        assert model["prefer_websockets"] is True
+        assert model["supports_image_detail_original"] is True
         assert model["tool_mode"] == "code_mode_only"
         assert model["apply_patch_tool_type"] == "freeform"
-        assert model["supports_parallel_tool_calls"] is (slug == "minimax-m3")
+        assert model["supports_parallel_tool_calls"] is True
         assert model["supports_search_tool"] is True
         assert model["web_search_tool_type"] == "text_and_image"
         assert model["use_responses_lite"] is True
         assert model["multi_agent_version"] == "v2"
-        assert model["support_verbosity"] is False
-        assert model["default_verbosity"] is None
-        assert model["service_tiers"] == []
-        assert model["additional_speed_tiers"] == []
-        assert model["effective_context_window_percent"] == 85
+        assert model["support_verbosity"] is True
+        assert model["default_verbosity"] == "low"
+        assert model["service_tiers"] == [
+            {
+                "id": "priority",
+                "name": "Fast",
+                "description": "1.5x speed, increased usage",
+            }
+        ]
+        assert model["additional_speed_tiers"] == ["fast"]
+        assert "effective_context_window_percent" not in model
         assert model["comp_hash"] == expected_comp_hashes[slug]
         assert identity in model["base_instructions"]
         assert "GPT-5" not in model["base_instructions"]
         messages = json.dumps(model["model_messages"], ensure_ascii=False)
         assert identity in messages
         assert "GPT-5" not in messages
+
+
+def test_model_entry_overrides_every_shared_field_and_keeps_unknown_fallback() -> None:
+    resource = load_model_preset_resource()
+    official_shared = resource["shared_overrides"]
+    raw_preset = dict(resource["models"][0], **official_shared)
+    normalized = normalize_model_preset(
+        raw_preset,
+        field="test preset",
+        shared_overrides=official_shared,
+    )
+    terra = next(
+        model
+        for model in build_model_catalog({})["models"]
+        if model["slug"] == resource["template_slug"]
+    )
+    terra["future_catalog_field"] = {"from_template": True}
+    terra["effective_context_window_percent"] = 85
+
+    conflicting_shared = {
+        key: (
+            not value
+            if isinstance(value, bool)
+            else "shared-default"
+            if isinstance(value, str) or value is None
+            else ["shared-default"]
+            if isinstance(value, list)
+            else {"shared-default": True}
+        )
+        for key, value in official_shared.items()
+    }
+    model = _materialize_model_preset(
+        terra,
+        conflicting_shared,
+        normalized,
+        resource["identity_source"],
+    )
+
+    for key, value in official_shared.items():
+        assert model[key] == value
+    assert model["future_catalog_field"] == {"from_template": True}
+    assert "supports_reasoning_summaries" not in model
+    assert "effective_context_window_percent" not in model
 
 
 def test_catalog_detects_preset_from_upstream_model_for_an_exposed_alias() -> None:

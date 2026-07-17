@@ -16,13 +16,16 @@ MODEL_INFO_LIST_FIELDS = ("input_modalities", "supported_reasoning_levels")
 MODEL_INFO_FIELDS = frozenset(
     (*MODEL_INFO_STRING_FIELDS, *MODEL_INFO_INTEGER_FIELDS, *MODEL_INFO_LIST_FIELDS)
 )
-MODEL_CATALOG_OVERRIDE_FIELDS = frozenset(
+MODEL_PRESET_EXTRA_OVERRIDE_FIELDS = frozenset(
+    {"comp_hash", "supports_reasoning_summaries"}
+)
+MODEL_PRESET_LEGACY_FIELDS = frozenset({"effective_context_window_percent"})
+MODEL_PRESET_TEMPLATE_FIELDS = frozenset(
     {
-        "comp_hash",
-        "supports_reasoning_summaries",
-        "default_reasoning_summary",
-        "truncation_policy",
-        "supports_parallel_tool_calls",
+        "base_instructions",
+        "default_reasoning_level",
+        "max_context_window",
+        "model_messages",
     }
 )
 
@@ -124,18 +127,11 @@ def normalize_model_info(value: Any, *, field: str) -> dict[str, Any]:
     return normalized
 
 
-def normalize_model_preset(value: Any, *, field: str) -> dict[str, Any]:
-    """Validate one bundled preset and its optional catalog-only overrides."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{field} must be an object")
-    unknown = sorted(set(value) - MODEL_INFO_FIELDS - MODEL_CATALOG_OVERRIDE_FIELDS)
-    if unknown:
-        raise ValueError(f"{field} contains unsupported fields: {unknown}")
-
-    normalized = normalize_model_info(
-        {key: value.get(key) for key in MODEL_INFO_FIELDS},
-        field=field,
-    )
+def _normalize_special_preset_overrides(
+    value: dict[str, Any], *, field: str
+) -> dict[str, Any]:
+    """Validate preset overrides whose values affect Rosetta-owned behavior."""
+    normalized: dict[str, Any] = {}
     if "comp_hash" in value:
         comp_hash = value["comp_hash"]
         if not isinstance(comp_hash, str) or not comp_hash.strip():
@@ -143,34 +139,71 @@ def normalize_model_preset(value: Any, *, field: str) -> dict[str, Any]:
         normalized["comp_hash"] = comp_hash.strip()
 
     for key in ("supports_reasoning_summaries", "supports_parallel_tool_calls"):
-        item = value.get(key)
-        if item is not None:
+        if key in value:
+            item = value[key]
             if not isinstance(item, bool):
                 raise ValueError(f"{field}.{key} must be a boolean")
             normalized[key] = item
 
-    summary = value.get("default_reasoning_summary")
-    if summary is not None:
+    if "default_reasoning_summary" in value:
+        summary = value["default_reasoning_summary"]
         if summary not in {"none", "auto", "concise", "detailed"}:
             raise ValueError(
                 f"{field}.default_reasoning_summary has an unsupported value"
             )
         normalized["default_reasoning_summary"] = summary
 
-    truncation = value.get("truncation_policy")
-    if truncation is not None:
+    if "truncation_policy" in value:
+        truncation = value["truncation_policy"]
         if not isinstance(truncation, dict):
             raise ValueError(f"{field}.truncation_policy must be an object")
         if set(truncation) != {"mode", "limit"}:
             raise ValueError(f"{field}.truncation_policy must contain mode and limit")
-        if truncation.get("mode") != "bytes":
-            raise ValueError(f"{field}.truncation_policy.mode must be 'bytes'")
+        mode = truncation.get("mode")
+        if mode not in {"bytes", "tokens"}:
+            raise ValueError(
+                f"{field}.truncation_policy.mode must be 'bytes' or 'tokens'"
+            )
         limit = truncation.get("limit")
         if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
             raise ValueError(
                 f"{field}.truncation_policy.limit must be a positive integer"
             )
-        normalized["truncation_policy"] = {"mode": "bytes", "limit": limit}
+        normalized["truncation_policy"] = {"mode": mode, "limit": limit}
+    return normalized
+
+
+def normalize_model_preset(
+    value: Any,
+    *,
+    field: str,
+    shared_overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate one bundled preset and its optional catalog-only overrides."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be an object")
+    shared_override_fields = frozenset(shared_overrides or ())
+    unknown = sorted(
+        set(value)
+        - MODEL_INFO_FIELDS
+        - MODEL_PRESET_EXTRA_OVERRIDE_FIELDS
+        - shared_override_fields
+    )
+    if unknown:
+        raise ValueError(f"{field} contains unsupported fields: {unknown}")
+
+    normalized = normalize_model_info(
+        {key: value.get(key) for key in MODEL_INFO_FIELDS},
+        field=field,
+    )
+    normalized.update(
+        {
+            key: copy.deepcopy(value[key])
+            for key in shared_override_fields
+            if key in value
+        }
+    )
+    normalized.update(_normalize_special_preset_overrides(value, field=field))
     return normalized
 
 
@@ -185,9 +218,13 @@ def model_presets_for_admin() -> list[dict[str, Any]]:
             raise ValueError(f"duplicate bundled Codex model preset: {slug}")
         seen.add(slug)
         result.append(preset)
-    for index, value in enumerate(load_model_preset_resource()["models"]):
+    resource = load_model_preset_resource()
+    shared_overrides = resource["shared_overrides"]
+    for index, value in enumerate(resource["models"]):
         preset = normalize_model_preset(
-            value, field=f"bundled model preset at index {index}"
+            value,
+            field=f"bundled model preset at index {index}",
+            shared_overrides=shared_overrides,
         )
         slug = preset["slug"]
         if slug in seen:
@@ -221,9 +258,13 @@ def model_input_modalities(
     """
     candidate = upstream_model.strip() if isinstance(upstream_model, str) else ""
     slug = candidate or exposed_model
-    for index, value in enumerate(load_model_preset_resource()["models"]):
+    resource = load_model_preset_resource()
+    shared_overrides = resource["shared_overrides"]
+    for index, value in enumerate(resource["models"]):
         preset = normalize_model_preset(
-            value, field=f"bundled model preset at index {index}"
+            value,
+            field=f"bundled model preset at index {index}",
+            shared_overrides=shared_overrides,
         )
         if preset["slug"] != slug:
             continue
