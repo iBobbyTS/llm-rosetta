@@ -46,6 +46,10 @@ from .headers import (
 )
 from .health import build_health_payload, build_readiness_payload
 from .image_workers import ImageFetchWorkerPool
+from .inbound_content_encoding import (
+    bind_inbound_wire_request,
+    take_inbound_wire_request,
+)
 from .logging import (
     BodyLogState,
     UpstreamErrorLogState,
@@ -590,6 +594,7 @@ async def _proxy_handler(
     if isinstance(request_id, Response):
         return request_id
 
+    inbound_wire_request = take_inbound_wire_request()
     try:
         body: dict[str, Any] = request.json()
     except Exception:
@@ -602,6 +607,7 @@ async def _proxy_handler(
         )
         resp.headers["x-request-id"] = request_id
         return resp
+    inbound_wire_request, body = bind_inbound_wire_request(inbound_wire_request, body)
 
     # Determine model
     try:
@@ -726,6 +732,7 @@ async def _proxy_handler(
                 ),
                 body_log_state=getattr(request.app, "body_log_state", None),
                 image_fetch_workers=getattr(request.app, "image_fetch_workers", None),
+                inbound_wire_request=inbound_wire_request,
             )
         else:
             pre_entry_id = None

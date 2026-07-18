@@ -11,6 +11,7 @@ from codex_rosetta.gateway.inbound_content_encoding import (
     ZstdRequestBodyTooLargeError,
     decode_inbound_zstd,
     decompress_zstd_bounded,
+    take_inbound_wire_request,
 )
 
 
@@ -53,6 +54,46 @@ def test_inbound_zstd_hook_decodes_body_and_normalizes_headers() -> None:
     assert request.body == original
     assert request.headers.get("content-encoding") is None
     assert request.headers["content-length"] == str(len(original))
+
+
+def test_inbound_zstd_hook_captures_attested_wire_request_before_decoding() -> None:
+    original = json.dumps({"model": "gpt-test", "stream": True}).encode()
+    compressed = zstd.compress(original)
+    request = _request(compressed, encoding="zstd")
+    request.headers.update(
+        {
+            "accept": "text/event-stream",
+            "authorization": "Bearer gateway-client-key",
+            "content-type": "application/json",
+            "x-codex-beta-features": "remote_compaction_v2",
+            "x-oai-attestation": "signed-wire-proof",
+        }
+    )
+
+    assert decode_inbound_zstd(request) is None
+
+    wire = take_inbound_wire_request()
+    assert wire is not None
+    assert wire.body == compressed
+    assert wire.headers == {
+        "Accept": "text/event-stream",
+        "Content-Encoding": "zstd",
+        "Content-Type": "application/json",
+        "x-codex-beta-features": "remote_compaction_v2",
+        "x-oai-attestation": "signed-wire-proof",
+    }
+    assert "authorization" not in {name.lower() for name in wire.headers}
+
+
+def test_non_attested_request_clears_prior_wire_capture() -> None:
+    attested = _request(b"{}", encoding=None)
+    attested.headers["x-oai-attestation"] = "proof"
+    assert decode_inbound_zstd(attested) is None
+    assert take_inbound_wire_request() is not None
+
+    plain = _request(b"{}", encoding=None)
+    assert decode_inbound_zstd(plain) is None
+    assert take_inbound_wire_request() is None
 
 
 def test_inbound_zstd_hook_returns_413_for_decoded_overflow() -> None:

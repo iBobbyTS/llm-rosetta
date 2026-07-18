@@ -544,6 +544,8 @@ class HttpTransport:
         model: str,
         *,
         extra_headers: dict[str, str] | None = None,
+        wire_body: bytes | None = None,
+        wire_headers: dict[str, str] | None = None,
     ) -> HttpUpstreamStream:
         """Send a streaming request and return an async chunk iterator."""
         url, headers, req_body = _prepare_upstream(
@@ -554,15 +556,25 @@ class HttpTransport:
             stream=True,
             extra_headers=extra_headers,
         )
+        request_payload: dict[str, Any]
+        if wire_body is None:
+            request_payload = {"json": req_body}
+        else:
+            if wire_headers:
+                headers.update(wire_headers)
+            # Provider configuration always owns upstream authentication.
+            headers.update(provider_info.auth_headers())
+            _force_identity_encoding(headers)
+            request_payload = {"data": wire_body}
         client = self._pool.get(provider_info.proxy_url)
         try:
             resp = await _await_with_deadline(
                 client.post(
                     url,
-                    json=req_body,
                     headers=headers,
                     stream=True,
                     timeout=self._stream_idle_timeout,
+                    **request_payload,
                 ),
                 timeout=self._stream_open_timeout,
                 timeout_message=(

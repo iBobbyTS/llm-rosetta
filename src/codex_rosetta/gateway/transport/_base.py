@@ -178,8 +178,10 @@ class UpstreamTransport(Protocol):
         model: str,
         *,
         extra_headers: dict[str, str] | None = None,
+        wire_body: bytes | None = None,
+        wire_headers: dict[str, str] | None = None,
     ) -> UpstreamStream:
-        """Send a streaming request and return an async chunk iterator."""
+        """Send a streaming request, optionally preserving its attested wire body."""
         ...
 
     async def send_passthrough(

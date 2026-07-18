@@ -17,6 +17,7 @@ from codex_rosetta.gateway.config import GatewayConfig
 from codex_rosetta.gateway.admin.routes.config import reload_config
 from codex_rosetta.gateway.headers import (
     MAX_REQUEST_ID_BYTES,
+    build_codex_wire_headers,
     build_upstream_extra_headers,
     resolve_request_id,
 )
@@ -103,6 +104,45 @@ def test_build_upstream_extra_headers_preserves_user_agent_and_responses_version
         "x-request-id": "req-123",
         "User-Agent": "codex-cli/1.2.3",
         "OpenResponses-Version": "2025-06-18",
+    }
+
+
+def test_build_codex_wire_headers_is_explicit_and_never_forwards_auth() -> None:
+    headers = build_codex_wire_headers(
+        {
+            "accept": "text/event-stream",
+            "authorization": "Bearer gateway-client-key",
+            "content-encoding": "zstd",
+            "content-length": "123",
+            "content-type": "application/json",
+            "cookie": "session=private",
+            "host": "gateway.example",
+            "originator": "Codex Desktop",
+            "session-id": "session-1",
+            "thread-id": "thread-1",
+            "x-client-request-id": "request-1",
+            "x-codex-beta-features": "remote_compaction_v2",
+            "x-codex-turn-metadata": "{}",
+            "x-codex-window-id": "window-1",
+            "x-oai-attestation": "signed-wire-proof",
+            "x-openai-internal-codex-responses-lite": "true",
+            "x-unrelated": "drop-me",
+        }
+    )
+
+    assert headers == {
+        "Accept": "text/event-stream",
+        "Content-Encoding": "zstd",
+        "Content-Type": "application/json",
+        "Originator": "Codex Desktop",
+        "Session-Id": "session-1",
+        "Thread-Id": "thread-1",
+        "x-client-request-id": "request-1",
+        "x-codex-beta-features": "remote_compaction_v2",
+        "x-codex-turn-metadata": "{}",
+        "x-codex-window-id": "window-1",
+        "x-oai-attestation": "signed-wire-proof",
+        "x-openai-internal-codex-responses-lite": "true",
     }
 
 

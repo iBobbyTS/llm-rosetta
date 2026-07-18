@@ -268,6 +268,37 @@ def test_nonstream_success_reads_incrementally_and_forces_identity(
     assert "accept-encoding" not in headers
 
 
+def test_streaming_wire_body_preserves_bytes_and_provider_owns_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _FakeStreamingResponse(200, [])
+    transport, client = _transport(monkeypatch, response)
+
+    asyncio.run(
+        transport.send_streaming(
+            _provider(),
+            "openai_responses",
+            {"model": "test", "stream": True},
+            "test",
+            extra_headers={"x-request-id": "req-1"},
+            wire_body=b"exact-zstd-frame",
+            wire_headers={
+                "Authorization": "Bearer untrusted-client-key",
+                "Content-Encoding": "zstd",
+                "x-oai-attestation": "signed-wire-proof",
+            },
+        )
+    )
+
+    call = client.calls[0]
+    assert call["data"] == b"exact-zstd-frame"
+    assert "json" not in call
+    assert call["headers"]["Authorization"] == "Bearer provider-key"
+    assert call["headers"]["Content-Encoding"] == "zstd"
+    assert call["headers"]["x-oai-attestation"] == "signed-wire-proof"
+    assert call["headers"]["Accept-Encoding"] == "identity"
+
+
 @pytest.mark.parametrize("case", ["response-headers", "response-trailers"])
 def test_real_header_and_trailer_overflow_map_to_safety_error(
     local_upstream: tuple[_LocalUpstreamServer, str],

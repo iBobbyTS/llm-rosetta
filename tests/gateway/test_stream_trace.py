@@ -26,6 +26,7 @@ from codex_rosetta.gateway.stream_trace import (
     StreamTraceState,
 )
 from codex_rosetta.gateway.transport._base import (
+    UpstreamConnectionError,
     UpstreamProtocolError,
     UpstreamStream,
 )
@@ -107,6 +108,23 @@ class _FakeProcessor:
         return [{"type": "response.output_text.delta", "delta": chunk["delta"]}]
 
 
+def _direct_responses_route() -> ResolvedRoute:
+    return ResolvedRoute(
+        source_provider="openai_responses",
+        target_provider="openai_responses",
+        provider_name="OpenAI passthrough",
+        upstream_model="gpt-test",
+    )
+
+
+def _direct_responses_body() -> dict[str, Any]:
+    return {
+        "model": "gpt-test",
+        "input": [{"type": "message", "role": "user", "content": "hello"}],
+        "stream": True,
+    }
+
+
 def test_stream_trace_writes_jsonl_for_stream_events(tmp_path):
     """Trace logger records upstream chunks and downstream SSE side by side."""
     trace_path = tmp_path / "stream-trace.jsonl"
@@ -152,6 +170,88 @@ def test_stream_trace_writes_jsonl_for_stream_events(tmp_path):
     assert records[0]["model"] == "glm-5.2"
     assert records[0]["request_id"] == "req-123"
     assert stat.S_IMODE(trace_path.stat().st_mode) == 0o600
+
+
+def test_direct_responses_trace_records_upstream_http_error(tmp_path):
+    """A passthrough HTTP error is traced before any stream chunk exists."""
+    trace_path = tmp_path / "passthrough-http-error.jsonl"
+    state = StreamTraceState(StreamTraceConfig(enabled=True, path=str(trace_path)))
+    stream = _RawStream(
+        [b'{"error":{"message":"compact request rejected"}}'],
+        status_code=502,
+    )
+    transport = MagicMock()
+    transport.send_streaming = AsyncMock(return_value=stream)
+    provider_info = MagicMock(base_url="https://api.example.test/v1")
+
+    response, _profile = asyncio.run(
+        handle_streaming(
+            _direct_responses_route(),
+            provider_info,
+            _direct_responses_body(),
+            transport=transport,
+            extra_headers={"x-request-id": "req-http-error"},
+            entry_id="log-http-error",
+            stream_trace_state=state,
+        )
+    )
+
+    assert response.status_code == 502
+    assert stream.closed is True
+    records = [json.loads(line) for line in trace_path.read_text().splitlines()]
+    assert [record["stage"] for record in records] == [
+        "stream_start",
+        "raw_passthrough_request",
+        "upstream_error",
+        "stream_complete",
+    ]
+    assert records[2]["data"] == {
+        "status_code": 502,
+        "error": '{"error":{"message":"compact request rejected"}}',
+        "error_phase": "stream_header",
+        "upstream_url": "https://api.example.test/v1",
+    }
+    assert records[3]["data"]["stream_outcome"] == "error"
+    assert records[3]["data"]["chunk_count"] == 0
+
+
+def test_direct_responses_trace_records_upstream_connection_error(tmp_path):
+    """A passthrough connection failure keeps its diagnostic in the trace."""
+    trace_path = tmp_path / "passthrough-connection-error.jsonl"
+    state = StreamTraceState(StreamTraceConfig(enabled=True, path=str(trace_path)))
+    transport = MagicMock()
+    transport.send_streaming = AsyncMock(
+        side_effect=UpstreamConnectionError("upstream retries exhausted")
+    )
+    provider_info = MagicMock(base_url="https://api.example.test/v1")
+
+    response, _profile = asyncio.run(
+        handle_streaming(
+            _direct_responses_route(),
+            provider_info,
+            _direct_responses_body(),
+            transport=transport,
+            extra_headers={"x-request-id": "req-connect-error"},
+            entry_id="log-connect-error",
+            stream_trace_state=state,
+        )
+    )
+
+    assert response.status_code == 502
+    records = [json.loads(line) for line in trace_path.read_text().splitlines()]
+    assert [record["stage"] for record in records] == [
+        "stream_start",
+        "raw_passthrough_request",
+        "upstream_connection_error",
+        "stream_complete",
+    ]
+    assert records[2]["data"] == {
+        "status_code": 502,
+        "error": "upstream retries exhausted",
+        "error_phase": "stream_header",
+        "upstream_url": "https://api.example.test/v1",
+    }
+    assert records[3]["data"]["stream_error"] == "upstream retries exhausted"
 
 
 def test_stream_trace_redacts_known_and_bearer_tokens(tmp_path):

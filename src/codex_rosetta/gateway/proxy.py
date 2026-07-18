@@ -68,6 +68,7 @@ from .image_workers import (
     ImageWorkerCapacityError,
     ImageWorkerTimeoutError,
 )
+from .inbound_content_encoding import InboundWireRequest
 from .stream_phase_buffer import ResponsesPhaseBuffer
 from .state_scope import GatewayStateScope
 from .stream_trace import StreamTraceLogger, StreamTraceState
@@ -2201,24 +2202,80 @@ async def _handle_direct_responses_streaming(
     stream_trace_state: StreamTraceState | None,
     upstream_error_log_state: UpstreamErrorLogState | None,
     body_log_state: BodyLogState | None,
+    inbound_wire_request: InboundWireRequest | None,
 ) -> tuple[Response | StreamingResponse, dict[str, Any]]:
     """Handle same-protocol Responses streaming passthrough."""
     profile: dict[str, Any] = {}
     log_original_request(body, state=body_log_state)
+    request_id = extra_headers.get("x-request-id") if extra_headers else None
+    trace = _create_stream_trace_logger(
+        stream_trace_state,
+        request_id=request_id,
+        request_log_id=entry_id,
+        model=model,
+        route=route,
+    )
+    trace_started_at = time.monotonic()
+    if trace is not None:
+        trace.log(
+            "stream_start",
+            {
+                "model": model,
+                "source_provider": route.source_provider,
+                "target_provider": route.target_provider,
+                "provider_name": route.provider_name,
+                "entry_id": entry_id,
+                "passthrough": True,
+            },
+        )
+        trace.log("raw_passthrough_request", body)
+
     t_connect = time.perf_counter()
     try:
+        send_kwargs: dict[str, Any] = {"extra_headers": extra_headers}
+        if (
+            inbound_wire_request is not None
+            and body.get("stream") is True
+            and inbound_wire_request.matches(body)
+        ):
+            send_kwargs.update(
+                wire_body=inbound_wire_request.body,
+                wire_headers=inbound_wire_request.headers,
+            )
+            profile["wire_passthrough"] = True
         stream = await transport.send_streaming(
             provider_info,
             route.target_provider,
             body,
             model,
-            extra_headers=extra_headers,
+            **send_kwargs,
         )
     except UpstreamConnectionError as exc:
         profile["stream_connect_ms"] = round(
             (time.perf_counter() - t_connect) * 1000, 2
         )
         error_msg = str(exc)
+        if trace is not None:
+            trace.log(
+                "upstream_connection_error",
+                {
+                    "status_code": 502,
+                    "error": error_msg,
+                    "error_phase": "stream_header",
+                    "upstream_url": str(provider_info.base_url),
+                },
+            )
+        _finalize_stream_profile(
+            entry_id=entry_id,
+            request_log=request_log,
+            trace=trace,
+            t0=trace_started_at,
+            chunk_count=0,
+            terminal_outcome="error",
+            stream_error=error_msg,
+            ttfb_ms=None,
+            passthrough=True,
+        )
         dump_error(
             persistence,
             request_body=body,
@@ -2246,6 +2303,27 @@ async def _handle_direct_responses_streaming(
     if stream.is_error:
         error_text = await stream.read_error()
         await stream.close()
+        if trace is not None:
+            trace.log(
+                "upstream_error",
+                {
+                    "status_code": stream.status_code,
+                    "error": error_text,
+                    "error_phase": "stream_header",
+                    "upstream_url": str(provider_info.base_url),
+                },
+            )
+        _finalize_stream_profile(
+            entry_id=entry_id,
+            request_log=request_log,
+            trace=trace,
+            t0=trace_started_at,
+            chunk_count=0,
+            terminal_outcome="error",
+            stream_error=error_text,
+            ttfb_ms=None,
+            passthrough=True,
+        )
         log_upstream_error(
             stream.status_code,
             error_text,
@@ -2277,28 +2355,6 @@ async def _handle_direct_responses_streaming(
             ),
             profile,
         )
-
-    request_id = extra_headers.get("x-request-id") if extra_headers else None
-    trace = _create_stream_trace_logger(
-        stream_trace_state,
-        request_id=request_id,
-        request_log_id=entry_id,
-        model=model,
-        route=route,
-    )
-    if trace is not None:
-        trace.log(
-            "stream_start",
-            {
-                "model": model,
-                "source_provider": route.source_provider,
-                "target_provider": route.target_provider,
-                "provider_name": route.provider_name,
-                "entry_id": entry_id,
-                "passthrough": True,
-            },
-        )
-        trace.log("raw_passthrough_request", body)
 
     return (
         StreamingResponse(
@@ -2334,6 +2390,7 @@ async def handle_streaming(  # noqa: C901
     body_log_state: BodyLogState | None = None,
     image_fetch_workers: ImageFetchWorkerPool | None = None,
     web_search_client: TavilySearchClient | None = None,
+    inbound_wire_request: InboundWireRequest | None = None,
 ) -> tuple[Response | StreamingResponse, dict[str, Any]]:
     """Streaming proxy: convert -> forward -> stream-convert back -> SSE.
 
@@ -2405,6 +2462,7 @@ async def handle_streaming(  # noqa: C901
             stream_trace_state=stream_trace_state,
             upstream_error_log_state=upstream_error_log_state,
             body_log_state=body_log_state,
+            inbound_wire_request=inbound_wire_request,
         )
 
     log_original_request(body, state=body_log_state)

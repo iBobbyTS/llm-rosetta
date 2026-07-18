@@ -309,10 +309,44 @@ even when the contract output reports only source-commit drift.
 
 #### B. Fixture and unit/component testing
 
+The attested-wire allowlist is an exact, case-insensitive 12-header baseline for
+the current Codex version. Every routine and full Codex version review must
+enumerate the target Codex request headers from both source and a real captured
+request, diff them against this list, and explicitly accept, reject, add, or
+retire every difference:
+
+1. `Accept`
+2. `Content-Encoding`
+3. `Content-Type`
+4. `Originator`
+5. `Session-Id`
+6. `Thread-Id`
+7. `x-client-request-id`
+8. `x-codex-beta-features`
+9. `x-codex-turn-metadata`
+10. `x-codex-window-id`
+11. `x-oai-attestation`
+12. `x-openai-internal-codex-responses-lite`
+
+The runtime owners are
+`src/codex_rosetta/gateway/headers.py`,
+`src/codex_rosetta/gateway/inbound_content_encoding.py`,
+`src/codex_rosetta/gateway/proxy.py`, and
+`src/codex_rosetta/gateway/transport/http/transport.py`. The deterministic
+contract owners are `tests/gateway/test_app_headers.py`,
+`tests/gateway/test_inbound_content_encoding.py`,
+`tests/gateway/test_responses_passthrough.py`, and
+`tests/gateway/test_http_transport_limits.py`. An upgrade report must name the
+captured target-version header set and the resulting allowlist decision; a
+passing old fixture or the absence of a new header from Rosetta source is not
+sufficient evidence. Client `Authorization`, `Cookie`, `Host`, and inbound
+`Content-Length` remain excluded, and Provider configuration must continue to
+own upstream authentication.
+
 The following behavior can be automatically verified using the fixed Codex request/SSE fixture:
 
-- The single Admin Responses protocol always uses direct Responses transport for every Provider; Provider selection changes only the default Tool Profile. Unknown non-tool fields and original response JSON/SSE bytes remain unchanged below the transport safety envelope. Native `context_limit`/`user_requested` compaction stays direct, while model-switch compaction must use the previous model with Rosetta's prompt and a seven-day plaintext mapping;
-- header allowlist; `x-codex-window-id` extraction; exact/+1 model, window, and request-ID budgets; visible-ASCII/control rejection and missing request-ID generation; rejection before body/log/trace/persistence/state/upstream use; correlation/state-key separation; private no-window scope and terminal cleanup;
+- The single Admin Responses protocol always uses direct Responses transport for every Provider; Provider selection changes only the default Tool Profile. Unknown non-tool fields and original response JSON/SSE bytes remain unchanged below the transport safety envelope. Unchanged attested streaming requests retain their original compressed body and allowlisted Codex wire headers; any request mutation rebuilds JSON without stale attestation. Native `context_limit`/`user_requested` compaction stays direct, while model-switch compaction must use the previous model with Rosetta's prompt and a seven-day plaintext mapping;
+- header allowlists for ordinary metadata and exact attested-wire passthrough; Provider-owned Authorization on every upstream request; `x-codex-window-id` extraction; exact/+1 model, window, and request-ID budgets; visible-ASCII/control rejection and missing request-ID generation; rejection before body/log/trace/persistence/state/upstream use; correlation/state-key separation; private no-window scope and terminal cleanup;
 - Responses request → IR/adapter → Chat/Anthropic/Google upstream request;
 - Responses Namespace children expand to canonical regex-safe `namespace-function` names; streaming and non-streaming return paths restore hyphenated names, unique `namespace_function` and `namespace.function` compatible names, and unique bare children, while ordinary Function conflicts, shared child names, and alias collisions remain flat and fail closed;
 - Responses→Chat converts `agent_message` into model-visible user content, including its inter-agent `encrypted_content` payload, without exposing encrypted content from ordinary message or reasoning items;
@@ -451,7 +485,7 @@ Select a model by debugging target, don't just look at the Codex-facing alias:
 - Complete a single round of text and multiple rounds of dialogue, and confirm that there are no repeated, truncated or unended turns;
 - Capture real HTTP headers and body `client_metadata`, confirm identity/turn metadata;
 - Verify window/thread changes of the same turn, compact, resume, fork, subagent;
-- Confirm that the bundled 透传 Profile does not lose fields or alter any native tool shape, that web.run 注入 changes only Search endpoint handling, and that listed-provider Tool Mapping changes only tools while preserving every ordinary non-tool request field and raw response. Switch from GPT Responses to a different-`comp_hash` third-party Responses model and verify the old GPT request uses the Rosetta prompt, the returned handle maps to seven-day plaintext, and the new Provider receives rehydrated plaintext rather than GPT's encrypted compaction item; confirm the Chat bridge does not leak Rosetta's internal metadata to the upstream;
+- Confirm that the bundled 透传 Profile does not lose fields or alter any native tool shape, that web.run 注入 changes only Search endpoint handling, and that listed-provider Tool Mapping changes only tools while preserving every ordinary non-tool request field and raw response. For native Remote V2 compact, capture the inbound and upstream body plus attestation and require byte identity; verify Provider auth replaces gateway-client auth. Switch from GPT Responses to a different-`comp_hash` third-party Responses model and verify the old GPT request uses the Rosetta prompt, the returned handle maps to seven-day plaintext, and the new Provider receives rehydrated plaintext rather than GPT's encrypted compaction item; confirm the Chat bridge does not leak Rosetta's internal metadata to the upstream;
 - Confirm that the actual stream will not end abnormally before `response.completed`, and failed/incomplete can be rendered correctly.
 
 #### B. UI, phase and steering behavior
