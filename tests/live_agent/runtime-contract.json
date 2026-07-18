@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "scope": "all_gateway_backed_live_agent_cells",
+  "execution_mode": "oauth_plus_experimental_bearer_local_mode",
+  "gateway_mode": "local_mode",
+  "gateway_secret_source_directory": "~/.config/codex-rosetta-gateway",
+  "auth_source": "/Users/ibobby/.codex-multi-2/auth.json",
+  "codex_auth_mode": "chatgpt_oauth",
+  "provider_identity": "codex_rosetta",
+  "provider_display_name": "OpenAI",
+  "provider_requires_openai_auth": true,
+  "provider_request_auth": "experimental_bearer_token",
+  "provider_base_url": "isolated_localhost_gateway",
+  "model_requests_must_reach_isolated_gateway": true,
+  "credential_free_artifact": "artifacts/runtime-auth.json",
+  "credential_free_artifact_required_fields": [
+    "execution_mode",
+    "gateway_secret_source_directory",
+    "auth_source",
+    "codex_login_status",
+    "gateway_mode",
+    "provider_identity",
+    "provider_display_name",
+    "provider_requires_openai_auth",
+    "provider_bearer_present",
+    "provider_base_url"
+  ],
+  "credential_free_artifact_forbidden_fields": [
+    "oauth_tokens",
+    "api_key",
+    "bearer_token",
+    "authorization",
+    "cookie",
+    "copied_config"
+  ],
+  "secret_destinations_must_be_git_ignored": true,
+  "secret_values_must_not_enter_git_history": true,
+  "non_gateway_suite_exceptions": [
+    "browser_use"
+  ]
+}

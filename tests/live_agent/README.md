@@ -58,6 +58,28 @@ When no suite is specified, start with `command_execution/01`. Suite README
 and EVALUATION files, rather than the runner skill, define task order, Codex
 configuration, feature flags, and pass criteria.
 
+## Shared local-mode authentication contract
+
+Every Gateway-backed CLI or app-server cell must follow
+[`runtime-contract.json`](runtime-contract.json): use Gateway local mode with
+Provider ID `codex_rosetta`, display name exactly `OpenAI`, ChatGPT OAuth copied
+from `/Users/ibobby/.codex-multi-2/auth.json`, and the managed Provider's
+`experimental_bearer_token`. OAuth supplies Codex identity and passes
+auth-gated capability checks; the bearer token is the actual provider request
+credential and keeps model traffic on the isolated localhost Gateway. Neither
+OAuth-only nor bearer-only execution is a valid matrix cell.
+
+All Gateway configuration and credentials required by a test, including model
+API keys, Images credentials, Tavily keys, and sidecar tokens, must be copied
+only from `~/.config/codex-rosetta-gateway` into the ignored timestamp run
+root. The OAuth file must likewise be copied only into that run root. These
+files and every contained value are forbidden from tracked fixtures, patches,
+reports, log excerpts, staging, and Git history. Each cell writes only a
+credential-free `artifacts/runtime-auth.json` proving source paths, login
+class, local-mode state, Provider identity, bearer presence, and localhost
+routing. The GUI-only `browser_use` suite is not Gateway-backed and remains the
+explicit exception.
+
 `browser_use` is an explicit exception to the CLI-oriented execution model
 below. Run it only in the Codex GUI app by following its own README; never pass
 it to the repository `rosetta-codex-readme-test` runner. Its GUI executor writes
@@ -70,10 +92,12 @@ executor/judge pair.
 `orchestrator_skills` is runner-gated because local `codex exec` suppresses
 orchestrator-owned Skills. Local filesystem Skills remain available to
 `codex exec` and are tested separately by `local_skills`; they do not use the
-`skills` Namespace. `image_generation` is auth-gated because an ordinary
-local-mode bearer token does not satisfy Codex's standalone image-generation
-auth check. Follow each suite README and report its explicit unsupported status
-instead of starting an invalid cell.
+`skills` Namespace. The app-server orchestrator cell still uses the shared
+OAuth-plus-bearer Gateway contract, but must not attach a local execution
+environment. `image_generation` additionally verifies the auth-gated tool
+surface; bearer-only execution does not satisfy that exposure check. Follow
+each suite README and report its explicit unsupported status instead of
+starting an invalid cell.
 
 ## Real-provider defaults
 

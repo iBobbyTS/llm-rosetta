@@ -9,6 +9,12 @@ from typing import Any
 LIVE_AGENT = Path(__file__).parent
 
 
+def _runtime_contract() -> dict[str, Any]:
+    return json.loads(
+        (LIVE_AGENT / "runtime-contract.json").read_text(encoding="utf-8")
+    )
+
+
 def _walk(value: Any) -> Iterator[dict[str, Any]]:
     if isinstance(value, dict):
         yield value
@@ -44,6 +50,49 @@ def test_declared_codex_providers_use_local_mode_identity() -> None:
         "provider_display_name",
         "codex_model_provider",
     }
+
+
+def test_gateway_backed_cells_require_dual_auth_local_mode() -> None:
+    contract = _runtime_contract()
+
+    assert contract["scope"] == "all_gateway_backed_live_agent_cells"
+    assert contract["execution_mode"] == "oauth_plus_experimental_bearer_local_mode"
+    assert contract["gateway_mode"] == "local_mode"
+    assert (
+        contract["gateway_secret_source_directory"] == "~/.config/codex-rosetta-gateway"
+    )
+    assert contract["auth_source"] == "/Users/ibobby/.codex-multi-2/auth.json"
+    assert contract["codex_auth_mode"] == "chatgpt_oauth"
+    assert contract["provider_identity"] == "codex_rosetta"
+    assert contract["provider_display_name"] == "OpenAI"
+    assert contract["provider_requires_openai_auth"] is True
+    assert contract["provider_request_auth"] == "experimental_bearer_token"
+    assert contract["provider_base_url"] == "isolated_localhost_gateway"
+    assert contract["model_requests_must_reach_isolated_gateway"] is True
+    assert contract["credential_free_artifact"] == "artifacts/runtime-auth.json"
+    assert contract["credential_free_artifact_required_fields"] == [
+        "execution_mode",
+        "gateway_secret_source_directory",
+        "auth_source",
+        "codex_login_status",
+        "gateway_mode",
+        "provider_identity",
+        "provider_display_name",
+        "provider_requires_openai_auth",
+        "provider_bearer_present",
+        "provider_base_url",
+    ]
+    assert contract["credential_free_artifact_forbidden_fields"] == [
+        "oauth_tokens",
+        "api_key",
+        "bearer_token",
+        "authorization",
+        "cookie",
+        "copied_config",
+    ]
+    assert contract["secret_destinations_must_be_git_ignored"] is True
+    assert contract["secret_values_must_not_enter_git_history"] is True
+    assert contract["non_gateway_suite_exceptions"] == ["browser_use"]
 
 
 def test_compaction_contract_requires_remote_v2_request_kind() -> None:
@@ -120,6 +169,7 @@ def test_skill_delivery_contracts_use_separate_runners() -> None:
 
 
 def test_image_generation_contract_requires_codex_auth_gate() -> None:
+    runtime_contract = _runtime_contract()
     expected = json.loads(
         (LIVE_AGENT / "image_generation" / "01" / "expected.json").read_text(
             encoding="utf-8"
@@ -132,12 +182,12 @@ def test_image_generation_contract_requires_codex_auth_gate() -> None:
     )
     assert (
         expected["mandatory_prerequisites"]["auth_source"]
-        == "/Users/ibobby/.codex-multi-2/auth.json"
+        == runtime_contract["auth_source"]
     )
     assert expected["mandatory_prerequisites"]["codex_auth_mode"] == "chatgpt_oauth"
     assert (
         expected["mandatory_prerequisites"]["provider_request_auth"]
-        == "experimental_bearer_token"
+        == runtime_contract["provider_request_auth"]
     )
 
 

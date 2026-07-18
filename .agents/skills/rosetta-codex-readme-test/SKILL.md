@@ -22,12 +22,12 @@ Web Admin **Gateway Logs** page belongs on a RAM Disk.
 ## Runtime Contract
 
 - Resolve the repository root with `git rev-parse --show-toplevel`.
-- Select the suite and task from `tests/live_agent` as requested, then
-  read that suite's `README.md`, optional `EVALUATION.md`, and task
-  `expected.json` before configuring the run. Feature flags, provider
-  identities, task order, and result fields live there rather than in this
-  skill. Suites may define capability roles and default model choices, but must
-  not require a CLI model override for an ordinary cell.
+- Select the suite and task from `tests/live_agent` as requested, then read
+  `tests/live_agent/runtime-contract.json`, that suite's `README.md`, optional
+  `EVALUATION.md`, and task `expected.json` before configuring the run. Feature
+  flags, provider identities, task order, and result fields live there rather
+  than in this skill. Suites may define capability roles and default model
+  choices, but must not require a CLI model override for an ordinary cell.
 - Check the task's runner and auth prerequisites before creating a CLI cell.
   If a suite requires an app-server orchestrator, GUI Browser, or a Codex auth
   path unavailable to the isolated local-mode bearer Provider, follow its
@@ -46,11 +46,22 @@ Web Admin **Gateway Logs** page belongs on a RAM Disk.
   third-party non-multimodal cells, and `mimo-v2.5` for third-party multimodal
   cells. Put the selected default in the isolated `config.toml`; do not force
   it with `codex exec -m`.
-- Prefer the gateway's local mode for CLI live suites. Let it generate and own
-  the isolated `model_catalog.json`, root `model_catalog_json`, and managed
+- Every Gateway-backed CLI or app-server cell uses the gateway's local mode
+  with both ChatGPT OAuth login state and the managed Provider's
+  `experimental_bearer_token`. OAuth supplies Codex identity and passes
+  auth-gated capability checks; the bearer token takes provider-auth
+  precedence and routes actual model requests through the isolated Gateway.
+  Neither credential alone is a valid matrix cell. Let local mode generate and
+  own the isolated `model_catalog.json`, root `model_catalog_json`, and managed
   Provider. Use Provider ID `codex_rosetta` with the exact case-sensitive
   display name `OpenAI`. Do not define suite-specific provider IDs or any
   provider whose display name is `openai`, `custom`, or another spelling.
+- Source every Gateway credential needed by a test, including model-provider,
+  Images, Tavily, and sidecar credentials, only from the user's
+  `~/.config/codex-rosetta-gateway` directory. Source Codex login state only
+  from `/Users/ibobby/.codex-multi-2/auth.json`. Copy both classes only into
+  the Git-ignored isolated run root. They must never appear in tracked
+  fixtures, patches, reports, extracted log evidence, or Git history.
 - Use `tmp/agent_testing_workspace/YYYYMMDDHHMM` as the runtime root, with
   local time.
 - Use `/Volumes/RAMDisk/YYYYMMDDHHMM` as the macOS Gateway Logs root.
@@ -109,10 +120,18 @@ exists, stop and use another unused minute rather than adding a suffix.
    fallback in the final report. This location is only for the Gateway Logs
    stream trace. All other files stay under `RUN_ROOT`.
 
-4. Copy the user's gateway configuration into the run root. Never edit or stop
-   the user's main gateway:
+4. Confirm the secret destinations are ignored, then copy the user's gateway
+   configuration into the run root. Every Gateway credential needed by the
+   selected suite must come from `~/.config/codex-rosetta-gateway`; do not read
+   a model API key, Images token, Tavily key, or sidecar token from another
+   source. Never edit or stop the user's main gateway:
 
    ```bash
+   for SECRET_DEST in \
+     "$RUN_ROOT/gateway/config.jsonc" \
+     "$RUN_ROOT/codex_home/auth.json"; do
+     git -C "$ROOT" check-ignore -q "$SECRET_DEST" || exit 1
+   done
    cp "$HOME/.config/codex-rosetta-gateway/config.jsonc" "$RUN_ROOT/gateway/config.jsonc"
    ```
 
@@ -134,7 +153,8 @@ exists, stop and use another unused minute rather than adding a suffix.
 
    Preserve all providers, model groups, profiles, keys, and unrelated server
    settings from the copied config. The trace path must be absolute. Do not log
-   or print credentials while editing it.
+   or print credentials while editing it. Never use `git add -f` on the run
+   root or move a copied secret into a tracked path.
 
 5. Create `RUN_ROOT/codex_home/config.toml` pointing to the isolated gateway.
    Use a client API key from the copied gateway config as the bearer token, but
@@ -162,8 +182,8 @@ exists, stop and use another unused minute rather than adding a suffix.
 
    The provider's `experimental_bearer_token` is a request credential, not a
    Codex login. Do not treat it as proof that an auth-gated standalone tool is
-   visible. When `image_generation` is selected, use the user-authorized
-   ChatGPT OAuth source at `/Users/ibobby/.codex-multi-2/auth.json`:
+   visible. For every Gateway-backed cell, use the user-authorized ChatGPT
+   OAuth source at `/Users/ibobby/.codex-multi-2/auth.json`:
 
    ```bash
    AUTH_SOURCE=/Users/ibobby/.codex-multi-2/auth.json
@@ -178,6 +198,13 @@ exists, stop and use another unused minute rather than adding a suffix.
    Keep `experimental_bearer_token` on `codex_rosetta`: after the OAuth state
    passes Codex's exposure gate, provider-auth precedence still routes model
    and Images API requests through the isolated Gateway.
+
+   Before the tested turn, write `artifacts/runtime-auth.json` without secret
+   values. It must record the execution mode, both source paths, the observed
+   ChatGPT login class, local-mode state, Provider ID/display name,
+   `requires_openai_auth`, bearer-token presence as a boolean, and the
+   localhost Gateway base URL. It must not contain OAuth tokens, API keys,
+   bearer values, cookies, authorization headers, or copied configuration.
 
 ## Run One Task
 
@@ -234,6 +261,11 @@ Use three bounded evidence sources:
    converted model-facing tool calls, reconstructed Codex-facing calls, and
    successful stream completion. This is the only artifact stored on the RAM
    Disk. Filter by model, request id, thread id, and timestamp.
+
+Also validate `RUN_ROOT/artifacts/runtime-auth.json` against
+`tests/live_agent/runtime-contract.json` before interpreting model behavior.
+Missing dual-auth evidence or a model request that bypasses the isolated
+Gateway invalidates the cell as a runner/configuration failure.
 
 For every upstream request in the run, inspect its usage record. Do not
 calculate or report a prompt-cache hit rate. Group interleaved parent and child
@@ -315,6 +347,8 @@ process state, or workspace across cells.
 For every cell, record:
 
 - model, fixed `codex_rosetta`/`OpenAI` provider identity, and task id;
+- credential-free runtime-auth evidence proving ChatGPT OAuth plus Provider
+  bearer local mode, without recording either credential value;
 - Codex exit status and exact final marker;
 - thread id and rollout path;
 - Rosetta trace path and observed upstream model;
@@ -341,6 +375,9 @@ For every cell, record:
   path is not already an active volume.
 - Do not read whole session or trace files into context.
 - Redact API keys, bearer tokens, cookies, and authorization headers.
+- Copy Gateway credentials only from `~/.config/codex-rosetta-gateway` and
+  Codex OAuth only from `/Users/ibobby/.codex-multi-2/auth.json`; keep both
+  under the ignored run root and never allow either into Git history.
 - Preserve completed run artifacts unless the user explicitly requests
   deletion. Do not use `git restore`, `git reset`, or cleanup commands for runs.
 

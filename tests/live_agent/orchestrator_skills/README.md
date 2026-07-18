@@ -17,6 +17,9 @@ The app-server runner must:
 - enable `[orchestrator.skills]`;
 - route model requests through the isolated local-mode Gateway using Provider
   ID `codex_rosetta` and display name exactly `OpenAI`;
+- inherit [`../runtime-contract.json`](../runtime-contract.json), including
+  ChatGPT OAuth plus the Provider bearer and the two fixed secret-source
+  locations, while keeping all copied credentials out of Git history;
 - provision an enabled orchestrator Skill provider through the Codex Apps MCP
   resource surface with the deterministic fixture contract below.
 

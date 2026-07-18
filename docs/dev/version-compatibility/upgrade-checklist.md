@@ -336,6 +336,15 @@ Select a model by debugging target, don't just look at the Codex-facing alias:
 
 #### C. Real tool closed loop
 
+- Before every Gateway-backed live cell, copy Gateway configuration and
+  credentials only from `~/.config/codex-rosetta-gateway` and ChatGPT OAuth
+  only from `/Users/ibobby/.codex-multi-2/auth.json` into the Git-ignored run
+  root. Retain the local-mode `codex_rosetta`/`OpenAI` Provider bearer, verify
+  ChatGPT login status, emit only credential-free `runtime-auth.json` evidence,
+  and prove model requests reach the isolated Gateway. Treat OAuth-only,
+  bearer-only, secret-bearing, or bypassed-Gateway cells as invalid runner
+  configurations; never stage copied credentials or allow them into Git
+  history;
 - Read the real file and use native `apply_patch` to complete the modification;
 - Let a patch fail, then confirm that the model can read the error, correct the patch and continue the round;
 - When function tool and custom tool coexist, model selection and Codex execution are correct;

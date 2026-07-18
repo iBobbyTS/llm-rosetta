@@ -5,6 +5,24 @@ Codex-Rosetta keeps deterministic agent workspaces under
 after protocol conversion. They are not benchmarks of reasoning, coding,
 instruction following in general, or answer quality.
 
+All Gateway-backed live cells share one authentication contract, recorded in
+[`tests/live_agent/runtime-contract.json`](../../tests/live_agent/runtime-contract.json).
+Run the isolated Gateway in local mode with Provider ID `codex_rosetta`,
+display name exactly `OpenAI`, ChatGPT OAuth copied from
+`/Users/ibobby/.codex-multi-2/auth.json`, and the managed Provider's
+`experimental_bearer_token`. OAuth supplies Codex identity; the bearer token
+remains the actual provider request credential so model traffic reaches the
+isolated Gateway. OAuth-only and bearer-only cells are invalid.
+
+Copy all Gateway configuration and required credentials only from
+`~/.config/codex-rosetta-gateway` into the Git-ignored timestamp run root. This
+includes model API keys, Images credentials, Tavily keys, and sidecar tokens.
+Neither that copied material nor the OAuth file may enter fixtures, patches,
+reports, staged files, or Git history. Retain only credential-free
+`artifacts/runtime-auth.json` evidence: source paths, login class, local-mode
+state, Provider identity, bearer presence, and localhost routing. The GUI-only
+`browser_use` suite is not Gateway-backed and is outside this contract.
+
 ## Design principles
 
 - Give the model one obvious operation and a fixed result marker.
@@ -135,11 +153,9 @@ the exact scene `草坪上一只狗在跑`, uses the saved result path for one p
 description. The outer developer or development agent, not the tested model,
 decides whether that description contains a dog, grass or a lawn, and running.
 The suite also requires a Profile-configured OpenAI-compatible Images endpoint
-and a Codex auth path that passes the standalone image-generation runtime gate.
-An ordinary local-mode `experimental_bearer_token` does not pass that gate.
-For the authorized local test environment, seed the isolated Codex home from
-`/Users/ibobby/.codex-multi-2/auth.json`, verify it is ChatGPT OAuth, and keep
-the provider bearer token for routing the actual model and Images requests
+and validates the shared dual-auth contract against the standalone
+image-generation runtime gate. The ChatGPT OAuth state passes that exposure
+gate; the retained Provider bearer routes the actual model and Images requests
 through the isolated Gateway. Use `runner_auth_not_supported` rather than
 attributing a missing declaration to the model. The suite does not measure
 artistic quality.

@@ -9,6 +9,12 @@ an image-quality or general vision benchmark.
 
 ## Mandatory prerequisites
 
+This suite inherits the shared dual-auth and secret-source rules from
+[`../runtime-contract.json`](../runtime-contract.json). Gateway credentials
+come only from `~/.config/codex-rosetta-gateway`; the ChatGPT OAuth file comes
+only from `/Users/ibobby/.codex-multi-2/auth.json`; neither may enter Git
+history.
+
 Do not run this suite unless all of the following are already true for the same
 actual upstream model and an equivalent projected `view_image` route and Tool
 Profile. The earlier proof may use a different Codex-facing alias when its
