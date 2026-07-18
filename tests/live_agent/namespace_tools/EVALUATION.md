@@ -15,14 +15,10 @@ Use all three bounded evidence sources:
    conversion route, and terminal stream state.
 
 Do not count tool descriptions or prompt text as calls. Do not count shell,
-browser, direct local-file, or ordinary local Skill discovery as Namespace
-execution.
-
-Before evaluating calls, prove the thread used the app-server orchestrator
-runner, `[orchestrator.skills]` was enabled, and no local execution environment
-was attached. If any runner precondition cannot be established, set the
-overall classification to `runner_not_supported` and do not attribute the
-result to the tested model or Rosetta.
+browser, direct local-file, filesystem-backed Skill discovery, or
+orchestrator-Skill tools as Clock or Memories execution. Prove that the thread
+used the local `codex exec` runner and had its normal local execution
+environment attached.
 
 ## Per-Namespace decisions
 
@@ -30,12 +26,8 @@ result to the tested model or Rosetta.
 - `memories`: require one successful native `memories.list` call whose result
   includes the seeded `memory_summary.md` fixture. The call must omit `path`;
   passing `/` is an invalid request rather than a missing memory fixture.
-- `skills`: require one successful native `skills.list` call with authority
-  `{ "kind": "orchestrator" }`. An empty skills array is acceptable; an absent
-  tool is `not_exposed` and an error result is `failed`.
-
 For each Namespace set `status` to `success`, `not_exposed`, `not_called`, or
-`failed`. The overall run succeeds only when all three statuses are `success`,
+`failed`. The overall run succeeds only when both statuses are `success`,
 the exact parent marker is present, no prohibited fallback occurred, and the
 stream completed.
 
@@ -54,7 +46,7 @@ Write `artifacts/evaluation.json` with this shape:
 
 ```json
 {
-  "classification": "success | success with deviations | failure | runner_not_supported",
+  "classification": "success | success with deviations | failure",
   "model": "model alias used by Codex",
   "provider_identity": "codex_rosetta (display name: OpenAI)",
   "provider_identity_override": false,
@@ -62,9 +54,8 @@ Write `artifacts/evaluation.json` with this shape:
   "thread_id": "Codex thread id",
   "rollout_path": "isolated rollout path",
   "process_exit_code": 0,
-  "runner": "app_server_orchestrator",
-  "local_execution_environment_attached": false,
-  "orchestrator_skills_enabled": true,
+  "runner": "codex_exec_local",
+  "local_execution_environment_attached": true,
   "success_marker_observed": true,
   "namespaces": {
     "clock": {
@@ -79,12 +70,6 @@ Write `artifacts/evaluation.json` with this shape:
       "model_facing_calls": ["observed name"],
       "successful_result": true,
       "fixture_observed": true
-    },
-    "skills": {
-      "status": "success | not_exposed | not_called | failed",
-      "native_calls": ["skills.list"],
-      "model_facing_calls": ["observed name"],
-      "successful_result": true
     }
   },
   "prohibited_fallback_calls": 0,

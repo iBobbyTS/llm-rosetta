@@ -1,0 +1,22 @@
+{
+  "id": "01",
+  "timeout_seconds": 120,
+  "success_marker": "RESULT:LOCAL_SKILL_OK",
+  "default_models": [
+    "gpt-5.6-sol",
+    "deepseek-v4-flash"
+  ],
+  "provider_identity": "codex_rosetta",
+  "provider_display_name": "OpenAI",
+  "required_runner": "codex_exec_local",
+  "local_execution_environment_attached": true,
+  "expected_skill_source": "worktree/.agents/skills/local-skill-fixture/SKILL.md",
+  "expected_native_pattern": {
+    "catalog_entries_named_local_skill_fixture": 1,
+    "explicit_skill_injections_named_local_skill_fixture": 1,
+    "injected_body_marker": "RESULT:LOCAL_SKILL_OK",
+    "skills_namespace_calls_max": 0,
+    "prohibited_fallback_calls_max": 0,
+    "gateway_log_evidence_required": true
+  }
+}

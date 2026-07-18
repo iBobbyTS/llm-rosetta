@@ -26,8 +26,9 @@ tool-mode and image-input path are equivalent:
 - Codex's standalone image-generation runtime auth gate passes. Current Codex
   requires either OpenAI actor authorization, or `requires_openai_auth` backed
   by Codex-backend authentication. A local-mode Provider that has only
-  `experimental_bearer_token` uses ordinary API-key auth and does not satisfy
-  this gate, even when its display name is exactly `OpenAI`.
+  `experimental_bearer_token` has a provider request credential but no Codex
+  login state, so it does not satisfy this gate even when its display name is
+  exactly `OpenAI`.
 
 A text-only model, an unverified `view_image` route, or a route that merely
 returns image metadata is not eligible for this test. Record the prerequisite
@@ -37,6 +38,25 @@ If the isolated runner has only the standard local-mode bearer-token Provider,
 classify the suite as `runner_auth_not_supported` before invoking the tested
 model. Do not ask the model to invent a nested imagegen function and do not
 count the resulting missing-function error as model behavior.
+
+For this authorized local environment, copy the ChatGPT OAuth state from
+`/Users/ibobby/.codex-multi-2/auth.json` into the isolated Codex home without
+printing its contents:
+
+```bash
+AUTH_SOURCE=/Users/ibobby/.codex-multi-2/auth.json
+jq -e '.auth_mode == "chatgpt" and (.tokens | type == "object")' \
+  "$AUTH_SOURCE" >/dev/null
+install -m 600 "$AUTH_SOURCE" "$RUN_ROOT/codex_home/auth.json"
+CODEX_HOME="$RUN_ROOT/codex_home" codex login status
+```
+
+Require the final command to report ChatGPT authentication. The copied
+Provider must still retain its `experimental_bearer_token`: OAuth satisfies the
+Codex exposure gate, while the provider token takes precedence for actual
+model and Images requests and keeps them on the isolated Gateway. Gateway Logs
+must prove both request destinations. A standard API-key-only `auth.json` does
+not satisfy the gate.
 
 ## Scenario
 

@@ -16,6 +16,12 @@ Use all three bounded evidence sources:
    reconstructed Codex calls, the Images endpoint/executor, and terminal stream
    completion.
 
+Before invoking the model, record credential-free proof that the isolated
+`auth.json` came from `/Users/ibobby/.codex-multi-2/auth.json`, its mode is
+ChatGPT OAuth, `codex login status` recognizes that mode, and the configured
+`codex_rosetta` Provider still uses its isolated Gateway bearer credential.
+Do not record token values or copy the auth file into artifacts.
+
 Never put image base64, credentials, full prompts, or complete trace records in
 the evaluation artifact.
 
@@ -65,6 +71,10 @@ Write `artifacts/evaluation.json` with this shape:
     "visual_recognition": "passed",
     "vision_capable_model": true,
     "image_generation_profile_configured": true,
+    "auth_source": "/Users/ibobby/.codex-multi-2/auth.json",
+    "codex_auth_mode": "chatgpt_oauth",
+    "codex_login_status_verified": true,
+    "provider_request_auth": "experimental_bearer_token",
     "codex_image_generation_auth_gate": "passed | runner_auth_not_supported",
     "evidence": ["bounded references to prior or current prerequisite evidence"]
   },
@@ -81,6 +91,8 @@ Write `artifacts/evaluation.json` with this shape:
   "model_facing_calls": ["observed names in order"],
   "native_calls": ["observed native calls in order"],
   "generation_endpoint": "images/generations | not_called",
+  "model_request_reached_isolated_gateway": true,
+  "images_request_reached_isolated_gateway": true,
   "generated_artifact_path": "credential-free isolated path or null",
   "view_image_used_generated_path": true,
   "successful_image_results": true,

@@ -33,6 +33,14 @@ Web Admin **Gateway Logs** page belongs on a RAM Disk.
   path unavailable to the isolated local-mode bearer Provider, follow its
   explicit unsupported classification. Do not force it through `codex exec`
   and attribute the missing surface to the model.
+- Keep local filesystem Skills and orchestrator-owned Skills as separate test
+  surfaces. A local Skill is discovered from the copied `.agents/skills` tree,
+  appears as catalog metadata in developer context, and has its full body
+  injected after explicit selection; it does not use `skills.list` or
+  `skills.read`. Those Namespace tools are only for orchestrator-owned
+  resources and require the app-server runner, `[orchestrator.skills]`, a
+  provisioned orchestrator provider, and no attached local execution
+  environment.
 - Unless the suite explicitly tests a different capability role, use
   `gpt-5.6-sol` as the native GPT shape reference, `deepseek-v4-flash` for
   third-party non-multimodal cells, and `mimo-v2.5` for third-party multimodal
@@ -151,6 +159,25 @@ exists, stop and use another unused minute rather than adding a suffix.
    [projects."<RUN_ROOT>/worktree"]
    trust_level = "trusted"
    ```
+
+   The provider's `experimental_bearer_token` is a request credential, not a
+   Codex login. Do not treat it as proof that an auth-gated standalone tool is
+   visible. When `image_generation` is selected, use the user-authorized
+   ChatGPT OAuth source at `/Users/ibobby/.codex-multi-2/auth.json`:
+
+   ```bash
+   AUTH_SOURCE=/Users/ibobby/.codex-multi-2/auth.json
+   jq -e '.auth_mode == "chatgpt" and (.tokens | type == "object")' \
+     "$AUTH_SOURCE" >/dev/null
+   install -m 600 "$AUTH_SOURCE" "$RUN_ROOT/codex_home/auth.json"
+   CODEX_HOME="$RUN_ROOT/codex_home" codex login status
+   ```
+
+   The status must identify ChatGPT authentication before invoking the tested
+   model. Never print, trace, or copy token values into evaluation artifacts.
+   Keep `experimental_bearer_token` on `codex_rosetta`: after the OAuth state
+   passes Codex's exposure gate, provider-auth precedence still routes model
+   and Images API requests through the isolated Gateway.
 
 ## Run One Task
 

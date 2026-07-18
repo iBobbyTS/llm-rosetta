@@ -25,8 +25,14 @@ handling rather than prose quality.
   with byte-identical phase-1 and post-compaction resume prompts; evaluation
   belongs to the test executor.
 - [`namespace_tools`](namespace_tools/README.md): directly exercising the
-  `clock`, `memories`, and `skills` Namespace tools through an app-server
-  orchestrator runner without an attached local execution environment.
+  locally available `clock` and `memories` Namespace tools through ordinary
+  `codex exec`.
+- [`local_skills`](local_skills/README.md): verifying filesystem Skill catalog
+  discovery and explicit Skill-body injection without `skills.list` or
+  `skills.read`.
+- [`orchestrator_skills`](orchestrator_skills/README.md): exercising the
+  orchestrator-owned `skills.list` and `skills.read` resource path through an
+  app-server runner with no attached local execution environment.
 - [`deferred_tool_search`](deferred_tool_search/README.md): installing a local
   three-candidate skill/plugin/MCP fixture catalog, pairing explicit controls
   with natural-language discovery, and verifying contextual exposure plus
@@ -61,11 +67,13 @@ Each run uses one non-reused
 `.agent-work/live-agent-test/{YYYYMMDD-HHMM}` directory shared only by that
 executor/judge pair.
 
-`namespace_tools` is also runner-gated because local `codex exec` suppresses
-orchestrator skills. `image_generation` is auth-gated because an ordinary
+`orchestrator_skills` is runner-gated because local `codex exec` suppresses
+orchestrator-owned Skills. Local filesystem Skills remain available to
+`codex exec` and are tested separately by `local_skills`; they do not use the
+`skills` Namespace. `image_generation` is auth-gated because an ordinary
 local-mode bearer token does not satisfy Codex's standalone image-generation
 auth check. Follow each suite README and report its explicit unsupported status
-instead of starting an invalid CLI cell.
+instead of starting an invalid cell.
 
 ## Real-provider defaults
 

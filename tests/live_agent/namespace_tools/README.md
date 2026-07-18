@@ -1,18 +1,18 @@
-# Namespace Tool Test
+# Clock And Memory Namespace Test
 
-This suite verifies direct use of three Codex Namespace surfaces through
-Codex-Rosetta: `clock`, `memories`, and `skills`. It does not measure planning,
-research, coding, prose, or general agent quality.
+This suite verifies direct use of the locally available Codex `clock` and
+`memories` Namespace surfaces through Codex-Rosetta. It does not test either
+filesystem-backed Skills or orchestrator-owned Skills, and it does not measure
+planning, research, coding, prose, or general agent quality.
 
 ## Scenario
 
-- `01`: call one deterministic read-only operation from `clock`, `memories`,
-  and `skills`.
+- `01`: call one deterministic read-only operation from `clock` and `memories`.
 
-All three Namespace checks live in one short task so a normal two-model matrix
-needs only one isolated run for the default `gpt-5.6-sol` cell and one for
+Both Namespace checks live in one short task so a normal two-model matrix needs
+only one isolated run for the default `gpt-5.6-sol` cell and one for
 `deepseek-v4-flash`. Evaluation remains per Namespace: one missing or failed
-Namespace does not erase evidence collected for the others.
+Namespace does not erase evidence collected for the other.
 
 Subagent lifecycle behavior is intentionally isolated in the
 [`subagent_tools`](../subagent_tools/README.md) suite so each `collaboration`
@@ -20,14 +20,9 @@ Function can be evaluated independently.
 
 ## Required Codex runner and configuration
 
-This combined task cannot run through ordinary local `codex exec`. Current
-Codex source deliberately disables orchestrator-owned skills whenever the
-thread has a local execution environment, and `codex exec` supplies that
-environment. Use an app-server runner that can start the thread without the
-local environment while still routing model requests through the isolated
-local-mode Gateway. Until that runner is available, classify this suite as
-`runner_not_supported`; do not report the missing `skills.list` surface as a
-Terra, DeepSeek, or Rosetta conversion failure.
+Run this suite through ordinary local `codex exec`. The attached local
+execution environment is valid for Clock and Memories and is intentionally not
+used as evidence about orchestrator-owned Skills.
 
 Use the local-mode Provider ID `codex_rosetta` with provider display name
 exactly `OpenAI` for both models. Do not define any suite-specific Provider.
@@ -45,9 +40,6 @@ memories = true
 generate_memories = false
 use_memories = true
 dedicated_tools = true
-
-[orchestrator.skills]
-enabled = true
 ```
 
 After copying the suite task, prepare the isolated memory store without reading
@@ -59,13 +51,12 @@ cp "$RUN_ROOT/worktree/memory_fixture.md" \
   "$RUN_ROOT/codex_home/memories/memory_summary.md"
 ```
 
-The `skills` Namespace is contributed only when the Codex runtime has an
-app-server orchestrator skill provider, `[orchestrator.skills]` is enabled,
-and no local execution environment is attached. Do not replace it with
-ordinary local Skill discovery. If those preconditions are satisfied and
-`skills.list` is still absent, record `skills.status = "not_exposed"` and fail
-the run. If the runner cannot establish those preconditions, use
-`runner_not_supported` instead.
+Filesystem-backed Skill discovery is covered by
+[`local_skills`](../local_skills/README.md). The distinct `skills.list` and
+`skills.read` Namespace surface is covered by
+[`orchestrator_skills`](../orchestrator_skills/README.md), which requires an
+app-server runner without an attached local execution environment. Do not infer
+either Skill surface from this suite.
 
 ## Provider matrix
 
@@ -88,8 +79,8 @@ the native call and a non-error result. Gateway Logs must additionally prove
 the model-facing call name and conversion route.
 
 For the Chat route, expected model-facing names are the unique flattened forms
-`clock.curr_time`, `memories.list`, and `skills.list`; Rosetta must restore
-their native Namespace metadata before Codex executes them. The exact name may
-differ only if the current Codex/Rosetta contract deliberately changes the
-stable flattening scheme, in which case record the observed name and review the
+`clock.curr_time` and `memories.list`; Rosetta must restore their native
+Namespace metadata before Codex executes them. The exact name may differ only
+if the current Codex/Rosetta contract deliberately changes the stable
+flattening scheme, in which case record the observed name and review the
 compatibility ledger.

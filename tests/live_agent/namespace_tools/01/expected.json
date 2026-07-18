@@ -9,13 +9,11 @@
   ],
   "provider_identity": "codex_rosetta",
   "provider_display_name": "OpenAI",
-  "required_runner": "app_server_orchestrator",
-  "local_execution_environment_attached": false,
-  "orchestrator_skills_enabled": true,
+  "required_runner": "codex_exec_local",
+  "local_execution_environment_attached": true,
   "expected_native_pattern": {
     "clock.curr_time": 1,
     "memories.list": 1,
-    "skills.list": 1,
     "memory_fixture_required": "memory_summary.md",
     "gateway_log_evidence_required": true,
     "prohibited_fallback_calls_max": 0

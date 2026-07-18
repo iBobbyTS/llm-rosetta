@@ -69,16 +69,54 @@ def test_context_limit_compaction_retains_enough_command_output() -> None:
         assert expected["retained_command_output_chars_min"] >= 60_000
 
 
-def test_namespace_contract_requires_non_local_orchestrator_runner() -> None:
-    expected = json.loads(
+def test_skill_delivery_contracts_use_separate_runners() -> None:
+    namespace_expected = json.loads(
         (LIVE_AGENT / "namespace_tools" / "01" / "expected.json").read_text(
             encoding="utf-8"
         )
     )
+    local_skill_expected = json.loads(
+        (LIVE_AGENT / "local_skills" / "01" / "expected.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    orchestrator_expected = json.loads(
+        (LIVE_AGENT / "orchestrator_skills" / "01" / "expected.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
-    assert expected["required_runner"] == "app_server_orchestrator"
-    assert expected["local_execution_environment_attached"] is False
-    assert expected["orchestrator_skills_enabled"] is True
+    assert namespace_expected["required_runner"] == "codex_exec_local"
+    assert namespace_expected["local_execution_environment_attached"] is True
+    assert "skills.list" not in namespace_expected["expected_native_pattern"]
+
+    assert local_skill_expected["required_runner"] == "codex_exec_local"
+    assert local_skill_expected["local_execution_environment_attached"] is True
+    assert (
+        local_skill_expected["expected_native_pattern"]["skills_namespace_calls_max"]
+        == 0
+    )
+    local_task = (LIVE_AGENT / "local_skills" / "01" / "TASK.md").read_text(
+        encoding="utf-8"
+    )
+    local_fixture = (
+        LIVE_AGENT
+        / "local_skills"
+        / "01"
+        / ".agents"
+        / "skills"
+        / "local-skill-fixture"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "RESULT:LOCAL_SKILL_OK" not in local_task
+    assert "RESULT:LOCAL_SKILL_OK" in local_fixture
+
+    assert orchestrator_expected["required_runner"] == "app_server_orchestrator"
+    assert orchestrator_expected["local_execution_environment_attached"] is False
+    assert orchestrator_expected["orchestrator_skills_enabled"] is True
+    assert orchestrator_expected["orchestrator_provider_required"] is True
+    assert orchestrator_expected["expected_native_pattern"]["skills.list"] == 1
+    assert orchestrator_expected["expected_native_pattern"]["skills.read"] == 1
 
 
 def test_image_generation_contract_requires_codex_auth_gate() -> None:
@@ -91,6 +129,15 @@ def test_image_generation_contract_requires_codex_auth_gate() -> None:
     assert (
         expected["mandatory_prerequisites"]["codex_image_generation_auth_gate"]
         == "passed"
+    )
+    assert (
+        expected["mandatory_prerequisites"]["auth_source"]
+        == "/Users/ibobby/.codex-multi-2/auth.json"
+    )
+    assert expected["mandatory_prerequisites"]["codex_auth_mode"] == "chatgpt_oauth"
+    assert (
+        expected["mandatory_prerequisites"]["provider_request_auth"]
+        == "experimental_bearer_token"
     )
 
 

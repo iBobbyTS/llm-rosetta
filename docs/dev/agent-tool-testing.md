@@ -47,16 +47,25 @@ copied test config, using `gpt-5.6-sol` as the default GPT cell, while DeepSeek
 remains `deepseek-v4-flash` on its sole
 provider.
 
-The Namespace-tools suite is
+The Clock/Memory Namespace suite is
 [`tests/live_agent/namespace_tools`](../../tests/live_agent/namespace_tools/README.md).
-It gives the agent a fixed sequence of direct calls to `clock.curr_time`,
-`memories.list`, and `skills.list`. It tests Namespace exposure,
-Responses-to-Chat flattening/restoration, and tool execution rather than
-planning quality. The suite enables `current_time_reminder`, `memories`, and
-orchestrator skills and seeds an isolated memory root. It requires an app-server
-orchestrator runner with no attached local execution environment because Codex
-suppresses orchestrator-owned skills for local `codex exec` threads. Until that
-runner exists, report `runner_not_supported`, not a model or conversion failure.
+It gives the agent a fixed sequence of direct calls to `clock.curr_time` and
+`memories.list`, enables their local features, and seeds an isolated memory
+root. It runs through ordinary `codex exec` and tests Namespace exposure,
+Responses-to-Chat flattening/restoration, and execution rather than planning
+quality.
+
+Skill coverage is split by delivery mechanism. The
+[`local_skills`](../../tests/live_agent/local_skills/README.md) suite runs
+through ordinary `codex exec` and proves the filesystem Skill catalog plus the
+separate explicit body injection. It deliberately makes zero `skills.list` or
+`skills.read` calls. The
+[`orchestrator_skills`](../../tests/live_agent/orchestrator_skills/README.md)
+suite tests those two Namespace calls instead. It requires app-server, a thread
+without a local execution environment, `[orchestrator.skills]`, and a
+provisioned Codex Apps MCP orchestrator provider. If that runner/provider cannot
+be established, report `runner_not_supported`, not a model or conversion
+failure.
 
 The capability-exposure suite is
 [`tests/live_agent/deferred_tool_search`](../../tests/live_agent/deferred_tool_search/README.md).
@@ -127,9 +136,13 @@ description. The outer developer or development agent, not the tested model,
 decides whether that description contains a dog, grass or a lawn, and running.
 The suite also requires a Profile-configured OpenAI-compatible Images endpoint
 and a Codex auth path that passes the standalone image-generation runtime gate.
-An ordinary local-mode `experimental_bearer_token` does not pass that gate; use
-`runner_auth_not_supported` rather than attributing the missing declaration to
-the model. The suite does not measure artistic quality.
+An ordinary local-mode `experimental_bearer_token` does not pass that gate.
+For the authorized local test environment, seed the isolated Codex home from
+`/Users/ibobby/.codex-multi-2/auth.json`, verify it is ChatGPT OAuth, and keep
+the provider bearer token for routing the actual model and Images requests
+through the isolated Gateway. Use `runner_auth_not_supported` rather than
+attributing a missing declaration to the model. The suite does not measure
+artistic quality.
 
 Across these live suites, the defaults are `gpt-5.6-sol` for native GPT and
 shape reference, `deepseek-v4-flash` for third-party text/tool tests, and
@@ -248,8 +261,9 @@ test executor score deterministic fact retention; the tested model never
 evaluates its own summary. Do not confuse context compaction with HTTP
 compression such as zstd.
 All eligible CLI live cells use local-mode Provider ID `codex_rosetta` with
-display name `OpenAI`; runner-gated Namespace and image-generation cells retain
-the same Gateway identity after their app-server/auth preconditions are met.
+display name `OpenAI`; runner-gated orchestrator-Skill and image-generation
+cells retain the same Gateway identity after their app-server/auth
+preconditions are met.
 Provider-identity A/B behavior belongs to the dedicated GPT relay integration
 suite.
 
@@ -260,6 +274,11 @@ Responses-to-Chat routes expose unique flattened names such as
 `memories.list` and Rosetta must reconstruct the original Namespace before
 Codex executes it. A textual mention, a shell substitute, or a local file read
 does not count.
+
+For local filesystem Skills, prove both catalog metadata and the explicit
+injected Skill body; `skills.list` is irrelevant to that path. For
+orchestrator-owned Skills, require app-server and prove `skills.list` returns
+opaque handles that the subsequent `skills.read` reuses exactly.
 
 For deferred-plugin tasks, preserve the marketplace-add, plugin-add, plugin-list,
 and MCP-list JSON artifacts, but do not treat provisioning as execution proof.
