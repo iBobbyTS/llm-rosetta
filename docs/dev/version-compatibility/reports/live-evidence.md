@@ -160,6 +160,30 @@ local `model_catalog.json` lacks the current
 `supports_reasoning_summaries` field. This is recorded as a user-decision
 configuration block; no provider or model substitution was attempted.
 
+## Terra catalog compatibility repair and rerun — 2026-07-19
+
+The `202607191438` block occurred before any model request. The installed
+`codex-cli 0.144.6` requires the legacy `supports_reasoning_summaries` field
+when parsing `model_catalog_json`, while the alpha.23 Rosetta catalog had
+removed it after adopting `supports_reasoning_summary_parameter`. Rosetta now
+projects the legacy boolean for every local-mode model, deriving it from the
+current capability when present and defaulting to `true` for Codex's default
+summary behavior. The alpha.23 client accepts this extra field, while 0.144.6
+can start normally.
+
+| Run | Codex binary | Model / provider | Thread | Exit / marker / evaluation | Compaction evidence |
+| --- | --- | --- | --- | --- | --- |
+| `202607191446` | `codex-cli 0.144.6` | `gpt-5.6-terra` / `Pixel (Plus)` | `019f7c21-b519-7da2-8810-393472132d28` | `0` / `RESULT:COMPACTION_PROTOCOL_OK` / `completed` | 3 Responses 200s; one `user_requested` native profile; `wire_passthrough=true`; installed `compaction` follow-up observed |
+| `202607191451` | `codex-cli 0.145.0-alpha.23` | `gpt-5.6-terra` / `Pixel (Plus)` | `019f7c25-9625-7823-9520-6b1fa2bb47e6` | `0` / `RESULT:COMPACTION_PROTOCOL_OK` / `completed` | 3 Responses 200s; one `user_requested` native profile; `wire_passthrough=true`; installed `compaction` follow-up observed |
+
+Both cells used the required OAuth plus isolated Gateway bearer local mode and
+the same configured GPT route. The first run's failure was a catalog-version
+compatibility defect in Rosetta local mode, not a Terra upstream or compaction
+replay failure; both repaired runs reached the real model and completed the
+native compaction chain. This manual app-server runner does not emit the shared
+per-upstream-request usage artifact, so adjacent cache deltas remain explicitly
+unavailable rather than being synthesized from thread-level token updates.
+
 ## Split DeepSeek Flash compaction rerun — 2026-07-19
 
 The rerun used the local Codex source binary `0.145.0-alpha.23`, the isolated

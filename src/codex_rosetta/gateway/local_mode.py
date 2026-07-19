@@ -663,6 +663,18 @@ def _apply_auto_review_model_override(
     return models
 
 
+def _apply_legacy_summary_capability(
+    models: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep the pre-alpha model-catalog field for Codex 0.144.x clients."""
+    for model in models:
+        capability = model.get("supports_reasoning_summary_parameter")
+        model["supports_reasoning_summaries"] = (
+            capability if isinstance(capability, bool) else True
+        )
+    return models
+
+
 def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
     """Build a Codex catalog from configured models or the bundled defaults."""
     bundled = _catalog_resource()
@@ -682,7 +694,11 @@ def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
     configured_specs = _configured_model_specs(raw_config)
     if not configured_specs:
         models = _apply_auto_review_model_override(base_models, auto_review_model)
-        return {"models": _apply_compaction_hash_overlay(models)}
+        return {
+            "models": _apply_legacy_summary_capability(
+                _apply_compaction_hash_overlay(models)
+            )
+        }
 
     upstream_model_names = {
         name: spec.get("upstream_model") or name
@@ -728,11 +744,13 @@ def build_model_catalog(raw_config: dict[str, Any]) -> dict[str, Any]:
 
     models = _apply_auto_review_model_override(selected_models, auto_review_model)
     return {
-        "models": _apply_compaction_hash_overlay(
-            models,
-            upstream_model_names=upstream_model_names,
-            upstream_catalog=base_models,
-            preset_compaction_hashes=preset_compaction_hashes,
+        "models": _apply_legacy_summary_capability(
+            _apply_compaction_hash_overlay(
+                models,
+                upstream_model_names=upstream_model_names,
+                upstream_catalog=base_models,
+                preset_compaction_hashes=preset_compaction_hashes,
+            )
         )
     }
 

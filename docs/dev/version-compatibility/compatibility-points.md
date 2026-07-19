@@ -73,8 +73,10 @@ useful for the 0.144.x boundary. For the current alpha.23 inspection, these
 source facts supersede older wording:
 
 - Codex ModelInfo uses supports_reasoning_summary_parameter with a serde
-  default of true; supports_reasoning_summaries is no longer a target catalog
-  field.
+  default of true; supports_reasoning_summaries is no longer the alpha.23
+  target catalog field. Rosetta local-mode catalogs also emit that legacy
+  boolean as a compatibility alias for installed 0.144.x clients, deriving it
+  from the current summary capability when available.
 - ModelMessages now has optional permissions (danger_full_access,
   workspace_write, read_only), and AutoReviewMessages has policy_template.
 - Response item IDs are typed ResponseItemId values with prefix validation; the

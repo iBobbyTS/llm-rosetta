@@ -58,7 +58,7 @@ separate identities.
 
 | Boundary | Source-derived change |
 | --- | --- |
-| Model contracts | Replaced obsolete `supports_reasoning_summaries` with default-true `supports_reasoning_summary_parameter`; added permissions and auto-review contract extraction; refreshed eight-entry official catalog byte-for-byte from the target and documented intentional third-party preset differences. |
+| Model contracts | Adopted default-true `supports_reasoning_summary_parameter`, added permissions and auto-review contract extraction, and refreshed eight-entry official catalog values. Local-mode output also retains the legacy `supports_reasoning_summaries` alias so installed 0.144.x clients can parse the catalog. |
 | Response IDs | Prevented empty `msg_`/`fc_` identifiers and kept one valid stable ID across streaming events and replay. |
 | Usage | Preserved alpha.23 `cache_write_input_tokens` through non-streaming and streaming IR conversion as cache-creation usage, including reverse conversion. |
 | Search | Preserved omitted versus explicit-empty `results` and supported structured `text_result` payloads without narrowing unknown JSON. |
@@ -160,6 +160,7 @@ was installed implicitly.
 | DeepSeek exactly-once context-limit task 05 | Completed with one command start, one Remote V2 compaction, one installed follow-up, and one Rosetta mapping. |
 | Terra official context-limit task 02 | Failed official evaluation: compact/resume markers passed, but raw-wire passthrough was false. |
 | Terra manual app-server task 02 | Completed with one user-requested compaction, raw-wire passthrough, installed follow-up, and one native profile mapping. |
+| Terra manual task 02 after catalog repair | `202607191446` passed with installed `codex-cli 0.144.6`; `202607191451` passed with target `codex-cli 0.145.0-alpha.23`; both used `Pixel (Plus)` and `wire_passthrough=true`. |
 | Terra→DeepSeek task 03 | Completed; one changed compaction hash and one mapping on the same thread. |
 | DeepSeek→Terra task 04 | Completed with the same invariants. |
 | Terra and DeepSeek summary-quality cells | `not_scored`: their baseline contexts (15,270 and 17,423 tokens) exceeded the suite's 15,000-token precondition. Diagnostic output is retained but is not a pass/fail quality claim. |
@@ -190,7 +191,7 @@ They remain missing rather than being synthesized as zero.
 | `CP-04 — Request and window identity` | Changed | Extracted prompt-cache/session ownership and retained runtime identity headers. | Identity and full tests passed. | Isolated auth/session traces passed across runnable suites. |
 | `CP-05 — Responses→Chat bridge` | Changed | Added valid stable message/function IDs and cache-write mapping. | Converter/stream tests passed. | DeepSeek bridge broadly passed; Flash task 03 failed in the original matrix and follow-up, and Pro failed the additional control retest. |
 | `CP-06 — Responses Lite / additional_tools` | Changed | Extractor now understands renamed capability and typed item IDs; multi-round Lite bridge retained. | Source-contract and deferred tests passed. | Deferred discovery passed 14/14. |
-| `CP-07 — Codex model catalog` | Changed | Official catalog is byte-identical to the target; presets use the alpha field and explicit safe differences. | Catalog/preset/local-mode tests passed. | All cells resolved the requested configured models in local mode. |
+| `CP-07 — Codex model catalog` | Changed | Official alpha.23 fields use `supports_reasoning_summary_parameter`; local-mode projection adds legacy `supports_reasoning_summaries` for 0.144.x parser compatibility and derives it from the current capability. | Catalog/preset/local-mode tests passed, including the legacy alias regression. | `202607191446` (0.144.6) and `202607191451` (alpha.23) both resolved Terra through `Pixel (Plus)` and completed native compaction. |
 | `CP-08 — custom/freeform tool` | Changed | Rebased exec/apply-patch/freeform and image constraints on target source. | Tool projection and converter tests passed. | Command/builtin/deferred suites passed except DeepSeek stdin task. |
 | `CP-09 — Code tool localization` | Changed | Corrected model-facing hyphenated names and native dotted names. | Catalog/namespace tests passed. | Namespace cells observed both forms and passed. |
 | `CP-10 — Tool history consistency` | Changed | Valid/stable response IDs and replay paths tested. | ID/history/stream tests passed. | Multi-round ordinary history passed; the split DeepSeek protocol task records three model repeats as deviations while the exactly-once control passed. |

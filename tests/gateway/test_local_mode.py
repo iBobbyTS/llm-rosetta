@@ -84,6 +84,25 @@ def test_catalog_uses_only_configured_models_and_clones_terra_for_custom_names()
     assert custom["comp_hash"].startswith("rosetta-comp-v1:custom:")
 
 
+def test_catalog_emits_legacy_summary_capability_for_codex_0144_clients() -> None:
+    bundled = {model["slug"]: model for model in build_model_catalog({})["models"]}
+    assert all(
+        model["supports_reasoning_summaries"] is True for model in bundled.values()
+    )
+
+    raw = {
+        "model_groups": {
+            "third-party": {
+                "type": "llm",
+                "models": {"deepseek-v4-flash": {}, "minimax-m3": {}},
+            }
+        }
+    }
+    configured = {model["slug"]: model for model in build_model_catalog(raw)["models"]}
+    assert configured["deepseek-v4-flash"]["supports_reasoning_summaries"] is False
+    assert configured["minimax-m3"]["supports_reasoning_summaries"] is True
+
+
 def test_catalog_applies_auto_review_override_to_every_selected_model() -> None:
     raw = {
         "codex": {"auto_review_model_override": "review-alias"},
