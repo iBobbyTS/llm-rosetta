@@ -27,11 +27,14 @@ The bundled catalog currently contains eight entries:
 `gpt-5.4-mini`, `gpt-5.2`, and `codex-auto-review`. Local custom catalog
 entries are intentionally excluded from this reference.
 
-Local mode writes all eight bundled entries only when the gateway has no
+Local mode starts from all eight bundled entries only when the gateway has no
 configured models. If at least one model is configured, the generated catalog
 contains only the configured model names. A configured name matching one of the
-eight bundled slugs reuses that entry byte-for-byte at the parsed JSON value
-level.
+eight bundled slugs reuses that entry at the parsed JSON value level before
+Rosetta applies its runtime overlays. The packaged asset remains byte-identical
+to alpha.23; generated local-mode catalogs additionally carry the legacy
+`supports_reasoning_summaries` boolean for Codex 0.144.x clients and therefore
+are intentionally not byte-identical to the packaged asset.
 
 ### Compaction-hash overlay
 
@@ -164,7 +167,7 @@ disabled, so it is not a valid catalog input field.
 | --- | --- | --- | --- |
 | `default_reasoning_level` | reasoning effort or null, `"medium"` | Default effort when the user has not selected one. | Choose an effort accepted by the upstream or mapped by Rosetta. It must also appear in `supported_reasoning_levels`. |
 | `supported_reasoning_levels` | object array, `[{"effort":"low","description":"Fast"},{"effort":"high","description":"Deep"}]` | Populates selectable reasoning efforts and their UI descriptions. Current enums include `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`, subject to version changes. | Advertise only efforts that the upstream accepts or that Rosetta intentionally maps. Do not copy `ultra` merely to obtain delegation behavior. |
-| `supports_reasoning_summary_parameter` | boolean, default `true` | Alpha.23 controls whether Codex may send the Responses `reasoning.summary` parameter. The field is serde-defaulted to true and the old `supports_reasoning_summaries` key is no longer in the target catalog. | Set false only when the target client must omit the summary parameter and the generated catalog is known to be consumed by the matching Codex source. Do not rely on the removed old key. |
+| `supports_reasoning_summary_parameter` | boolean, default `true` | Alpha.23 controls whether Codex may send the Responses `reasoning.summary` parameter. The field is serde-defaulted to true and the old `supports_reasoning_summaries` key is no longer in the target catalog. Rosetta may emit that old boolean only as a runtime compatibility alias for 0.144.x clients; alpha.23 ignores the extra key. | Set false only when the target client must omit the summary parameter and the generated catalog is known to be consumed by the matching Codex source. Treat the legacy key as a compatibility shim, never as the alpha.23 capability source of truth. |
 | `default_reasoning_summary` | `"auto"`, `"concise"`, `"detailed"`, or `"none"` | Default summary mode when the user has not configured one. | Prefer `none` for third-party models until summary delivery is verified end to end. |
 | `reasoning_summary_format` | string, `"experimental"` | **Ignored in the reviewed 0.144.x baseline and alpha.23:** not present in `ModelInfo`; omitted from Rosetta third-party presets. | Do not branch Rosetta conversion on this key. Inspect actual request and stream fields instead. |
 | `support_verbosity` | boolean, `true` | When true, Codex sends the configured or default Responses `text.verbosity`; when false it omits it. | Enable only when the upstream accepts it or Rosetta strips/maps it. |

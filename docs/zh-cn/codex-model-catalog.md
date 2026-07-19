@@ -19,9 +19,11 @@
 
 打包目录目前包含八个条目：`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`、`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.2` 和 `codex-auto-review`。本文特意不包含本地自定义的目录条目。
 
-只有网关未配置任何模型时，本地模式才会写入全部八个打包条目。只要配置了至少一个
+只有网关未配置任何模型时，本地模式才会以全部八个打包条目为基础。只要配置了至少一个
 模型，生成的目录就只包含已配置的模型名称。已配置名称与八个打包 slug 之一相同时，
-会在解析后的 JSON 值层面原样复用该条目。
+会在解析后的 JSON 值层面复用该条目，然后再应用 Rosetta 的运行时 overlay。打包资产仍
+与 alpha.23 完全一致；生成的本地模式目录会额外携带供 Codex 0.144.x 客户端解析的旧版
+`supports_reasoning_summaries` 布尔字段，因此有意不会与打包资产逐字节一致。
 
 ### 压缩哈希 overlay
 
@@ -126,7 +128,7 @@ catalog 输入字段。
 | --- | --- | --- | --- |
 | `default_reasoning_level` | reasoning effort 或 null，`"medium"` | 用户未选择时使用的默认推理强度。 | 选择上游接受或 Rosetta 已映射的值，并保证它也出现在 `supported_reasoning_levels` 中。 |
 | `supported_reasoning_levels` | 对象数组，`[{"effort":"low","description":"Fast"},{"effort":"high","description":"Deep"}]` | 提供可选的推理强度及 UI 说明。当前枚举包括 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max` 和 `ultra`，后续版本可能变化。 | 只声明上游接受或 Rosetta 明确映射的档位。不要为了获得委派行为而照抄 `ultra`。 |
-| `supports_reasoning_summary_parameter` | 布尔值，默认 `true` | alpha.23 控制 Codex 是否可以发送 Responses 的 `reasoning.summary` 参数。该字段 serde 默认值为 true，目标目录不再包含旧的 `supports_reasoning_summaries`。 | 只有确定目标客户端需要省略摘要参数，且生成目录由匹配的 Codex 源码消费时才设为 false；不要依赖已移除的旧字段。 |
+| `supports_reasoning_summary_parameter` | 布尔值，默认 `true` | alpha.23 控制 Codex 是否可以发送 Responses 的 `reasoning.summary` 参数。该字段 serde 默认值为 true，目标目录不再包含旧的 `supports_reasoning_summaries`。Rosetta 只会为 0.144.x 客户端在运行时额外生成这个旧布尔字段；alpha.23 会忽略它。 | 只有确定目标客户端需要省略摘要参数，且生成目录由匹配的 Codex 源码消费时才设为 false；旧字段只是兼容 shim，不能当作 alpha.23 的能力来源。 |
 | `default_reasoning_summary` | `"auto"`、`"concise"`、`"detailed"` 或 `"none"` | 用户没有配置时的默认摘要模式。 | 第三方模型在端到端验证前优先使用 `none`。 |
 | `reasoning_summary_format` | 字符串，`"experimental"` | **已审查 0.144.x 基线及 alpha.23 均未消费：**不在 `ModelInfo` 中，也不写入 Rosetta 第三方预设。 | 不要按此字段分支 Rosetta 转换；应检查实际请求和流事件。 |
 | `support_verbosity` | 布尔值，`true` | 为 true 时，Codex 发送用户配置或默认的 Responses `text.verbosity`；为 false 时省略。 | 只有上游接受，或 Rosetta 会剥离/映射时才启用。 |

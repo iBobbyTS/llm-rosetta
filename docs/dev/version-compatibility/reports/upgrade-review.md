@@ -32,6 +32,7 @@ documentation was used as an index, not as proof.
 | Range baseline | `rust-v0.142.0`, `3a76f3ac68c8949d1cac6ea769b6ec7b8953a415` |
 | Previous source | `rust-v0.144.6`, `5d1fbf26c43abc65a203928b2e31561cb039e06d` |
 | Rosetta starting commit | `5dd45e7e60f8b5dacea321002b0a55a85b01bf17` plus the uncommitted adaptation |
+| Latest catalog compatibility repair | `4ff126e8a1717d0ce4c49f02c53d59c71d34c733` |
 | Rosetta package version | `0.144.0.r0` |
 
 The target checkout was clean and detached at the exact tag. The source

@@ -256,8 +256,12 @@ the corresponding field/tool should remain disabled or use the proven older
 surface.
 
 Rosetta local mode is the sole owner of `<codex-home>/model_catalog.json`. With
-no configured models it copies the eight bound Codex 0.145.0-alpha.23 entries unchanged;
-otherwise it writes only configured aliases in stable name order. Exact aliases found in
+no configured models it starts from the eight bound Codex 0.145.0-alpha.23
+entries; otherwise it writes only configured aliases in stable name order. In
+both paths it applies the runtime `comp_hash` overlay and emits the legacy
+`supports_reasoning_summaries` alias for 0.144.x clients; alpha.23 ignores that
+extra key, so the packaged asset remains byte-identical while the generated
+local catalog is intentionally not. Exact aliases found in
 `codex_model_presets.json` receive their declared Terra-derived preset,
 including prompt identity substitution; other aliases use the generic Terra
 copy with only `slug`, `display_name`, and `description` replaced. The runtime
