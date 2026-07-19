@@ -61,7 +61,7 @@ packaged model/tool assets, deterministic tests, and all currently executable
 CLI live-agent cells have been updated or run, but runtime compatibility remains
 **not approved** because required live gates still contain failures or unavailable
 external runners. The package version therefore remains `0.144.0.r0`. See
-[`reports/alpha-23-upgrade-review.md`](reports/alpha-23-upgrade-review.md) for
+[`reports/upgrade-review.md`](reports/upgrade-review.md) for
 the exact pass/failure matrix and adoption decision, and see
 [`reports/range-coverage-review.md`](reports/range-coverage-review.md) for
 the historical range review for 0.142.0–0.144.6.
@@ -141,7 +141,7 @@ literal two-character `\\n` sequence. The profile does not normalize or rewrite
 the resulting model arguments; OpenAI Responses passthrough remains unchanged.
 Covered by `gateway/admin/tool_catalog.json`,
 `test_code_mode_projection.py`, `test_admin_tools_catalog.py`, and the
-credential-free live evidence in `reports/alpha-23-live-evidence.md`.
+credential-free live evidence in `reports/live-evidence.md`.
 
 ## Compatibility point test matrix
 

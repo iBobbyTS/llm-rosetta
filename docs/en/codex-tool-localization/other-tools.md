@@ -104,7 +104,7 @@ Plugin, deferred, MCP-resource, context-budget, permission, and Agent Job tools 
 This table is a user-facing behavior reference for the reviewed 0.144.x
 baseline, not an upgrade record. Alpha.23 source findings and version adoption
 use the [developer compatibility checklist](../../dev/version-compatibility/upgrade-checklist.md)
-and the [current alpha.23 report](../../dev/version-compatibility/reports/alpha-23-upgrade-review.md).
+and the [current alpha.23 report](../../dev/version-compatibility/reports/upgrade-review.md).
 
 | Tools | Reviewed 0.144.x exposure condition |
 |---|---|

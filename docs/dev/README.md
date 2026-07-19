@@ -12,7 +12,7 @@ lives in [`docs/en`](../en/README.md) and [`docs/zh-cn`](../zh-cn/README.md).
 - [Upgrade checklist](version-compatibility/upgrade-checklist.md)
 - [Compatibility evidence](version-compatibility/evidence/README.md)
 - [Upgrade reports](version-compatibility/reports/README.md)
-- [Current alpha.23 source-first review](version-compatibility/reports/alpha-23-upgrade-review.md)
+- [Current alpha.23 source-first review](version-compatibility/reports/upgrade-review.md)
 
 ## Architecture and research
 

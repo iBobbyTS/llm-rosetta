@@ -17,4 +17,4 @@ Codex-Rosetta 当前仍为 `0.144.0.r0`。针对 Codex
 
 精确源码 commit、契约检查、未解决兼容点和后续真实门禁请参阅
 [开发者兼容性记录（英文）](../dev/version-compatibility/README.md) 和
-[alpha.23 升级报告](../dev/version-compatibility/reports/alpha-23-upgrade-review.md)。
+[alpha.23 升级报告](../dev/version-compatibility/reports/upgrade-review.md)。

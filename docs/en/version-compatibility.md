@@ -20,6 +20,6 @@ adoption. The installed CLI is `0.144.6`; it was not used as evidence for the
 alpha target's behavior.
 
 See the [developer compatibility record](../dev/version-compatibility/README.md)
-and the [alpha.23 upgrade report](../dev/version-compatibility/reports/alpha-23-upgrade-review.md)
+and the [alpha.23 upgrade report](../dev/version-compatibility/reports/upgrade-review.md)
 for exact source commits, contract failures, open compatibility points, and
 required live gates.

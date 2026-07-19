@@ -43,7 +43,7 @@ Rosetta runtime owners and packaged assets, and runs the available automated and
 live gates. The package version remains unchanged because required live cells
 still fail or lack their required external runner/backend. The Codex CLI release version, Codex source
 commit, Codex-Rosetta source version, and Codex-Rosetta commit remain
-independent identifiers. See the [alpha-23-upgrade-review report](reports/alpha-23-upgrade-review.md)
+independent identifiers. See the [alpha.23 upgrade report](reports/upgrade-review.md)
 for the source findings and the [range-coverage-review report](reports/range-coverage-review.md)
 for the historical 0.142.0–0.144.6 documentation review.
 

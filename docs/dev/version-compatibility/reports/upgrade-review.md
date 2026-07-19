@@ -96,7 +96,7 @@ its configured keys, and `/Users/ibobby/.codex-multi-2/auth.json`. GPT cells use
 `deepseek-v4-flash`, and multimodal cells used `mimo-v2.5`.
 
 The per-attempt route, thread, marker, evaluation, and per-request cache usage
-are in [alpha-23-live-evidence.md](alpha-23-live-evidence.md).
+are in [live-evidence.md](live-evidence.md).
 
 The 2026-07-19 new-key retest is recorded in the appendix. DeepSeek task 03
 failed again, while Terra task 03 passed. The raw Chat arguments show that

@@ -99,7 +99,7 @@ multi_agent_v1-spawn_agent
 
 下表是面向用户的已审查 0.144.x 基线行为参考，不是版本升级记录。alpha.23 的源码发现和版本采用以
 [开发者兼容性 checklist（英文）](../../dev/version-compatibility/upgrade-checklist.md)及
-[当前 alpha.23 报告（英文）](../../dev/version-compatibility/reports/alpha-23-upgrade-review.md)为准。
+[当前 alpha.23 报告（英文）](../../dev/version-compatibility/reports/upgrade-review.md)为准。
 
 | 工具 | 已审查 0.144.x 暴露条件 |
 |---|---|

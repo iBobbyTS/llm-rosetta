@@ -263,6 +263,11 @@ in `docs/dev/README.md`.
 - `docs/dev/version-compatibility/` is the sole owner of Codex upgrade
   procedures, compatibility points, source ownership, evidence, and reports.
   Do not maintain a second checklist elsewhere.
+- Versioned Codex/Rosetta documents must not put a version number, release
+  line, or prerelease marker in the filename. Use stable descriptive names such
+  as `upgrade-review.md` and `live-evidence.md`; the file content must state the
+  exact version and source identity it covers. Update every repository
+  reference when renaming such a file.
 - Before changing a Codex-facing request, response, stream, tool, session, or
   model-catalog behavior, read that directory's `README.md`,
   `rosetta-source-map.md`, `compatibility-points.md`, and
