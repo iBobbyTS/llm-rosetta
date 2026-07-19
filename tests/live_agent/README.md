@@ -17,9 +17,9 @@ handling rather than prose quality.
   fixed-offset time operations without shell or external-browser fallbacks;
   its evaluator uses Rosetta Gateway Logs to distinguish `web.run` from hosted
   `web_search` and to prove which local executor ran.
-- [`context_compaction`](context_compaction/README.md): forcing a second
-  model turn across Codex remote compaction and validating only its routing,
-  wire, persistence, and replay protocol.
+- [`context_compaction`](context_compaction/README.md): forcing a second model
+  turn across Codex remote compaction, validating routing/wire/persistence/
+  replay separately from a dedicated post-compaction exactly-once model task.
 - [`context_compaction_summary_quality`](context_compaction_summary_quality/README.md):
   running one deterministic coding-handoff scenario through GPT and DeepSeek
   with byte-identical phase-1 and post-compaction resume prompts; evaluation

@@ -383,3 +383,14 @@ def test_protocol_context_limit_cells_use_identical_non_quality_fixture() -> Non
     assert (suite / "01" / "scenario.py").read_bytes() == (
         suite / "02" / "scenario.py"
     ).read_bytes()
+
+    assert (suite / "01" / "scenario.py").read_bytes() == (
+        suite / "05" / "scenario.py"
+    ).read_bytes()
+    protocol = json.loads((suite / "01" / "expected.json").read_text())
+    exactly_once = json.loads((suite / "05" / "expected.json").read_text())
+    assert protocol["target_scope"] == "remote_compaction_protocol"
+    assert exactly_once["target_scope"] == "post_compaction_exactly_once"
+    assert (suite / "01" / "TASK.md").read_bytes() != (
+        suite / "05" / "TASK.md"
+    ).read_bytes()

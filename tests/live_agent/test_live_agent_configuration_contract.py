@@ -101,21 +101,42 @@ def test_compaction_contract_requires_remote_v2_request_kind() -> None:
         *LIVE_AGENT.glob("context_compaction_summary_quality/[0-9][0-9]/expected.json"),
     ]
 
-    assert len(paths) == 6
+    assert len(paths) == 7
     for path in paths:
         expected = json.loads(path.read_text(encoding="utf-8"))
         assert expected["expected_request_kind"] == "remote_v2_in_band", path
 
 
 def test_context_limit_compaction_retains_enough_command_output() -> None:
-    for task_id in ("01", "02"):
+    for task_id in ("01", "02", "05"):
         expected = json.loads(
             (LIVE_AGENT / "context_compaction" / task_id / "expected.json").read_text(
                 encoding="utf-8"
             )
         )
+        assert expected["model_auto_compact_token_limit"] == 19_000
         assert expected["command_max_output_tokens_min"] >= 20_000
         assert expected["retained_command_output_chars_min"] >= 60_000
+
+
+def test_compaction_protocol_and_exactly_once_scopes_are_separate() -> None:
+    suite = LIVE_AGENT / "context_compaction"
+    for task_id in ("01", "02"):
+        expected = json.loads(
+            (suite / task_id / "expected.json").read_text(encoding="utf-8")
+        )
+        assert expected["target_scope"] == "remote_compaction_protocol"
+        assert expected["required_complete_protocol_chains_min"] == 1
+        assert expected["expected_command_starts_min"] == 1
+        assert "expected_command_starts" not in expected
+
+    exactly_once = json.loads(
+        (suite / "05" / "expected.json").read_text(encoding="utf-8")
+    )
+    assert exactly_once["target_scope"] == "post_compaction_exactly_once"
+    assert exactly_once["expected_command_starts"] == 1
+    assert exactly_once["expected_compaction_count"] == 1
+    assert exactly_once["expected_rosetta_mapping_rows"] == 1
 
 
 def test_skill_delivery_contracts_use_separate_runners() -> None:

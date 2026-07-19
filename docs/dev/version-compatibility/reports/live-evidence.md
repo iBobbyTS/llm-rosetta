@@ -120,17 +120,21 @@ argument escaping, not standalone `write_stdin` expansion or session routing.
 
 ## Compaction failure classification
 
-DeepSeek context-limit task 01 is not a Rosetta replay duplication. The
-rollout itself contains three separate `exec` calls for `python3 scenario.py`,
-each followed by a completed 128,000-character result and a new compaction.
-Rosetta recognized the Remote V2 trigger and installed follow-up items; the
-model resumed from the compacted context and chose to rerun a task explicitly
-marked “exactly once”. The test intentionally couples large-output compaction
-with once-only side-effect discipline, so this is a meaningful model/session
-continuity failure. For future diagnosis, split it into a protocol-only
-fixture and a separate once-only model-behavior fixture; do not call it a
-Rosetta converter defect without a deterministic preconstructed tool-call
-control.
+The original DeepSeek context-limit task 01 was not a Rosetta replay
+duplication. Its rollout contained three separate `exec` calls for
+`python3 scenario.py`, each followed by a completed large result and a new
+compaction. Rosetta recognized the Remote V2 trigger and installed follow-up
+items; the model resumed from the compacted context and chose to rerun a task
+marked “exactly once”. That result was useful, but the fixture coupled
+protocol correctness with model behavior and could not attribute the failure
+cleanly.
+
+The suite is now split. Tasks 01–04 score only the Remote Compaction V2
+protocol; task 05 separately scores post-compaction exactly-once behavior. A
+protocol task accepts one complete trigger → compact result → installed
+follow-up → replay chain and records later model-issued repeats as deviations.
+The exactly-once task retains the exact-one command/compaction/mapping
+assertions.
 
 Terra context-limit task 02 is a runner/test-design mismatch, not evidence of
 the Terra model or Rosetta losing the request. The CLI path uses `codex exec`,
@@ -142,6 +146,32 @@ attestation was present and the compaction trigger/profile reported
 native compaction/replay but cannot satisfy the stricter raw-wire assertion;
 the runner should either use app-server for that gate or make the raw-wire
 assertion conditional on attestation.
+
+## Split DeepSeek Flash compaction rerun — 2026-07-19
+
+The rerun used the local Codex source binary `0.145.0-alpha.23`, the isolated
+local-mode Gateway, the copied Gateway configuration/key, and
+`/Users/ibobby/.codex-multi-2/auth.json`. The task prompts and expectations now
+explicitly require both the outer Code Mode cell and nested command to retain
+20,000 output tokens; the protocol task also requires emitting the nested
+result with `text(JSON.stringify(result))`, so a discarded outer result is
+treated as an invalid precondition rather than as a compaction failure.
+
+| Run | Scope | Exit / marker | Protocol evidence | Model-behavior result |
+| --- | --- | --- | --- | --- |
+| `202607191359` | `context_compaction/01`, `remote_compaction_protocol` | `0` / observed | DeepSeek Flash via `openai_responses→openai_chat`; 3 context-limit profiles, 3 completed Rosetta mappings, 3 installed follow-ups, baseline 17,796 and post-compaction 17,884 tokens, 128,042 retained output chars | `completed_with_deviations`: the model started the command 3 times and caused 3 compactions; repeats are outside this task's protocol scope |
+| `202607191356` | `context_compaction/05`, `post_compaction_exactly_once` | `0` / observed | DeepSeek Flash via `openai_responses→openai_chat`; 1 complete Remote V2 chain, one mapping, baseline 17,867 and post-compaction 18,154 tokens, 79,908 retained output chars | `completed`: exactly one command start, one compaction, one mapping |
+
+The protocol-only result demonstrates that Rosetta can recognize and replay
+multiple Remote Compaction V2 chains on the Responses-to-Chat path. The
+exactly-once result demonstrates that the same path can also preserve the
+single-command behavior when the model follows that contract. Therefore the
+earlier three-repeat observation should be classified as a DeepSeek model
+behavior deviation exposed by the coupled fixture, not as evidence that
+Rosetta duplicated a tool call. The test artifacts are bounded in
+`tmp/agent_testing_workspace/202607191359/artifacts/evaluation.json` and
+`tmp/agent_testing_workspace/202607191356/artifacts/evaluation.json`; no
+credentials or compaction payloads are included.
 
 ## New-key command task 03 retest — 2026-07-19
 

@@ -12,6 +12,9 @@ and replay through Codex-Rosetta. It does not score summary quality; use
 - `03`: `gpt-5.6-sol` through `Pixel (K12)` to
   `deepseek-v4-flash`; require `comp_hash_changed` and Rosetta mode.
 - `04`: reverse `03`; require `comp_hash_changed` and Rosetta mode.
+- `05`: `deepseek-v4-flash` post-compaction exactly-once behavior. It uses the
+  same large deterministic scenario as `01` but scores model command
+  discipline separately from the Remote V2 protocol.
 
 Every cell uses a separate timestamped run root, Codex Home, copied gateway
 configuration, port, gateway process, and Gateway Logs trace.
@@ -53,23 +56,28 @@ provider named exactly `Pixel (K12)`. Keep `deepseek-v4-flash` on its existing
 sole provider. Verify both provider names and actual upstream models from the
 trace; model aliases alone are not evidence.
 
-For context-limit tasks `01` and `02`, set:
+For context-limit tasks `01`, `02`, and `05`, set:
 
 ```toml
 model_provider = "codex_rosetta"
-model_auto_compact_token_limit = 17000
+model_auto_compact_token_limit = 19000
 ```
 
 The deterministic command emits more than 100,000 characters of neutral filler.
-The tested model must configure its command call to retain at least 20,000
-output tokens; otherwise Code Mode may select a 1,000-token result cap and keep
-the next request below the 17,000-token diagnostic limit. Record the baseline
+The tested model must configure both the outer Code Mode `exec` cell and its
+nested command call to retain at least 20,000 output tokens; otherwise either
+layer can truncate the result and keep the retained payload below the required
+60,000 characters. Record the baseline
 and post-compaction Codex token counts, selected command output-token cap, and
 retained command-output character count. Require both token counts below
-17,000, a cap of at least 20,000 tokens, at least 60,000 retained characters,
-and exactly one genuine `context_limit` compaction after the command. A run
-without that measured shape is invalid and must be reported rather than
-silently accepted.
+19,000, a cap of at least 20,000 tokens, and at least 60,000 retained
+characters. Tasks `01` and `02` pass their protocol scope after at least one
+complete trigger/result/install/replay chain. Later model restarts or additional
+complete compactions are recorded as deviations and do not reverse the protocol
+result. Task `05` separately requires exactly one command start, one compaction,
+one Rosetta mapping, and the exactly-once marker. A run without the measured
+context-limit shape is invalid and must be reported rather than silently
+accepted.
 
 For model-switch tasks `03` and `04`, use the normal token limit. Retain the
 first execution's thread id and run:
@@ -86,10 +94,13 @@ not repeated in that prompt, so the target marker proves context continuation.
 
 ## Result interpretation
 
-Follow [`EVALUATION.md`](EVALUATION.md). Require a genuine trigger item, exact
-reason/mode, one canonical compaction output, installed follow-up input, the
-expected mapping count, and the final marker. Do not count strings that merely
-appear inside prompts, source listings, tool output, or errors.
+Follow [`EVALUATION.md`](EVALUATION.md). Keep protocol and model-behavior
+classifications independent. Protocol tasks require a genuine trigger item,
+exact reason/mode, at least one canonical compaction output, an installed
+follow-up input, the expected mapping lower bound or native zero count, and the
+protocol marker. Task `05` additionally requires exact cardinality. Do not
+count strings that merely appear inside prompts, source listings, tool output,
+or errors.
 
 Classify each compact-related request from the strongest bounded evidence
 available. Prefer the Gateway request-log profile plus the HTTP path; use the

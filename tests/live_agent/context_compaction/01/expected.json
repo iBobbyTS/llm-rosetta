@@ -1,18 +1,19 @@
 {
   "id": "01",
+  "target_scope": "remote_compaction_protocol",
   "timeout_seconds": 120,
   "default_model": "deepseek-v4-flash",
   "gateway_provider": "Deepseek (Official)",
   "codex_model_provider": "codex_rosetta",
   "expected_request_kind": "remote_v2_in_band",
-  "model_auto_compact_token_limit": 17000,
+  "model_auto_compact_token_limit": 19000,
   "expected_reason": "context_limit",
   "expected_mode": "rosetta",
-  "expected_compaction_count": 1,
-  "expected_command_starts": 1,
+  "required_complete_protocol_chains_min": 1,
+  "expected_command_starts_min": 1,
   "command_max_output_tokens_min": 20000,
   "retained_command_output_chars_min": 60000,
-  "expected_rosetta_mapping_rows": 1,
+  "expected_rosetta_mapping_rows_min": 1,
   "success_marker": "RESULT:COMPACTION_PROTOCOL_OK",
   "evaluation_artifact": "artifacts/evaluation.json"
 }

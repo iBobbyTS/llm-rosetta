@@ -311,6 +311,14 @@ profile containing `compaction_mode` and `compaction_reason`, combined with
 mapping or native-item persistence and installed follow-up evidence, is not a
 rollout-only signal.
 
+Keep Remote Compaction protocol correctness separate from post-compaction
+model behavior. A protocol-scoped cell passes after its required number of
+complete trigger/result/install/replay chains; later model command repetition
+is a recorded deviation. Score exactly-once command discipline only in a task
+whose `target_scope` explicitly selects that behavior. Never classify a model
+restart after a complete chain as `infrastructure_failure` or as evidence that
+Rosetta duplicated the command.
+
 For `context_compaction_summary_quality`, read canonical expected facts from
 the suite root, not the isolated worktree, and verify the two model cells use
 byte-identical `TASK.md`, `scenario.py`, and `QUERY.md` bytes before running

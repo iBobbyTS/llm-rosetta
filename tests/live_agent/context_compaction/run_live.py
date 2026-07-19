@@ -71,6 +71,7 @@ def _configure_run(
     *,
     model: str,
     port: int,
+    auto_compact_token_limit: int,
 ) -> str:
     gateway_path = run_root / "gateway" / "config.jsonc"
     config = json.loads(_strip_jsonc_comments(gateway_path.read_text(encoding="utf-8")))
@@ -110,7 +111,7 @@ def _configure_run(
             'sandbox_mode = "danger-full-access"',
             'approval_policy = "never"',
             'model_reasoning_effort = "medium"',
-            "model_auto_compact_token_limit = 17000",
+            f"model_auto_compact_token_limit = {auto_compact_token_limit}",
             "",
             "[model_providers.codex_rosetta]",
             'name = "OpenAI"',
@@ -529,6 +530,7 @@ def main() -> int:
         gateway_log_root,
         model=args.model,
         port=port,
+        auto_compact_token_limit=int(expected["model_auto_compact_token_limit"]),
     )
     _validate_auth(run_root, port=port, client_key=client_key)
 

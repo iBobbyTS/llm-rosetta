@@ -7,7 +7,7 @@ Codex version: 0.145.0-alpha.23
 - Review mode: **full inventory review, source-first**.
 - Rosetta's source adaptation and deterministic checks are complete.
 - Codex 0.145.0-alpha.23 compatibility is **not approved**: two runnable
-  live-agent cells failed, two compaction cells failed, and several mandatory
+  live-agent cells failed, one compaction cell failed, and several mandatory
   gates could not run with the supplied configuration/environment.
 - The package remains `0.144.0.r0`. No release, commit, or source-compatibility
   claim was made.
@@ -156,15 +156,17 @@ was installed implicitly.
 
 | Cell | Result |
 | --- | --- |
-| DeepSeek context-limit task 01 | Failed infrastructure contract: the model reran the one-shot scenario three times, producing three compactions/mappings instead of exactly one. |
+| DeepSeek protocol-only context-limit task 01 | `completed_with_deviations`: three complete Remote V2 chains passed; the model also started the command three times, which is recorded outside the protocol score. |
+| DeepSeek exactly-once context-limit task 05 | Completed with one command start, one Remote V2 compaction, one installed follow-up, and one Rosetta mapping. |
 | Terra official context-limit task 02 | Failed official evaluation: compact/resume markers passed, but raw-wire passthrough was false. |
 | Terra manual app-server task 02 | Completed with one user-requested compaction, raw-wire passthrough, installed follow-up, and one native profile mapping. |
 | Terra→DeepSeek task 03 | Completed; one changed compaction hash and one mapping on the same thread. |
 | DeepSeek→Terra task 04 | Completed with the same invariants. |
 | Terra and DeepSeek summary-quality cells | `not_scored`: their baseline contexts (15,270 and 17,423 tokens) exceeded the suite's 15,000-token precondition. Diagnostic output is retained but is not a pass/fail quality claim. |
 
-Thus the scored/executable compaction evidence is three completed and two
-failed cells, plus two explicitly unscored quality cells.
+Thus the scored/executable compaction evidence is five completed (including
+one protocol result with model deviations) and one failed cell, plus two
+explicitly unscored quality cells.
 
 ### Cache-continuation evidence
 
@@ -191,7 +193,7 @@ They remain missing rather than being synthesized as zero.
 | `CP-07 — Codex model catalog` | Changed | Official catalog is byte-identical to the target; presets use the alpha field and explicit safe differences. | Catalog/preset/local-mode tests passed. | All cells resolved the requested configured models in local mode. |
 | `CP-08 — custom/freeform tool` | Changed | Rebased exec/apply-patch/freeform and image constraints on target source. | Tool projection and converter tests passed. | Command/builtin/deferred suites passed except DeepSeek stdin task. |
 | `CP-09 — Code tool localization` | Changed | Corrected model-facing hyphenated names and native dotted names. | Catalog/namespace tests passed. | Namespace cells observed both forms and passed. |
-| `CP-10 — Tool history consistency` | Changed | Valid/stable response IDs and replay paths tested. | ID/history/stream tests passed. | Multi-round ordinary history passed; DeepSeek compaction task repeated the one-shot scenario. |
+| `CP-10 — Tool history consistency` | Changed | Valid/stable response IDs and replay paths tested. | ID/history/stream tests passed. | Multi-round ordinary history passed; the split DeepSeek protocol task records three model repeats as deviations while the exactly-once control passed. |
 | `CP-11 — Deferred tool discovery` | Changed | Shared MCP Types now include deferred-only MCP declarations with exact authorization. | Projection tests passed. | 14/14 deferred cells passed. |
 | `CP-12 — Codex tool usage tips` | Changed | Refreshed reviewed static descriptions and target binding. | 53-item catalog tests passed. | Built-in tool suites passed. |
 | `CP-13 — Skill delivery surfaces` | Changed | Local skill boundary retained; orchestrator remains provider-owned. | Fixture/full tests passed. | Local skill 2/2 passed; orchestrator runner unsupported. |
@@ -201,7 +203,7 @@ They remain missing rather than being synthesized as zero.
 | `CP-17 — Stream lifecycle` | Changed | Added cache-write usage in streaming and stable IDs across events. | Stream-focused rerun and full suite passed. | Runnable streaming cells terminated correctly; eight upstream events omitted usage as documented. |
 | `CP-18 — Message phase` | Possibly unchanged | Phase ownership remains client-side; new protocol fields were inventoried. | Phase/tool tests passed. | Subagent and ordinary phase behavior passed; fresh GUI Browser phase was not validly runnable. |
 | `CP-19 — Reasoning` | Changed | Adopted default-true summary parameter and preserved reasoning/include behavior. | Contract, preset, converter tests passed. | Reasoning-capable ordinary continuations passed; no separate formal C-matrix was run. |
-| `CP-20 — Context compaction resilience` | Changed | Extracted retry/output-ID/cache-write changes and added stream/nonstream mappings. | Compaction contracts and full suite passed. | Three completed, two failed, two not scored; DeepSeek failure is model/session continuity, Terra raw-wire failure is CLI-attestation test design. |
+| `CP-20 — Context compaction resilience` | Changed | Extracted retry/output-ID/cache-write changes and added stream/nonstream mappings. | Compaction contracts and full suite passed. | Five completed, one failed, two not scored; split DeepSeek protocol and exactly-once cells passed, while Terra raw-wire remains a CLI-attestation test-design mismatch. |
 | `CP-21 — GPT relay provider identity` | Changed | Audited provider/session/route identity and retained explicit profile selection. | Identity/profile tests passed. | Terra Pixel route was captured repeatedly; formal C0-C5 relay matrix was not run, so unresolved. |
 | `CP-22 — Model-group tool profiles` | Changed | Added permissions/auto-review fields and reviewed third-party profile differences. | Preset/local-mode/tool tests passed. | Terra, DeepSeek, and MiMo selected expected routes/tools; image profile backend failed. |
 | `CP-23 — Static tool catalog` | Changed | Refreshed 53 entries and metadata to exact alpha.23 tag/commit. | Catalog equality and projection tests passed. | Model-visible native/deferred names were exercised; Browser/orchestrator surfaces remain unverified. |
@@ -214,11 +216,10 @@ They remain missing rather than being synthesized as zero.
    current compatibility evidence and continue monitoring model variance.
 2. The Images endpoint must expose Codex alpha.23's `gpt-image-2`, or the
    deployment must provide an explicitly compatible image-model mapping.
-3. DeepSeek's one-shot compaction replay is a model/session continuity failure;
-   Terra's official raw-wire result is a CLI-runner/attestation gate mismatch.
-   Split the once-only and protocol-only tests, and run the raw-wire gate via
-   app-server or condition it on attestation before treating either as a
-   Rosetta defect.
+3. Terra's official raw-wire result is a CLI-runner/attestation gate mismatch.
+   The DeepSeek protocol and exactly-once scopes are now split and both passed;
+   run the Terra raw-wire gate via app-server or condition it on attestation
+   before treating the remaining result as a Rosetta defect.
 4. Summary-quality fixtures need a valid below-15k baseline before they can be
    scored.
 5. Network sidecar/Bing, fresh-task Browser plus judge, orchestrator provider,
