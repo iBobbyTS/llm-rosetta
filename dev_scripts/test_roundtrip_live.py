@@ -30,6 +30,7 @@ import httpx
 
 from codex_rosetta import get_converter_for_provider
 from codex_rosetta.converters.base.context import StreamContext
+from codex_rosetta.gateway.live_gate import require_live_call_approval
 
 # ============================================================
 # Prompts & tool schema
@@ -459,6 +460,8 @@ def run_pass(
 
 
 def main() -> None:
+    require_live_call_approval()
+
     parser = argparse.ArgumentParser(description="Live SSE round-trip test")
     parser.add_argument(
         "--provider",

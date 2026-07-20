@@ -26,6 +26,12 @@ LIVE_EXAMPLES = tuple(
         for path in REPO_ROOT.glob(pattern)
     )
 )
+LIVE_DEV_SCRIPTS = tuple(
+    sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in REPO_ROOT.glob("dev_scripts/*live*.py")
+    )
+)
 
 
 def test_live_call_gate_fails_closed_without_developer_approval(monkeypatch) -> None:
@@ -78,6 +84,21 @@ def test_every_live_example_gates_before_dotenv(relative_path: str) -> None:
         in source
     )
     assert source.index("require_live_call_approval()") < source.index("load_dotenv()")
+
+
+@pytest.mark.parametrize("relative_path", LIVE_DEV_SCRIPTS)
+def test_every_live_dev_script_gates_before_loading_credentials(
+    relative_path: str,
+) -> None:
+    source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+
+    assert (
+        "from codex_rosetta.gateway.live_gate import require_live_call_approval"
+        in source
+    )
+    assert source.index("require_live_call_approval()") < source.index(
+        "\n    load_env()\n"
+    )
 
 
 @pytest.mark.parametrize(
