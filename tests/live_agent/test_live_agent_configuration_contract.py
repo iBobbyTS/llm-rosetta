@@ -19,6 +19,14 @@ from codex_rosetta.gateway.live_gate import (
 LIVE_AGENT = Path(__file__).parent
 REPO_ROOT = LIVE_AGENT.parents[1]
 
+LIVE_EXAMPLES = tuple(
+    sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for pattern in ("examples/rest_based/*.py", "examples/sdk_based/*.py")
+        for path in REPO_ROOT.glob(pattern)
+    )
+)
+
 
 def test_live_call_gate_fails_closed_without_developer_approval(monkeypatch) -> None:
     monkeypatch.delenv(LIVE_CALL_APPROVAL_ENV, raising=False)
@@ -59,6 +67,17 @@ def test_every_python_live_entrypoint_gates_before_sensitive_work(
     assert source.index("require_live_call_approval()") < source.index(
         first_sensitive_operation
     )
+
+
+@pytest.mark.parametrize("relative_path", LIVE_EXAMPLES)
+def test_every_live_example_gates_before_dotenv(relative_path: str) -> None:
+    source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+
+    assert (
+        "from codex_rosetta.gateway.live_gate import require_live_call_approval"
+        in source
+    )
+    assert source.index("require_live_call_approval()") < source.index("load_dotenv()")
 
 
 @pytest.mark.parametrize(

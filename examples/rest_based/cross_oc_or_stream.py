@@ -27,7 +27,9 @@ import sys
 
 import httpx
 from dotenv import load_dotenv
+from codex_rosetta.gateway.live_gate import require_live_call_approval
 
+require_live_call_approval()
 load_dotenv()
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
