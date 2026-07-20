@@ -245,6 +245,40 @@ class TestPersistenceManagerSchema:
         with pytest.raises(RuntimeError, match="column/type/constraint shape differs"):
             PersistenceManager(str(tmp_path))
 
+    @pytest.mark.parametrize(
+        "index_sql",
+        [
+            "CREATE UNIQUE INDEX idx_ccm_principal "
+            "ON codex_compaction_mappings(principal_id)",
+            "CREATE INDEX idx_ccm_principal "
+            "ON codex_compaction_mappings(principal_id) "
+            "WHERE principal_id IS NOT NULL",
+        ],
+    )
+    def test_rejects_existing_required_index_with_wrong_attributes(
+        self, tmp_path, index_sql
+    ):
+        conn = sqlite3.connect(tmp_path / "gateway.db")
+        conn.executescript("""
+            CREATE TABLE codex_compaction_mappings (
+                principal_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL,
+                replacement_text TEXT NOT NULL,
+                replacement_bytes INTEGER NOT NULL,
+                source_model TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                prompt_sha256 TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                PRIMARY KEY (principal_id, token_hash)
+            );
+        """)
+        conn.execute(index_sql)
+        conn.close()
+
+        with pytest.raises(RuntimeError, match="has unexpected attributes"):
+            PersistenceManager(str(tmp_path))
+
     def test_rejects_existing_required_index_with_wrong_columns(self, tmp_path):
         conn = sqlite3.connect(tmp_path / "gateway.db")
         conn.executescript("""

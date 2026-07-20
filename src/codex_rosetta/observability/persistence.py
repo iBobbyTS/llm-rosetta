@@ -139,23 +139,30 @@ _EXPECTED_SCHEMA_COLUMNS: dict[str, tuple[tuple[str, str, int, int], ...]] = {
     ),
 }
 
-_EXPECTED_SCHEMA_INDEXES: dict[str, dict[str, tuple[str, ...]]] = {
+_EXPECTED_SCHEMA_INDEXES: dict[
+    str, dict[str, tuple[tuple[str, ...], int, str, int]]
+] = {
     "request_log": {
-        "idx_rl_timestamp": ("timestamp",),
-        "idx_rl_status": ("status_code",),
+        "idx_rl_timestamp": (("timestamp",), 0, "c", 0),
+        "idx_rl_status": (("status_code",), 0, "c", 0),
     },
     "error_dumps": {
-        "idx_ed_timestamp": ("timestamp",),
-        "idx_ed_request_log": ("request_log_id",),
+        "idx_ed_timestamp": (("timestamp",), 0, "c", 0),
+        "idx_ed_request_log": (("request_log_id",), 0, "c", 0),
     },
     "tool_call_mappings": {
-        "idx_tcm_expire_at": ("expire_at",),
-        "idx_tcm_principal": ("principal_id",),
-        "idx_tcm_session": ("principal_id", "provider_name", "model", "session_id"),
+        "idx_tcm_expire_at": (("expire_at",), 0, "c", 0),
+        "idx_tcm_principal": (("principal_id",), 0, "c", 0),
+        "idx_tcm_session": (
+            ("principal_id", "provider_name", "model", "session_id"),
+            0,
+            "c",
+            0,
+        ),
     },
     "codex_compaction_mappings": {
-        "idx_ccm_expire_at": ("expires_at",),
-        "idx_ccm_principal": ("principal_id",),
+        "idx_ccm_expire_at": (("expires_at",), 0, "c", 0),
+        "idx_ccm_principal": (("principal_id",), 0, "c", 0),
     },
 }
 
@@ -551,16 +558,30 @@ class PersistenceManager:
                 )
 
         for table, expected_indexes in _EXPECTED_SCHEMA_INDEXES.items():
-            observed_names = {
-                str(row[1])
+            observed_indexes = {
+                str(row[1]): (int(row[2]), str(row[3]), int(row[4]))
                 for row in self._conn.execute(f"PRAGMA index_list({table})").fetchall()
             }
-            for index_name, expected_columns in expected_indexes.items():
-                if index_name not in observed_names:
+            for index_name, expected in expected_indexes.items():
+                expected_columns, expected_unique, expected_origin, expected_partial = (
+                    expected
+                )
+                if index_name not in observed_indexes:
                     raise RuntimeError(
                         f"incompatible gateway.db schema for {table}: missing index "
                         f"{index_name!r}; rebuild the data directory because "
                         "Rosetta-version migration is unsupported"
+                    )
+                observed_attributes = observed_indexes[index_name]
+                if observed_attributes != (
+                    expected_unique,
+                    expected_origin,
+                    expected_partial,
+                ):
+                    raise RuntimeError(
+                        f"incompatible gateway.db schema for {table}: index "
+                        f"{index_name!r} has unexpected attributes; rebuild the data "
+                        "directory because Rosetta-version migration is unsupported"
                     )
                 observed_columns = tuple(
                     str(row[2])
