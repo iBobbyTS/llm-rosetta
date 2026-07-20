@@ -1,7 +1,7 @@
 # Persistent Audit Findings and Debt
 
 Last updated: 2026-07-20
-Repository base: `804efef03d91f72771f27228bde26003d6ba40fa`; targeted omission-remediation re-audit `20260720-1239` is in the working tree
+Repository base: `de9c96b8b346b5a338e81ea7fa66ba1a0c590d7b`; third omission-remediation re-audit `20260720-1554` is in the working tree
 Profile: `docs/audit-profile.md` (Approved)
 
 ## Conclusion ownership
@@ -18,11 +18,12 @@ authorized the remediation wave documented in
 | AUD-002 | Compaction replacement persistence has no aggregate row/byte quota | Add bounded, transactional persistence controls and regression tests; exact limits can be proposed within the approved local/LAN risk profile. |
 | AUD-001 | Rosetta-version migration and legacy paths conflict with the no-migration boundary | Reject incompatible legacy config/state and remove the active migration/alias paths; current protocol compatibility remains explicit. |
 | AUD-003 | Real-call runners lack a fail-closed developer-approval gate | Add an explicit opt-in gate and deterministic tests proving no external-call subprocess/client starts without it. |
-| AUD-006 | Live-call approval gate omitted executable examples | Gate every REST/SDK example before dotenv/credentials and enforce directory-complete coverage. |
+| AUD-006 | Live-call approval gate omitted executable examples and a live SSE development script | Gate each real-call entry point before dotenv/credentials and enforce convention-based inventory coverage. |
 | AUD-007 | Admin tool-profile default still depends on stripped provider metadata | Derive the runtime profile from `api_type + base_url` using the same URL-authoritative preset rules, without persisting UI options. |
 | AUD-008 | Audit coverage ledger contradicts current finding/closure status | Reconcile current coverage, control status, and rotation queue after reopening affected findings. |
 | AUD-010 | SQLite index validation omitted uniqueness/origin/partial attributes | Validate the complete required index shape before startup. |
-| AUD-012 | Upstream redirects could forward provider authorization to a second target | Reject every upstream redirect before a second request is sent. |
+| AUD-012 | Redirect policy was not enforced at every HTTP boundary | Deny provider redirects by default, isolate explicit provider opt-in, and force non-provider auxiliary requests to deny redirects. |
+| AUD-014 | Tavily responses or exceptions could reflect the configured API key | Remove the configured key from success, error, and transport-exception data before model/client/diagnostic exposure. |
 
 ### Business/semantic decisions requiring owner authority
 
@@ -30,8 +31,8 @@ authorized the remediation wave documented in
 | --- | --- | --- |
 | AUD-005 | **Recorded:** provider vendor/variant is derived from URL; unmatched URLs use custom and remain allowed | URL-authoritative custom endpoint semantics are product policy; the implementation boundary must follow the owner decision. |
 | AUD-004 | Whether to adopt stronger artifact-integrity controls such as digest pinning, SBOM, provenance, and signing before a public release or stronger security claim | Manual release and the current pre-release risk acceptance are explicit product policy; stronger guarantees require an owner decision. |
-| AUD-009 | **Recorded:** missing `api_type` is inferred at runtime from exact preset URL support order; custom defaults to Responses; no write-back | Protocol selection changes routing behavior, so its fallback order requires owner authority. |
-| AUD-011 | **Recorded:** arbitrary HTTP(S) custom URLs may receive upstream API keys within local/LAN scope; redirects are prohibited | The initial egress/key-disclosure boundary requires owner authority; redirect behavior is a repairable transport control. |
+| AUD-009 | **Recorded:** only exact backend-supported `api_type` values count as present; every other value is inferred from exact preset URL support order, custom defaults to Responses, and no write-back occurs | Protocol selection changes routing behavior, so its fallback order requires owner authority. |
+| AUD-011 | **Recorded:** arbitrary HTTP(S) custom URLs may receive upstream API keys within local/LAN scope; redirects default off but may be explicitly enabled per provider | The egress/key-disclosure boundary and opt-in redirect expansion require owner authority; policy enforcement remains a repairable transport control. |
 
 The remaining `No Action`, deterministic-only, and excluded-runtime statements
 are evidence status or explicit scope limits, not additional remediation
@@ -46,13 +47,14 @@ claims.
 | AUD-001 | Should Plan | Agent-Fixable | Closed | Rosetta-version config/state/API migration and legacy compatibility paths were rejected or removed under the prelaunch no-migration boundary | SCN-08, SCN-06, DATA-03; config/local mode/admin/persistence/core API | Project owner / core and gateway owners | Reopen if a migration path is added |
 | AUD-003 | Should Plan | Agent-Fixable | Closed | Shared exact-marker gate now covers every enumerated real-call entry point | SCN-11; scripts/live-agent/integration/agent control plane | Project owner / test-harness owner | Reopen on any new ungated live entry point |
 | AUD-005 | Should Plan | Decision Recorded | Closed | URL-authoritative runtime resolution and Admin profile derivation now agree without persisting options | SCN-09; provider/config/Admin UI | Project owner decision recorded in profile | Reopen if provider options become persisted or URL semantics change |
-| AUD-006 | Should Plan | Agent-Fixable | Closed | Integration/agent launchers and all 24 executable examples fail closed before credentials/external work | SCN-11; integration, examples, and agent launch scripts | Project owner / test-harness owner | Reopen on any new real-call entry point |
+| AUD-006 | Should Plan | Agent-Fixable | Closed | Integration/agent launchers, all 24 executable examples, and the live SSE development script fail closed before credentials/external work | SCN-11; integration, examples, dev scripts, and agent launch scripts | Project owner / test-harness owner | Reopen on any new real-call entry point |
 | AUD-007 | Should Plan | Agent-Fixable | Closed | Admin profile is derived from runtime API fields and URL/protocol rules | SCN-09; Admin UI/config route | Gateway/Admin owner | Reopen if API response loses required derived fields |
-| AUD-008 | Should Plan | Agent-Fixable | Closed | Findings, coverage, system map, run evidence, and rotation queue reconciled | audit control plane | Audit owner | Reopen when a remediation run leaves contradictory ledger state |
+| AUD-008 | Should Plan | Agent-Fixable | Closed | Findings, coverage, system map, run evidence, and rotation queue reconciled to the third omission baseline | audit control plane | Audit owner | Reopen when a remediation run leaves contradictory ledger state |
 | AUD-010 | Should Plan | Agent-Fixable | Closed | SQLite validator checks columns, constraints, primary keys, required index columns, uniqueness, origin, and partial flag | DATA-01/DATA-03; persistence startup/write path | Persistence owner | Reopen on schema/table/index change without updated contract |
-| AUD-012 | Must Fix | Agent-Fixable | Closed | HTTP client rejects all redirects before any credential-bearing follow-up request | PROVIDER-01/SCN-09; transport boundary | Gateway transport owner | Reopen if redirect behavior or HTTP client changes |
-| AUD-009 | Should Plan | Decision Recorded | Closed | Missing `api_type` is inferred in memory using `responses`, `chat`, `anthropic`, `google` order; custom defaults to Responses; warning emitted | PROVIDER-01; config/Admin | Project owner decision recorded in profile | Reopen if fallback order or persistence semantics change |
-| AUD-011 | Should Plan | Decision Recorded | Risk Accepted | Direct arbitrary HTTP(S) custom egress and key delivery are accepted within local/LAN scope; redirect expansion is prohibited | PROVIDER-01/SCN-09; transport boundary | Project owner | Reopen if deployment boundary or direct-egress policy changes |
+| AUD-012 | Must Fix | Agent-Fixable | Closed | Provider redirects are denied by default and isolated by policy; auxiliary HTTP requests force no-follow; provider opt-in is explicit | PROVIDER-01/SCN-09; transport boundary | Gateway transport owner | Reopen if redirect behavior or HTTP client changes |
+| AUD-014 | Must Fix | Agent-Fixable | Closed | Tavily success/error data and detached transport exceptions redact the configured API key before exposure | SIDE-01/CTRL-03; search/diagnostic boundary | Gateway search owner | Reopen if Tavily client or redaction boundary changes |
+| AUD-009 | Should Plan | Decision Recorded | Closed | Only exact backend-supported `api_type` strings are present; all other values infer in memory using `responses`, `chat`, `anthropic`, `google` order; custom defaults to Responses; warning emitted | PROVIDER-01; config/Admin | Project owner decision recorded in profile | Reopen if support list, fallback order, or persistence semantics change |
+| AUD-011 | Should Plan | Decision Recorded | Risk Accepted | Direct arbitrary HTTP(S) custom egress and key delivery are accepted within local/LAN scope; provider redirect expansion requires explicit opt-in | PROVIDER-01/SCN-09; transport boundary | Project owner | Reopen if deployment boundary, direct-egress policy, or redirect policy changes |
 
 ## Closed Findings
 
@@ -62,23 +64,34 @@ claims.
 | AUD-002 | 20260719-1712 / working tree | Single-row, per-principal and global compaction row/byte quotas enforced transactionally with focused tests | Chosen limits are local/LAN operational limits; no disk-recovery guarantee | Reopen if compaction storage semantics change |
 | AUD-003 | 20260720-1107 / `e7f72bf` | Exact opt-in gate tested fail-closed for enumerated live/integration runners | Approved development live runs remain outside audit evidence | Reopen if a runner bypasses the shared gate |
 | AUD-005 | 20260720-1107 / `e7f72bf` | URL-authoritative preset/custom resolution, runtime profile derivation, and no-option persistence tests | Custom egress remains owner-accepted local/LAN risk; no public claim | Reopen if provider options become persisted or matching diverges |
-| AUD-006 | 20260720-1239 / `35521ab` | All 24 REST/SDK examples gate before dotenv; directory-discovered contract tests pass | No real-call trajectory was run | Reopen on new runner/example |
+| AUD-006 | 20260720-1554 / `5d95668` | Live SSE development script gates before `.env`; `dev_scripts/*live*.py` joins the dynamic contract inventory | No real-call trajectory was run | Reopen on new runner/example/dev script |
 | AUD-007 | 20260720-1107 / `e7f72bf` | Admin provider/model-group profile and validation rendering use runtime-derived fields | No browser deployment evidence | Reopen if Admin API/UI contract changes |
-| AUD-008 | 20260720-1239 / working tree | Profile, findings, coverage, system map, README, and immutable run evidence reconciled to `804efef` | Ledger validity is repository-local | Reopen on contradictory status |
-| AUD-009 | 20260720-1239 / `804efef` | Runtime inference, one warning per active provider load, Admin rendering, and no-write-back tests pass | A wrong custom URL can still select Responses until operator corrects it | Reopen if fallback order or persistence changes |
+| AUD-008 | 20260720-1554 / working tree | Profile, findings, coverage, system map, README, and immutable run evidence reconciled to `de9c96b` | Ledger validity is repository-local | Reopen on contradictory status |
+| AUD-009 | 20260720-1554 / `3f2d044` | Unknown strings, empty values, booleans, numbers, and containers all infer at runtime; Admin rendering and no-write-back tests pass | A wrong custom URL can still select Responses until operator corrects it | Reopen if support list, fallback order, or persistence changes |
 | AUD-010 | 20260720-1239 / `ec8419b` | SQLite schema fingerprint includes index uniqueness/origin/partial attributes with focused tests | No restore/long-run stress claim | Reopen on schema change |
-| AUD-011 | 20260720-1239 / `477fa00`, `804efef` | Profile retains accepted direct custom egress while transport rejects redirects | Direct custom URL SSRF/account-security risk remains accepted within local/LAN boundary | Reopen if scope or policy changes |
-| AUD-012 | 20260720-1239 / `477fa00` | Loopback regression proves a redirect response does not reach its target | DNS/proxy behavior was not live-tested | Reopen if redirect/client behavior changes |
+| AUD-011 | 20260720-1554 / `3e327c8` | Profile retains accepted direct custom egress and explicit provider redirect opt-in while auxiliary requests remain no-follow | Direct custom URL and enabled redirect-target SSRF/account-security risk remain accepted within local/LAN boundary | Reopen if scope or policy changes |
+| AUD-012 | 20260720-1554 / `3e327c8` | Loopback regressions prove default provider and auxiliary redirects do not reach their target; explicit provider opt-in is separately tested | DNS/proxy behavior was not live-tested; opt-in can forward credentials | Reopen if redirect/client behavior changes |
+| AUD-014 | 20260720-1554 / `b7542d2`, `de9c96b` | Success, HTTP error, and transport-exception reflection tests prove the configured Tavily key is absent and the original exception cause is detached | No real Tavily response was exercised | Reopen if Tavily response/error handling changes |
 
 ## Omission-remediation re-audit — `20260720-1239`
 
 The second omission pass reopened incomplete controls, identified redirect credential exposure, and replaced the earlier AUD-009 decision. Details and current evidence are in [`docs/audit/runs/20260720-1239/REPORT.md`](runs/20260720-1239/REPORT.md) and [`EVIDENCE.md`](runs/20260720-1239/EVIDENCE.md). Prior runs remain historical evidence only.
 
-### Current classification
+### Classification at that run
 
-- Agent-fixable and closed: AUD-003, AUD-006 (including executable examples), AUD-007, AUD-008, AUD-010 (complete index attributes), AUD-012 (redirect prohibition).
+- Agent-fixable and closed at that run: AUD-003, AUD-006 (including executable examples), AUD-007, AUD-008, AUD-010 (complete index attributes), AUD-012 (the then-current redirect prohibition).
 - Business semantics recorded: AUD-005 (URL-authoritative custom behavior), AUD-009 (runtime protocol inference and warning), AUD-011 (direct arbitrary custom HTTP(S) egress accepted within local/LAN scope).
 - No live/provider/deployment claim: this run remains static/deterministic only.
+
+## Third omission-remediation re-audit — `20260720-1554`
+
+The third omission pass reopened AUD-006, AUD-009, and AUD-012, reconciled AUD-008, and opened AUD-014 for Tavily credential reflection. Owner decisions permit explicit per-provider redirects and require every backend-unrecognized `api_type` value to behave as missing. Details and current evidence are in [`docs/audit/runs/20260720-1554/REPORT.md`](runs/20260720-1554/REPORT.md) and [`EVIDENCE.md`](runs/20260720-1554/EVIDENCE.md).
+
+### Current classification
+
+- Agent-fixable and closed: AUD-006 (including the live SSE dev script), AUD-008, AUD-012 (default-deny plus auxiliary isolation), and AUD-014 (Tavily reflected-token boundary).
+- Business semantics recorded: AUD-005 (URL-authoritative custom behavior), AUD-009 (only backend-recognized values are explicit; all others infer), AUD-011 (direct custom egress and explicit provider redirect opt-in accepted within local/LAN scope), and rejected candidate AUD-013.
+- No additional owner decision is required. No live/provider/deployment claim is made; this run remains static/deterministic only.
 
 ## Accepted Debt and Risk
 
@@ -469,16 +482,16 @@ Observed or supported failure: UI exposes `Custom`; config accepts unknown types
 
 - Severity: Should Plan
 - Decision class: Agent-Fixable
-- Status: Closed in omission-remediation re-audit `20260720-1239`
+- Status: Closed in third omission-remediation re-audit `20260720-1554`
 - First detected run: `20260719-1802`
-- Last updated run: `20260720-1239`
+- Last updated run: `20260720-1554`
 - Owner: Project owner / live-test harness owner
 
 ### Failure and closure
 
-The omission audits found SDK/REST E2E, agentabi, relay, agent-launch paths, and later all 24 executable examples could reach credentials, subprocesses, or network clients without the shared gate. The remediation added the exact-marker fail-closed gate to every entry point before sensitive work. Example coverage is directory-discovered so a newly added script cannot silently fall outside a static list.
+The omission audits found SDK/REST E2E, agentabi, relay, agent-launch paths, all 24 executable examples, and later `dev_scripts/test_roundtrip_live.py` could reach credentials, subprocesses, or network clients without the shared gate. The remediation added the exact-marker fail-closed gate before sensitive work. Example directories and `dev_scripts/*live*.py` are dynamically inventoried so the established live-script convention cannot silently fall outside a static list.
 
-- Closure evidence: `35521ab`; `scripts/require_live_call_approval.sh`; `src/codex_rosetta/gateway/live_gate.py`; all live/integration/example entry points; `tests/live_agent/test_live_agent_configuration_contract.py`.
+- Closure evidence: `35521ab`, `5d95668`; `scripts/require_live_call_approval.sh`; `src/codex_rosetta/gateway/live_gate.py`; live/integration/example/dev entry points; `tests/live_agent/test_live_agent_configuration_contract.py`.
 - Residual risk: an approved development run can still incur real API cost or side effects; audit runs remain deterministic-only.
 - Reopen trigger: any new real-call runner without the shared gate.
 
@@ -503,35 +516,35 @@ The Admin API strips presentation-only provider metadata, while the UI still att
 
 - Severity: Should Plan
 - Decision class: Agent-Fixable
-- Status: Closed in omission-remediation re-audit `20260720-1239`
+- Status: Closed in third omission-remediation re-audit `20260720-1554`
 - First detected run: `20260719-1802`
-- Last updated run: `20260720-1239`
+- Last updated run: `20260720-1554`
 - Owner: Audit owner
 
 ### Failure and closure
 
-`FINDINGS.md`, `COVERAGE.md`, the approved profile, README, and prior run text disagreed with current code and owner decisions. This run reconciles status tables, evidence links, coverage freshness, control baseline, system-map notes, and the rotation queue against exact code head `804efef`.
+`FINDINGS.md`, `COVERAGE.md`, the approved profile, README, and prior run text disagreed with current code and owner decisions. This run reconciles status tables, evidence links, coverage freshness, control baseline, system-map notes, and the rotation queue against exact code head `de9c96b`.
 
-- Closure evidence: this ledger set and `docs/audit/runs/20260720-1239/`.
+- Closure evidence: this ledger set and `docs/audit/runs/20260720-1554/`.
 - Residual risk: ledger correctness is repository-local and depends on future runs preserving the same reconciliation step.
 - Reopen trigger: a future remediation run leaves contradictory persistent statuses.
 
-## AUD-009 — Missing `api_type` runtime fallback semantics
+## AUD-009 — Missing or backend-unrecognized `api_type` runtime fallback semantics
 
 - Severity: Should Plan
 - Decision class: Decision Recorded
-- Status: Closed in omission-remediation re-audit `20260720-1239`
+- Status: Closed in third omission-remediation re-audit `20260720-1554`
 - First detected run: `20260719-1802`
-- Last updated run: `20260720-1239`
+- Last updated run: `20260720-1554`
 - Owner: Project owner / Gateway config owner
 
 ### Decision and closure
 
-Owner decision superseding the `20260720-1107` conclusion: missing `api_type` is not invalid. Runtime compares the authoritative URL against preset protocol URLs and selects the first supported protocol in `responses`, `chat`, `anthropic`, `google` order. An unmatched custom URL defaults to `responses`. Each active provider emits a terminal warning once per config load; Admin renders the inferred value. Neither the input dictionary nor the config file is written back.
+Owner decision superseding the `20260720-1107` conclusion: only an exact string present in the backend support map counts as `api_type`. Missing, empty, non-string, and backend-unrecognized values are all treated as absent. Runtime compares the authoritative URL against preset protocol URLs and selects the first supported protocol in `responses`, `chat`, `anthropic`, `google` order; an unmatched custom URL defaults to `responses`. Each active provider emits a terminal warning once per config load; Admin renders the inferred value. Neither the input dictionary nor the config file is written back.
 
-- Closure evidence: `804efef`; `gateway/config.py`; Admin config route; config/Admin tests covering preset/custom selection, warning count, Tool Profile derivation, and no write-back.
+- Closure evidence: `3f2d044`; `gateway/config.py`; Admin config route; config/Admin tests covering exact supported values, unrecognized/falsy/non-string values, preset/custom selection, warning count, Tool Profile derivation, and no write-back.
 - Residual risk: an unmatched or mistyped custom URL defaults to Responses until the operator corrects the URL or declares `api_type`; no compatibility migration layer is introduced.
-- Reopen trigger: changing protocol order, URL-authority, warning behavior, or inferred-value persistence.
+- Reopen trigger: changing the backend support map, protocol order, URL-authority, warning behavior, or inferred-value persistence.
 
 ## AUD-010 — SQLite schema validation omitted complete index attributes
 
@@ -554,34 +567,51 @@ Startup validation checks expected column names/types, NOT NULL flags, primary-k
 
 - Severity: Should Plan
 - Decision class: Decision Recorded
-- Status: Direct-egress risk accepted; redirect scope narrowed in `20260720-1239`
+- Status: Direct-egress and explicit provider-redirect risk accepted in `20260720-1554`
 - First detected run: `20260719-1802`
-- Last updated run: `20260720-1239`
+- Last updated run: `20260720-1554`
 - Owner: Project owner
 
 ### Decision and residual risk
 
-Owner decision: arbitrary unmatched HTTP(S) custom URLs are allowed and may receive configured upstream API keys. This is accepted only for the declared local/trusted-LAN deployment boundary. Redirects are not part of that acceptance and are always prohibited. The profile and system map state the remaining direct SSRF/egress and key-disclosure risk; no public deployment, account-security, or preset-only egress guarantee is claimed.
+Owner decision: arbitrary unmatched HTTP(S) custom URLs are allowed and may receive configured upstream API keys. Redirects are denied by default, but an operator may explicitly enable them per provider; the same policy applies to that provider's model discovery. This is accepted only for the declared local/trusted-LAN deployment boundary. The profile and system map state that direct custom egress and enabled redirect targets can expand SSRF/key-disclosure exposure; no public deployment, account-security, or preset-only egress guarantee is claimed.
 
-- Decision evidence: `docs/audit-profile.md`, `docs/audit/SYSTEM-MAP.md`, and `docs/audit/runs/20260720-1239/REPORT.md`.
-- Reopen trigger: any public deployment/security claim or change to custom URL policy.
+- Decision evidence: `docs/audit-profile.md`, `docs/audit/SYSTEM-MAP.md`, and `docs/audit/runs/20260720-1554/REPORT.md`.
+- Reopen trigger: any public deployment/security claim or change to custom URL or redirect policy.
 
 ## AUD-012 — Upstream redirects could expand credential egress
 
 - Severity: Must Fix
 - Decision class: Agent-Fixable
-- Status: Closed in omission-remediation re-audit `20260720-1239`
+- Status: Closed in third omission-remediation re-audit `20260720-1554`
 - First detected run: `20260720-1239`
-- Last updated run: `20260720-1239`
+- Last updated run: `20260720-1554`
 - Owner: Gateway transport owner
 
 ### Failure and closure
 
-The shared upstream client allowed redirects, so a configured endpoint could respond with a redirect and cause a second request carrying provider authorization outside the configured URL boundary. The client now sets `max_redirects=0`; every 301/302/303/307/308 fails before a target request is sent. A two-server loopback test verifies the redirect target receives no request.
+The first repair set the primary upstream pool to reject redirects, but the shared auxiliary request helper still inherited the vendored client's redirect allowance. The final policy now has explicit ownership: provider request/stream/passthrough clients default to `max_redirects=0`, separate pool entries isolate an explicit per-provider opt-in, model discovery inherits that provider policy, and all non-provider auxiliary calls force `max_redirects=0`. Loopback tests verify default provider and auxiliary redirect targets receive no request; a separate test proves the operator opt-in follows the redirect.
 
-- Closure evidence: `477fa00`; `gateway/transport/http/client_pool.py`; `tests/gateway/test_http_transport_limits.py`.
-- Residual risk: the operator-approved direct custom URL and configured proxy still receive the credential; DNS rebinding and proxy behavior were not live-tested.
-- Reopen trigger: any client/transport change that permits automatic redirect following.
+- Closure evidence: `3e327c8`; `gateway/transport/http/client_pool.py`; `gateway/transport/http/transport.py`; provider/Admin config paths; transport and model-discovery tests.
+- Residual risk: explicit `allow_redirects` may forward provider authorization to a redirect target; the operator-approved direct custom URL and configured proxy also receive the credential. DNS rebinding and proxy behavior were not live-tested.
+- Reopen trigger: any client/transport/config change that weakens default denial, auxiliary isolation, or explicit opt-in ownership.
+
+## AUD-014 — Tavily response or exception content could reflect the API key
+
+- Severity: Must Fix
+- Decision class: Agent-Fixable
+- Status: Closed in third omission-remediation re-audit `20260720-1554`
+- First detected run: `20260720-1554`
+- Last updated run: `20260720-1554`
+- Owner: Gateway search owner
+
+### Failure and closure
+
+Tavily uses the configured API key only as Bearer request authentication, but untrusted success/error content or a transport exception could reflect that value into model results or diagnostics. `TavilyHTTPClient` now applies the shared recursive `SecretRedactor` to parsed success data, bounded HTTP error text, and transport exception messages. The re-audit also removed the original exception cause so a full traceback cannot reveal a redacted transport message's underlying secret.
+
+- Closure evidence: `b7542d2`, `de9c96b`; `gateway/web_search.py`; transport-limit tests covering nested success fields, HTTP errors, and detached transport exceptions.
+- Residual risk: no real Tavily call was made; correctness is deterministic against documented response fields and adversarial local fixtures.
+- Reopen trigger: Tavily authentication/response handling, redaction logic, or diagnostic exception propagation changes.
 
 ## AUD-004 — Mutable build inputs and missing artifact provenance are accepted release debt
 

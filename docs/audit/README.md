@@ -11,7 +11,7 @@ second profile under this directory.
 - System map: [`SYSTEM-MAP.md`](SYSTEM-MAP.md)
 - Coverage ledger: [`COVERAGE.md`](COVERAGE.md)
 - Findings ledger: [`FINDINGS.md`](FINDINGS.md)
-- Latest run: [`runs/20260720-1239/REPORT.md`](runs/20260720-1239/REPORT.md)
+- Latest run: [`runs/20260720-1554/REPORT.md`](runs/20260720-1554/REPORT.md)
 
 Historical run snapshots remain under their original dated directories. They
 are preserved as historical evidence and may contain paths or conclusions that
