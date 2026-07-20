@@ -50,6 +50,7 @@ API_TYPE_TO_PROVIDER_TYPE: dict[str, str] = {
     "anthropic": "anthropic",
     "google": "google",
 }
+API_TYPE_ORDER = tuple(API_TYPE_TO_PROVIDER_TYPE)
 
 CHAT_DEFAULT_TOOL_PROFILE = BUILTIN_TOOL_PROFILE
 RESPONSES_PASSTHROUGH_TOOL_PROFILE = "openai-responses-tool-mapping-only"
@@ -87,6 +88,32 @@ _PRESET_SHIMS_BY_URL: dict[tuple[str, str], str] = {
     ("anthropic", "https://openrouter.ai/api"): "openrouter--anthropic",
 }
 
+_PRESET_PROTOCOL_URLS = frozenset(
+    {
+        *_PRESET_SHIMS_BY_URL,
+        ("anthropic", "https://api.deepseek.com/anthropic"),
+        ("anthropic", "https://api.moonshot.cn/anthropic"),
+        ("anthropic", "https://api.moonshot.ai/anthropic"),
+        ("responses", "https://api.minimaxi.com/v1"),
+        ("responses", "https://api.minimax.io/v1"),
+        ("chat", "https://api.minimax.io/v1"),
+        ("anthropic", "https://api.minimax.io/anthropic"),
+        (
+            "responses",
+            "https://{WorkspaceId}.{RegionId}.maas.aliyuncs.com/compatible-mode/v1",
+        ),
+        (
+            "chat",
+            "https://{WorkspaceId}.{RegionId}.maas.aliyuncs.com/compatible-mode/v1",
+        ),
+        (
+            "anthropic",
+            "https://{WorkspaceId}.{RegionId}.maas.aliyuncs.com/apps/anthropic",
+        ),
+        ("chat", "https://opencode.ai/zen/go/v1"),
+    }
+)
+
 
 def _provider_shim_for_url(api_type: str, base_url: Any) -> str | None:
     if not isinstance(base_url, str) or not base_url.strip():
@@ -98,6 +125,47 @@ def _provider_shim_for_url(api_type: str, base_url: Any) -> str | None:
     from codex_rosetta.shims import get_shim
 
     return shim_name if get_shim(shim_name) is not None else None
+
+
+def _infer_provider_api_type(base_url: Any) -> str:
+    """Choose the first protocol supported by an exact preset URL."""
+    if isinstance(base_url, str) and base_url.strip():
+        normalized = base_url.strip().rstrip("/")
+        for api_type in API_TYPE_ORDER:
+            if (api_type, normalized) in _PRESET_PROTOCOL_URLS:
+                return api_type
+    return API_TYPE_ORDER[0]
+
+
+def resolve_provider_api_type(
+    name: str,
+    cfg: dict[str, Any],
+    *,
+    warn_on_default: bool = False,
+) -> str:
+    """Return explicit or URL-inferred protocol without changing persisted config."""
+    api_type = cfg.get("api_type")
+    if api_type:
+        value = str(api_type)
+        if value not in API_TYPE_TO_PROVIDER_TYPE:
+            raise ValueError(f"config: unsupported provider api_type {api_type!r}")
+        return value
+
+    if "shim" in cfg or "type" in cfg:
+        raise ValueError(
+            "config: provider shim/type options are unsupported; "
+            "declare api_type and base_url"
+        )
+
+    inferred = _infer_provider_api_type(cfg.get("base_url"))
+    if warn_on_default:
+        logger.warning(
+            "config: provider %r missing api_type; defaulting to %r for base_url %r",
+            name,
+            inferred,
+            cfg.get("base_url"),
+        )
+    return inferred
 
 
 def normalize_local_mode_settings(server: Any) -> tuple[bool, bool]:
@@ -395,22 +463,19 @@ def resolve_model_tool_profile_names(
 
 
 def resolve_provider_config_type_and_shim(
-    name: str, cfg: dict[str, Any]
+    name: str,
+    cfg: dict[str, Any],
+    *,
+    warn_on_default: bool = False,
 ) -> tuple[str, str | None]:
     """Resolve a provider config entry to its base API type and optional shim."""
-    api_type = cfg.get("api_type")
-    if api_type:
-        if str(api_type) not in API_TYPE_TO_PROVIDER_TYPE:
-            raise ValueError(f"config: unsupported provider api_type {api_type!r}")
-        provider_type = api_type_to_provider_type(api_type) or str(api_type)
-        return provider_type, _provider_shim_for_url(str(api_type), cfg.get("base_url"))
-
-    if "shim" in cfg or "type" in cfg:
-        raise ValueError(
-            "config: provider shim/type options are unsupported; "
-            "declare api_type and base_url"
-        )
-    raise ValueError(f"config: provider {name!r} must declare api_type")
+    api_type = resolve_provider_api_type(
+        name,
+        cfg,
+        warn_on_default=warn_on_default,
+    )
+    provider_type = api_type_to_provider_type(api_type) or api_type
+    return provider_type, _provider_shim_for_url(api_type, cfg.get("base_url"))
 
 
 # ---------------------------------------------------------------------------
@@ -656,7 +721,7 @@ class GatewayConfig:
 
         # Filter out disabled providers (enabled defaults to True)
         self._raw_providers: dict[str, dict[str, str]] = {
-            name: cfg
+            name: dict(cfg)
             for name, cfg in all_providers.items()
             if cfg.get("enabled", True) is not False
         }
@@ -852,6 +917,8 @@ class GatewayConfig:
         provider_types: dict[str, str] = {}
         provider_shim_names: dict[str, str | None] = {}
         for name, cfg in raw_providers.items():
+            api_type = resolve_provider_api_type(name, cfg, warn_on_default=True)
+            cfg["api_type"] = api_type
             provider_type, shim_name = resolve_provider_config_type_and_shim(name, cfg)
             provider_types[name] = provider_type
             provider_shim_names[name] = shim_name

@@ -1063,7 +1063,7 @@ def test_get_config_returns_model_groups_and_effective_models(tmp_path):
     assert body["models"]["grouped"]["provider"] == "openai"
 
 
-def test_get_config_marks_missing_provider_api_type_and_referencing_group(tmp_path):
+def test_get_config_renders_inferred_provider_api_type_and_group(tmp_path):
     valid_config = _config_data()
     runtime_config = GatewayConfig(valid_config)
     invalid_config = json.loads(json.dumps(valid_config))
@@ -1081,10 +1081,12 @@ def test_get_config_marks_missing_provider_api_type_and_referencing_group(tmp_pa
 
     assert response.status_code == 200
     body = json.loads(response.body.decode("utf-8"))
-    error = "config: provider 'openai' must declare api_type"
-    assert body["providers"]["openai"]["validation_error"] == error
-    assert "default_tool_profile" not in body["providers"]["openai"]
-    assert body["model_groups"]["OpenAI"]["validation_error"] == error
+    assert body["providers"]["openai"]["api_type"] == "responses"
+    assert body["providers"]["openai"]["default_tool_profile"] == "web-run-injection"
+    assert "validation_error" not in body["providers"]["openai"]
+    assert "validation_error" not in body["model_groups"]["OpenAI"]
+    persisted = json.loads(config_path.read_text(encoding="utf-8"))
+    assert "api_type" not in persisted["providers"]["openai"]
 
 
 @pytest.mark.parametrize(

@@ -862,23 +862,60 @@ class TestProviderApiTypeResolution:
         with pytest.raises(ValueError, match="shim/type options are unsupported"):
             GatewayConfig(raw)
 
-    def test_unknown_provider_without_explicit_protocol_is_rejected(self):
+    def test_custom_url_without_explicit_protocol_defaults_to_responses(self, caplog):
         raw = _minimal_raw()
         raw["providers"]["test"] = {
             "api_key": "sk-test",
             "base_url": "https://provider.example",
         }
 
-        with pytest.raises(ValueError, match="must declare api_type"):
-            GatewayConfig(raw)
+        with caplog.at_level("WARNING", logger="codex-rosetta-gateway"):
+            cfg = GatewayConfig(raw)
 
-    def test_known_provider_without_explicit_protocol_is_rejected(self):
+        assert cfg.provider_types["test"] == "openai_responses"
+        assert cfg.provider_shim_names["test"] is None
+        assert cfg.model_tool_profile_names["gpt-test"] == "web-run-injection"
+        assert "api_type" not in raw["providers"]["test"]
+        assert (
+            sum(
+                "provider 'test' missing api_type" in record.message
+                for record in caplog.records
+            )
+            == 1
+        )
+
+    def test_preset_url_without_explicit_protocol_uses_canonical_first_protocol(
+        self, caplog
+    ):
         raw = _minimal_raw()
-        raw["providers"]["openai"] = raw["providers"].pop("test")
-        raw["providers"]["openai"].pop("api_type")
+        raw["providers"]["openai"] = {
+            "api_key": "sk-test",
+            "base_url": "https://api.openai.com/v1",
+        }
 
-        with pytest.raises(ValueError, match="provider 'openai' must declare api_type"):
-            GatewayConfig(raw)
+        with caplog.at_level("WARNING", logger="codex-rosetta-gateway"):
+            cfg = GatewayConfig(raw)
+
+        assert cfg.provider_types["openai"] == "openai_responses"
+        assert cfg.provider_shim_names["openai"] == "openai_responses"
+        assert "api_type" not in raw["providers"]["openai"]
+        assert (
+            sum(
+                "provider 'openai' missing api_type" in record.message
+                for record in caplog.records
+            )
+            == 1
+        )
+
+    def test_deepseek_preset_url_without_explicit_protocol_uses_chat(self):
+        raw = _minimal_raw()
+        raw["providers"]["test"].pop("api_type")
+        raw["providers"]["test"]["base_url"] = "https://api.deepseek.com"
+
+        cfg = GatewayConfig(raw)
+
+        assert cfg.provider_types["test"] == "openai_chat"
+        assert cfg.provider_shim_names["test"] == "deepseek"
 
 
 class TestModelGroups:

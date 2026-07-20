@@ -17,7 +17,7 @@ from ...config import (
     normalize_local_mode_settings,
     normalize_web_search,
     provider_supports_tool_profiles,
-    resolve_provider_config_type_and_shim,
+    resolve_provider_api_type,
 )
 from ...local_mode import config_toml_has_model_catalog
 from ...model_presets import (
@@ -393,13 +393,18 @@ async def get_config(request: Any) -> Response:
         masked.pop("validation_error", None)
         masked.pop("default_tool_profile", None)
         try:
-            resolve_provider_config_type_and_shim(name, cfg)
+            api_type = resolve_provider_api_type(name, cfg)
         except ValueError as exc:
             error = str(exc)
             provider_errors[name] = error
             masked["validation_error"] = error
         else:
-            masked["default_tool_profile"] = default_tool_profile_for_provider(cfg)
+            runtime_cfg = dict(cfg)
+            runtime_cfg["api_type"] = api_type
+            masked["api_type"] = api_type
+            masked["default_tool_profile"] = default_tool_profile_for_provider(
+                runtime_cfg
+            )
         masked_providers[name] = masked
 
     # ``models`` is an effective read-only runtime view. ``model_groups`` is
