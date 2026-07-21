@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from codex_rosetta._vendor.httpclient import AsyncClient
+from codex_rosetta.observability.redaction import SecretRedactor
 
 from .transport.http.transport import request_bounded_response
 from .web_search import WebSearchSettings
@@ -64,6 +65,7 @@ class WebRunSidecarHTTPClient:
         self._execute_url = f"{root}/v1/execute"
         self._search_url = f"{root}/v1/search"
         self._token = token
+        self._redactor = SecretRedactor((token,))
         self._timeout = timeout
         self._search_provider = search_provider
 
@@ -83,6 +85,7 @@ class WebRunSidecarHTTPClient:
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
         }
+        request_error: str | None = None
         async with AsyncClient(timeout=self._timeout) as client:
             try:
                 response = await request_bounded_response(
@@ -95,14 +98,22 @@ class WebRunSidecarHTTPClient:
                     max_error_bytes=_MAX_SIDECAR_RESPONSE_BYTES,
                 )
             except Exception as exc:
-                raise WebRunSidecarError(
-                    f"web-run sidecar request failed: {exc}"
-                ) from exc
+                request_error = self._redactor.redact_exact(str(exc))
+                response = None
+        if request_error is not None:
+            raise WebRunSidecarError(
+                f"web-run sidecar request failed: {request_error}"
+            ) from None
+        assert response is not None
 
+        invalid_json = False
         try:
-            body = response.json()
-        except Exception as exc:
-            raise WebRunSidecarError("web-run sidecar returned invalid JSON") from exc
+            body = self._redactor.redact_exact(response.json())
+        except Exception:
+            invalid_json = True
+            body = None
+        if invalid_json:
+            raise WebRunSidecarError("web-run sidecar returned invalid JSON") from None
         if not isinstance(body, dict):
             raise WebRunSidecarError("web-run sidecar returned a non-object response")
         if response.status_code >= 400:
@@ -136,6 +147,7 @@ class WebRunSidecarHTTPClient:
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
         }
+        request_error: str | None = None
         async with AsyncClient(timeout=self._timeout) as client:
             try:
                 response = await request_bounded_response(
@@ -148,14 +160,22 @@ class WebRunSidecarHTTPClient:
                     max_error_bytes=_MAX_SIDECAR_RESPONSE_BYTES,
                 )
             except Exception as exc:
-                raise WebRunSidecarError(
-                    f"web-run sidecar search failed: {exc}"
-                ) from exc
+                request_error = self._redactor.redact_exact(str(exc))
+                response = None
+        if request_error is not None:
+            raise WebRunSidecarError(
+                f"web-run sidecar search failed: {request_error}"
+            ) from None
+        assert response is not None
 
+        invalid_json = False
         try:
-            body = response.json()
-        except Exception as exc:
-            raise WebRunSidecarError("web-run sidecar returned invalid JSON") from exc
+            body = self._redactor.redact_exact(response.json())
+        except Exception:
+            invalid_json = True
+            body = None
+        if invalid_json:
+            raise WebRunSidecarError("web-run sidecar returned invalid JSON") from None
         if not isinstance(body, dict):
             raise WebRunSidecarError("web-run sidecar returned a non-object response")
         if response.status_code >= 400:

@@ -11,7 +11,8 @@ second profile under this directory.
 - System map: [`SYSTEM-MAP.md`](SYSTEM-MAP.md)
 - Coverage ledger: [`COVERAGE.md`](COVERAGE.md)
 - Findings ledger: [`FINDINGS.md`](FINDINGS.md)
-- Latest run: [`runs/20260720-1554/REPORT.md`](runs/20260720-1554/REPORT.md)
+- Latest run: [`runs/20260720-1606/REPORT.md`](runs/20260720-1606/REPORT.md)
+- Latest status: AUD-015 and AUD-016 are closed deterministically after authorized remediation, adversarial targeted re-audit, `158` focused tests, lint/type checks, and the `3542`-test non-integration suite. No real provider/API call was made.
 
 Historical run snapshots remain under their original dated directories. They
 are preserved as historical evidence and may contain paths or conclusions that

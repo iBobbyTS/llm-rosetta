@@ -178,6 +178,49 @@ def test_responses_direct_transport_forwards_each_endpoint(upstream_path: str) -
     }
 
 
+@pytest.mark.parametrize("status_code", [200, 400])
+def test_auxiliary_provider_return_redacts_success_and_http_error(
+    status_code: int,
+) -> None:
+    token = "upstream-key"
+    config = _make_config()
+    request = _make_request({"model": "gateway-model", "query": "test"})
+    payload = {"nested": {"message": f"before {token} after"}}
+    request.app.transport.send_passthrough.return_value = UpstreamResponse(
+        status_code=status_code,
+        body=payload if status_code < 400 else None,
+        raw_content=json.dumps(payload, separators=(",", ":")).encode(),
+    )
+
+    response = asyncio.run(handle_codex_auxiliary(request, config, "alpha/search"))
+
+    assert response.status_code == status_code
+    assert token.encode() not in response.body
+    assert b"before [REDACTED] after" in response.body
+
+
+def test_auxiliary_transport_failure_is_redacted_before_metrics() -> None:
+    token = "upstream-key"
+    config = _make_config()
+    request = _make_request({"model": "gateway-model", "query": "test"})
+    metrics = MagicMock()
+    request.app.metrics = metrics
+    try:
+        raise ValueError(f"cause contains {token}")
+    except ValueError as cause:
+        request.app.transport.send_passthrough.side_effect = UpstreamConnectionError(
+            f"request failed with {token}"
+        )
+        request.app.transport.send_passthrough.side_effect.__cause__ = cause
+
+    response = asyncio.run(handle_codex_auxiliary(request, config, "alpha/search"))
+
+    assert response.status_code == 502
+    assert token.encode() not in response.body
+    error_detail = metrics.record_request.call_args.kwargs["error_detail"]
+    assert token not in error_detail
+
+
 @pytest.mark.parametrize("api_type", ["chat", "anthropic", "google"])
 @pytest.mark.parametrize("upstream_path", ENDPOINTS)
 def test_non_passthrough_modes_return_not_implemented(

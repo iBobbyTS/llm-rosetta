@@ -351,7 +351,7 @@ server's worker thread.
 
 The following behavior can be automatically verified using the fixed Codex request/SSE fixture:
 
-- The single Admin Responses protocol always uses direct Responses transport for every Provider; Provider selection changes only the default Tool Profile. Unknown non-tool fields and original response JSON/SSE bytes remain unchanged below the transport safety envelope. Unchanged attested streaming requests retain their original compressed body and allowlisted Codex wire headers; any request mutation rebuilds JSON without stale attestation. Native `context_limit`/`user_requested` compaction evaluates exact raw-wire eligibility before Tool Profile and web-search adaptation, while model-switch compaction must use the previous model with Rosetta's prompt and a seven-day plaintext mapping;
+- The single Admin Responses protocol always uses direct Responses transport for every Provider; Provider selection changes only the default Tool Profile. Unknown non-tool fields and original response JSON/SSE bytes remain unchanged below the transport safety envelope except for mandatory replacement of reflected configured Provider credentials. Unchanged attested streaming requests retain their original compressed body and allowlisted Codex wire headers; any request mutation rebuilds JSON without stale attestation. Native `context_limit`/`user_requested` compaction evaluates exact raw-wire eligibility before Tool Profile and web-search adaptation, while model-switch compaction must use the previous model with Rosetta's prompt and a seven-day plaintext mapping;
 - header allowlists for ordinary metadata and exact attested-wire passthrough; Provider-owned Authorization on every upstream request; `x-codex-window-id` extraction; exact/+1 model, window, and request-ID budgets; visible-ASCII/control rejection and missing request-ID generation; rejection before body/log/trace/persistence/state/upstream use; correlation/state-key separation; private no-window scope and terminal cleanup;
 - Responses request → IR/adapter → Chat/Anthropic/Google upstream request;
 - Responses Namespace children expand to canonical regex-safe `namespace-function` names; streaming and non-streaming return paths restore hyphenated names, unique `namespace_function` and `namespace.function` compatible names, and unique bare children, while ordinary Function conflicts, shared child names, and alias collisions remain flat and fail closed;
@@ -382,7 +382,8 @@ The following behavior can be automatically verified using the fixed Codex reque
   huge peer-declared HTTP chunks, oversized no-newline SSE lines, accumulated
   no-delimiter events, converted/raw/web-search client cancellation, upstream
   4xx/5xx and retry boundaries; verify that below-limit raw Responses SSE is
-  byte-identical and that overflow closes the upstream;
+  byte-identical except for configured Provider credentials split at every
+  possible chunk position, and that overflow closes the upstream;
 - Inbound request-body default, fixed tiers, Admin persistence/hot reload,
   rollback, unlimited mapping, and a real Codex image-history request above the
   former 50 MB ceiling;

@@ -33,6 +33,7 @@ from .proxy import error_response_for_source, extract_model
 from .stream_trace import StreamTraceLogger, StreamTraceState
 from .tool_profiles import route_tool_state
 from .transport import UpstreamConnectionError, UpstreamTransport
+from .transport.credential_redaction import CredentialRedactingTransport
 from .web_run_sidecar import WebRunBrowserClient, WebRunSidecarHTTPClient
 from .web_search import TavilySearchClient
 
@@ -199,7 +200,9 @@ async def handle_codex_auxiliary(
     resolved_model = str(body.get("model") or route.upstream_model or model)
     record_request_stat(resolved_model)
     upstream_url = f"{active_provider_info.base_url}/{upstream_path}"
-    transport: UpstreamTransport = request.app.transport
+    transport: UpstreamTransport = CredentialRedactingTransport.wrap(
+        request.app.transport
+    )
     extra_headers = build_upstream_extra_headers(request, request_id)
     trace = _create_auxiliary_trace(
         request,

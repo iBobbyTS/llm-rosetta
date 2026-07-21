@@ -7,6 +7,7 @@ from typing import Any
 
 from codex_rosetta._vendor.httpclient import AsyncClient
 from codex_rosetta._vendor.httpserver import JSONResponse, Response
+from codex_rosetta.observability.redaction import SecretRedactor
 from codex_rosetta.shims import list_shims
 
 from ...config import (
@@ -926,6 +927,7 @@ async def fetch_upstream_models(request: Any, **kwargs: Any) -> Response:
 
     pinfo = config.providers[provider_name]
     ptype = config.provider_types.get(provider_name, "unknown")
+    redactor = SecretRedactor(pinfo.credential_values)
 
     # Build the models listing URL based on provider type
     if ptype == "google":
@@ -950,8 +952,11 @@ async def fetch_upstream_models(request: Any, **kwargs: Any) -> Response:
     except asyncio.CancelledError:
         raise
     except Exception as exc:
-        logger.warning("Failed to fetch models from %s: %s", provider_name, exc)
-        msg = _format_connection_error(exc, models_url)
+        safe_error = RuntimeError(redactor.redact_exact(str(exc)))
+        safe_error.__cause__ = None
+        safe_error.__context__ = None
+        logger.warning("Failed to fetch models from %s: %s", provider_name, safe_error)
+        msg = _format_connection_error(safe_error, models_url)
         return JSONResponse({"error": msg})  # 200 so reverse proxies don't intercept
 
     if resp.status_code >= 400:
@@ -968,7 +973,7 @@ async def fetch_upstream_models(request: Any, **kwargs: Any) -> Response:
         )
 
     try:
-        body = resp.json()
+        body = redactor.redact_exact(resp.json())
     except Exception:
         return JSONResponse(
             {"error": "Upstream returned non-JSON response"},

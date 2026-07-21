@@ -844,6 +844,8 @@ class GatewayConfig:
             )
             for name, cfg in self._raw_providers.items()
         }
+        for provider in self.providers.values():
+            self.token_values.update(provider.credential_values)
 
     def _validate(self) -> None:
         if not isinstance(self.admin_password, str) or not self.admin_password.strip():

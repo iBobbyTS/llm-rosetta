@@ -100,6 +100,7 @@ from .transport import (
     UpstreamConnectionError,
     UpstreamTransport,
 )
+from .transport.credential_redaction import CredentialRedactingTransport
 from .transport.sse_format import SSE_FORMATTERS, format_sse_done
 from .web_run_capabilities import (
     WEB_RUN_PROFILE_ITEM_ID,
@@ -1429,6 +1430,7 @@ async def handle_non_streaming(
         per-phase timing data merged from the conversion pipeline and
         gateway-level measurements (upstream latency).
     """
+    transport = CredentialRedactingTransport.wrap(transport)
     model = body.get("model", "")
     scope, store, tool_store = _resolve_state_stores(
         route=route,
@@ -2417,6 +2419,7 @@ async def handle_streaming(  # noqa: C901
         duration, chunks) are written back to the request log entry
         after the stream completes.
     """
+    transport = CredentialRedactingTransport.wrap(transport)
     model = body.get("model", "")
     scope, store, tool_store = _resolve_state_stores(
         route=route,

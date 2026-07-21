@@ -272,6 +272,109 @@ def test_reload_config_rotates_runtime_admin_credentials(tmp_path):
     )
 
 
+def _runtime_redactors(app: Any) -> list[Any]:
+    return [
+        app.stream_trace_state._redactor,
+        app.upstream_error_log_state._redactor,
+        app.body_log_state._redactor,
+        app.persistence._redactor,
+        app.metrics._redactor,
+    ]
+
+
+def _assert_exact_tokens(
+    redactors: list[Any],
+    *,
+    hidden: tuple[str, ...],
+    visible: tuple[str, ...] = (),
+) -> None:
+    for redactor in redactors:
+        for token in hidden:
+            assert token not in redactor.redact(f"before {token} after")
+        for token in visible:
+            assert redactor.redact(token) == token
+
+
+def test_startup_registers_every_rotated_provider_key_in_all_runtime_redactors(
+    tmp_path,
+) -> None:
+    data = _config_data()
+    raw_keys = " first-startup , , startup-prefix,startup-prefix-long,first-startup "
+    data["providers"]["openai"]["api_key"] = raw_keys
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(data), encoding="utf-8")
+    config = GatewayConfig(data)
+    app = cast(Any, create_app(config, config_path=str(config_path)))
+
+    try:
+        assert config.providers["openai"].credential_values == (
+            "first-startup",
+            "startup-prefix",
+            "startup-prefix-long",
+            "first-startup",
+        )
+        assert raw_keys in config.token_values
+        _assert_exact_tokens(
+            _runtime_redactors(app),
+            hidden=("first-startup", "startup-prefix", "startup-prefix-long"),
+        )
+    finally:
+        app.persistence.close()
+
+
+def test_hot_reload_and_rollback_atomically_swap_all_provider_credentials(
+    tmp_path,
+) -> None:
+    old_tokens = ("old-first", "old-prefix", "old-prefix-long")
+    new_tokens = ("new-first", "new-prefix", "new-prefix-long")
+    initial_data = _config_data()
+    initial_data["providers"]["openai"]["api_key"] = ",".join(old_tokens)
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(json.dumps(initial_data), encoding="utf-8")
+    initial_config = GatewayConfig(initial_data)
+    app = cast(Any, create_app(initial_config, config_path=str(config_path)))
+
+    candidate = _config_data()
+    candidate["providers"]["openai"]["api_key"] = (
+        " new-first, ,new-prefix,new-prefix-long,new-first "
+    )
+    new_config = GatewayConfig(candidate)
+
+    try:
+        prepared = _shared._prepare_gateway_activation(
+            SimpleNamespace(app=app), new_config
+        )
+        assert app.gateway_config is initial_config
+        _assert_exact_tokens(
+            _runtime_redactors(app), hidden=old_tokens, visible=new_tokens
+        )
+
+        rollback = _shared._activate_gateway_config(
+            SimpleNamespace(app=app), new_config, prepared
+        )
+
+        assert app.gateway_config is new_config
+        assert app.gateway_config.providers["openai"].credential_values == (
+            "new-first",
+            "new-prefix",
+            "new-prefix-long",
+            "new-first",
+        )
+        _assert_exact_tokens(
+            _runtime_redactors(app), hidden=new_tokens, visible=old_tokens
+        )
+
+        _shared._rollback_gateway_activation(SimpleNamespace(app=app), rollback)
+
+        assert app.gateway_config is initial_config
+        assert app.gateway_config.providers["openai"].credential_values == old_tokens
+        _assert_exact_tokens(
+            _runtime_redactors(app), hidden=old_tokens, visible=new_tokens
+        )
+    finally:
+        app.persistence.close()
+
+
 def test_reload_config_preserves_special_environment_password_as_data(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

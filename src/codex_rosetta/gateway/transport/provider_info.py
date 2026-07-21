@@ -33,8 +33,13 @@ class KeyRing:
     """
 
     def __init__(self, keys_csv: str) -> None:
-        self._keys = [k.strip() for k in keys_csv.split(",") if k.strip()]
+        self._keys = tuple(key for part in keys_csv.split(",") if (key := part.strip()))
         self._idx = 0
+
+    @property
+    def values(self) -> tuple[str, ...]:
+        """Return selectable keys in their exact rotation order."""
+        return self._keys
 
     def next(self) -> str:
         """Return the next API key."""
@@ -85,6 +90,11 @@ class ProviderInfo:
         self._stream_url_template = stream_url_template
         self.proxy_url = proxy_url
         self.allow_redirects = allow_redirects
+
+    @property
+    def credential_values(self) -> tuple[str, ...]:
+        """Return every credential that this provider can send on the wire."""
+        return self.key_ring.values
 
     # -- public helpers used by the proxy -----------------------------------
 

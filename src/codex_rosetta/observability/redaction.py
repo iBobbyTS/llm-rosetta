@@ -75,14 +75,35 @@ class SecretRedactor:
                     for value in token_values
                     if isinstance(value, str) and value and "${" not in value
                 },
-                key=len,
-                reverse=True,
+                key=lambda value: (-len(value), value),
             )
+        )
+        wire_values: set[bytes] = set()
+        for token in self._token_values:
+            wire_values.add(token.encode("utf-8"))
+            for ensure_ascii in (False, True):
+                escaped = json.dumps(token, ensure_ascii=ensure_ascii)[1:-1]
+                wire_values.add(escaped.encode("utf-8"))
+        self._wire_token_values = tuple(
+            sorted(wire_values, key=lambda value: (-len(value), value))
         )
 
     def redact(self, value: Any) -> Any:
         """Return a deep redacted copy while preserving non-secret content."""
         return self._redact(deepcopy(value))
+
+    def redact_exact(self, value: Any) -> Any:
+        """Redact configured values without applying diagnostic field heuristics."""
+        return self._redact_exact(deepcopy(value))
+
+    def redact_wire_bytes(self, value: bytes) -> bytes:
+        """Redact configured values from wire bytes without decoding other bytes."""
+        stream = self.streaming_redactor()
+        return stream.feed(value) + stream.finish()
+
+    def streaming_redactor(self) -> StreamingSecretRedactor:
+        """Create an independent exact-value redactor for a chunked byte stream."""
+        return StreamingSecretRedactor(self._wire_token_values)
 
     def _redact(self, value: Any, *, token_field: bool = False) -> Any:
         if token_field:
@@ -96,13 +117,17 @@ class SecretRedactor:
             text = value.decode("utf-8", errors="replace")
             return self._redact(text).encode("utf-8")
         if isinstance(value, dict):
-            redacted = {
-                key: self._redact(
+            redacted = {}
+            for key, item in value.items():
+                redacted_key = (
+                    self._redact_exact(key) if isinstance(key, str | bytes) else key
+                )
+                # Deterministic collision semantics: as with a normal dict
+                # comprehension, the later source item wins.
+                redacted[redacted_key] = self._redact(
                     item,
                     token_field=_is_token_key(key),
                 )
-                for key, item in value.items()
-            }
             function = redacted.get("function")
             if isinstance(function, dict):
                 arguments = function.get("arguments")
@@ -124,3 +149,81 @@ class SecretRedactor:
         if isinstance(value, tuple):
             return tuple(self._redact(item) for item in value)
         return value
+
+    def _redact_exact(self, value: Any) -> Any:
+        if isinstance(value, str):
+            for token in self._token_values:
+                value = value.replace(token, REDACTED)
+            return value
+        if isinstance(value, bytes):
+            return self.redact_wire_bytes(value)
+        if isinstance(value, dict):
+            redacted = {}
+            for key, item in value.items():
+                redacted_key = (
+                    self._redact_exact(key) if isinstance(key, str | bytes) else key
+                )
+                redacted[redacted_key] = self._redact_exact(item)
+            return redacted
+        if isinstance(value, list):
+            return [self._redact_exact(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(self._redact_exact(item) for item in value)
+        return value
+
+
+class StreamingSecretRedactor:
+    """Redact exact byte patterns across arbitrary input chunk boundaries."""
+
+    def __init__(self, patterns: Iterable[bytes]) -> None:
+        self._patterns = tuple(pattern for pattern in patterns if pattern)
+        self._max_pattern_len = max(map(len, self._patterns), default=0)
+        self._pattern = (
+            re.compile(b"|".join(re.escape(pattern) for pattern in self._patterns))
+            if self._patterns
+            else None
+        )
+        self._pending = b""
+        self._finished = False
+
+    def feed(self, chunk: bytes) -> bytes:
+        """Consume one chunk and return bytes that can no longer start a secret."""
+        if self._finished:
+            raise RuntimeError("streaming redactor is already finished")
+        if not self._patterns:
+            return chunk
+
+        data = self._pending + chunk
+        safe_limit = len(data) - self._max_pattern_len + 1
+        if safe_limit <= 0:
+            self._pending = data
+            return b""
+
+        assert self._pattern is not None
+        output: list[bytes] = []
+        offset = 0
+        while match := self._pattern.search(data, offset):
+            if match.start() >= safe_limit:
+                break
+            output.append(data[offset : match.start()])
+            output.append(REDACTED.encode("ascii"))
+            offset = match.end()
+            if offset >= safe_limit:
+                break
+        if offset < safe_limit:
+            output.append(data[offset:safe_limit])
+            offset = safe_limit
+        self._pending = data[offset:]
+        return b"".join(output)
+
+    def finish(self) -> bytes:
+        """Flush the final buffered suffix and prevent further input."""
+        if self._finished:
+            return b""
+        self._finished = True
+        if not self._patterns:
+            return b""
+        assert self._pattern is not None
+        output = self._pattern.sub(REDACTED.encode("ascii"), self._pending)
+        self._pending = b""
+        return output

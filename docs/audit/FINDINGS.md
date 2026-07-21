@@ -1,7 +1,7 @@
 # Persistent Audit Findings and Debt
 
 Last updated: 2026-07-20
-Repository base: `de9c96b8b346b5a338e81ea7fa66ba1a0c590d7b`; third omission-remediation re-audit `20260720-1554` is in the working tree
+Repository head: `26b7558b1b54160c201ed9cedb1e80a1aa188d95`; fourth independent omission audit `20260720-1606`
 Profile: `docs/audit-profile.md` (Approved)
 
 ## Conclusion ownership
@@ -24,6 +24,8 @@ authorized the remediation wave documented in
 | AUD-010 | SQLite index validation omitted uniqueness/origin/partial attributes | Validate the complete required index shape before startup. |
 | AUD-012 | Redirect policy was not enforced at every HTTP boundary | Deny provider redirects by default, isolate explicit provider opt-in, and force non-provider auxiliary requests to deny redirects. |
 | AUD-014 | Tavily responses or exceptions could reflect the configured API key | Remove the configured key from success, error, and transport-exception data before model/client/diagnostic exposure. |
+| AUD-015 | Provider and web-run sidecar return paths can reflect configured credentials | Enforce configured-token redaction at every credential-bearing outbound return boundary while preserving non-secret response/error semantics. |
+| AUD-016 | Rotated provider wire keys are absent from the exact-value redaction inventory | Parse provider credentials once and register every actual trimmed wire key, plus the raw configured value where useful, for all runtime redactors. |
 
 ### Business/semantic decisions requiring owner authority
 
@@ -53,6 +55,8 @@ claims.
 | AUD-010 | Should Plan | Agent-Fixable | Closed | SQLite validator checks columns, constraints, primary keys, required index columns, uniqueness, origin, and partial flag | DATA-01/DATA-03; persistence startup/write path | Persistence owner | Reopen on schema/table/index change without updated contract |
 | AUD-012 | Must Fix | Agent-Fixable | Closed | Provider redirects are denied by default and isolated by policy; auxiliary HTTP requests force no-follow; provider opt-in is explicit | PROVIDER-01/SCN-09; transport boundary | Gateway transport owner | Reopen if redirect behavior or HTTP client changes |
 | AUD-014 | Must Fix | Agent-Fixable | Closed | Tavily success/error data and detached transport exceptions redact the configured API key before exposure | SIDE-01/CTRL-03; search/diagnostic boundary | Gateway search owner | Reopen if Tavily client or redaction boundary changes |
+| AUD-015 | Must Fix | Agent-Fixable | Closed | Provider, sidecar, Admin model-discovery, parsed-object, raw-byte, stream, and exception return boundaries now remove every configured provider credential before exposure | PROVIDER-01/SIDE-01/SCN-03/CTRL-03; downstream, model, trace, and diagnostic boundaries | Gateway transport and search owners | Reopen on any credential-bearing client, return path, dict-key handling, stream framing, or exception propagation change |
+| AUD-016 | Must Fix | Agent-Fixable | Closed | `ProviderInfo` exposes the canonical `KeyRing` rotation sequence and `GatewayConfig` registers both the raw CSV and every selectable trimmed key with all runtime redactors | PROVIDER-01/DATA-01/CTRL-03; logs, traces, metrics, persistence, and response redaction | Gateway config, transport, and observability owners | Reopen on credential syntax, parsing, selection, startup/hot-reload propagation, or redactor-consumer changes |
 | AUD-009 | Should Plan | Decision Recorded | Closed | Only exact backend-supported `api_type` strings are present; all other values infer in memory using `responses`, `chat`, `anthropic`, `google` order; custom defaults to Responses; warning emitted | PROVIDER-01; config/Admin | Project owner decision recorded in profile | Reopen if support list, fallback order, or persistence semantics change |
 | AUD-011 | Should Plan | Decision Recorded | Risk Accepted | Direct arbitrary HTTP(S) custom egress and key delivery are accepted within local/LAN scope; provider redirect expansion requires explicit opt-in | PROVIDER-01/SCN-09; transport boundary | Project owner | Reopen if deployment boundary, direct-egress policy, or redirect policy changes |
 
@@ -72,6 +76,8 @@ claims.
 | AUD-011 | 20260720-1554 / `3e327c8` | Profile retains accepted direct custom egress and explicit provider redirect opt-in while auxiliary requests remain no-follow | Direct custom URL and enabled redirect-target SSRF/account-security risk remain accepted within local/LAN boundary | Reopen if scope or policy changes |
 | AUD-012 | 20260720-1554 / `3e327c8` | Loopback regressions prove default provider and auxiliary redirects do not reach their target; explicit provider opt-in is separately tested | DNS/proxy behavior was not live-tested; opt-in can forward credentials | Reopen if redirect/client behavior changes |
 | AUD-014 | 20260720-1554 / `b7542d2`, `de9c96b` | Success, HTTP error, and transport-exception reflection tests prove the configured Tavily key is absent and the original exception cause is detached | No real Tavily response was exercised | Reopen if Tavily response/error handling changes |
+| AUD-015 | 20260720-1606 / working tree | Shared provider-return decorator, sidecar and Admin model-discovery redaction, cause detachment, arbitrary raw-SSE split coverage, and adversarial dict-key tests; independent focused/lint/full verification green | Deterministic fake-only evidence; no real provider, sidecar, external sink, or production runtime exercised | Reopen on a new credential-bearing client/return path, raw-stream implementation, dict-key serialization, exception propagation, or diagnostic sink |
+| AUD-016 | 20260720-1606 / working tree | Canonical `KeyRing` values feed rotation and `GatewayConfig.token_values`; startup/hot-reload/rollback tests cover every rotated dummy key and runtime redactor; independent focused/lint/full verification green | Comma remains the credential-list syntax; no live rotation or external log/persistence sink exercised | Reopen on credential syntax/parser, provider construction, selection order, config activation/rollback, or redactor propagation changes |
 
 ## Omission-remediation re-audit — `20260720-1239`
 
@@ -87,11 +93,21 @@ The second omission pass reopened incomplete controls, identified redirect crede
 
 The third omission pass reopened AUD-006, AUD-009, and AUD-012, reconciled AUD-008, and opened AUD-014 for Tavily credential reflection. Owner decisions permit explicit per-provider redirects and require every backend-unrecognized `api_type` value to behave as missing. Details and current evidence are in [`docs/audit/runs/20260720-1554/REPORT.md`](runs/20260720-1554/REPORT.md) and [`EVIDENCE.md`](runs/20260720-1554/EVIDENCE.md).
 
-### Current classification
+### Classification at that run
 
 - Agent-fixable and closed: AUD-006 (including the live SSE dev script), AUD-008, AUD-012 (default-deny plus auxiliary isolation), and AUD-014 (Tavily reflected-token boundary).
 - Business semantics recorded: AUD-005 (URL-authoritative custom behavior), AUD-009 (only backend-recognized values are explicit; all others infer), AUD-011 (direct custom egress and explicit provider redirect opt-in accepted within local/LAN scope), and rejected candidate AUD-013.
 - No additional owner decision is required. No live/provider/deployment claim is made; this run remains static/deterministic only.
+
+## Fourth independent omission audit - `20260720-1606`
+
+This pass independently challenged the credential-return, redirect, and live-runner inventories at current HEAD `26b7558`. It found two previously omitted credential exposures while finding no current redirect or live-approval bypass. Details are in [`docs/audit/runs/20260720-1606/REPORT.md`](runs/20260720-1606/REPORT.md) and [`EVIDENCE.md`](runs/20260720-1606/EVIDENCE.md).
+
+### Current classification
+
+- Closed after authorized remediation and phase-separated verification: AUD-015 (provider, sidecar, Admin model-discovery, stream, exception, and dict-key reflected credentials) and AUD-016 (canonical rotated wire-key inventory and atomic runtime propagation).
+- Business semantics remain unchanged: the approved profile already requires configured-token redaction and does not tolerate credential leakage, so neither finding requires a new owner decision.
+- No Action at current HEAD: semantic live-runner inventory and redirect/direct-HTTP falsification found no reachable bypass. No real API or agent call was made.
 
 ## Accepted Debt and Risk
 
@@ -105,6 +121,7 @@ The third omission pass reopened AUD-006, AUD-009, and AUD-012, reconciled AUD-0
 | --- | --- | --- | --- | --- | --- | --- |
 | GP-001 | Real provider/Codex calls require explicit human approval and are never part of audit/default deterministic checks | live runners now share a fail-closed exact-marker gate; deterministic suite excludes real calls | keep the shared gate mandatory for every new runner | Approved live runs remain explicit and out of audit evidence | Project owner | Enforced |
 | GP-002 | Every durable agent/gateway state store needs an explicit owner scope and aggregate byte/row/TTL bound | tool mappings and compaction mappings now have scope, TTL and transactional row/byte limits | require quota contract tests for each new durable store | Limits are local/LAN policy values and may need owner tuning | Gateway persistence owner | Enforced |
+| GP-003 | Every credential-bearing outbound client must register the credentials actually sent on the wire and remove them from all untrusted return channels | Tavily required AUD-014; provider/sidecar siblings now require AUD-015; CSV key rotation requires AUD-016 | central credential parser plus an executable client matrix covering success, HTTP error, stream, and exception/cause boundaries | Exact-value redaction can alter legitimate content equal to a configured credential, which is required by the approved no-leak profile | Gateway transport/security owner | Candidate |
 
 ## Candidate Disposition
 
@@ -612,6 +629,188 @@ Tavily uses the configured API key only as Bearer request authentication, but un
 - Closure evidence: `b7542d2`, `de9c96b`; `gateway/web_search.py`; transport-limit tests covering nested success fields, HTTP errors, and detached transport exceptions.
 - Residual risk: no real Tavily call was made; correctness is deterministic against documented response fields and adversarial local fixtures.
 - Reopen trigger: Tavily authentication/response handling, redaction logic, or diagnostic exception propagation changes.
+
+## AUD-015 - Provider and web-run sidecar return paths can reflect configured credentials
+
+- Severity: Must Fix
+- Decision class: Agent-Fixable
+- Status: Closed in targeted remediation re-audit `20260720-1606`
+- Current state: every credential-bearing provider, sidecar, auxiliary, and Admin model-discovery return path in scope removes configured credential values from values and object keys before client/model/diagnostic use; secret-bearing causes are detached.
+- Confidence: High
+- First detected run: `20260720-1606`
+- Last updated run: `20260720-1606`
+- Owner: Gateway transport and search owners
+
+### Quality attributes and profile requirements
+
+- Affected attributes: Security, privacy, correctness, operability.
+- Profile/control requirement: provider API keys and optional sidecar tokens are crown jewels; configured token values must be redacted; provider/tool output is untrusted; credential leakage is not tolerated on the supported local/LAN path (`docs/audit-profile.md:21`, `:31`, `:34`, `:36`, `:56`, `:67`, `:99`).
+- Violated invariant/outcome: a credential placed on an outbound request must not re-enter downstream/model output, errors, traces, logs, persistence, or exception chains through untrusted return content.
+
+### Failure, abuse, or structural path
+
+```text
+Stimulus/trigger: A configured provider or web-run sidecar reflects the credential
+                  it received into a success body, error body, SSE chunk, or exception.
+Environment/preconditions: Supported local/LAN Gateway; attacker controls or compromises
+                           the configured upstream, or an upstream/proxy emits reflected data.
+Path/components: ProviderInfo/sidecar bearer header -> untrusted upstream return ->
+                 proxy or Codex Search bridge -> downstream client/model/diagnostic state.
+Expected response: Remove the exact configured wire credential at the client/transport return
+                   boundary while preserving non-secret status, schema, and content.
+Observed failure: Provider raw passthrough and sidecar success/error/exception paths return the
+                  reflected value unchanged; the sidecar retains the original exception cause.
+```
+
+### Evidence and reachability
+
+- Provider authentication selects and emits a wire key at `src/codex_rosetta/gateway/transport/provider_info.py:91-93`.
+- Non-streaming Responses passthrough returns raw success and error bodies at `src/codex_rosetta/gateway/proxy.py:1495-1535`; converted errors return the same raw content at `:1623-1648`.
+- Same-protocol streaming yields upstream bytes at `src/codex_rosetta/gateway/proxy.py:2138-2165`, and stream-header errors are returned at `:2315-2367`. These paths have diagnostic redactors but no downstream return redactor.
+- The sidecar sends its bearer and returns success data or propagates reflected error/exception data at `src/codex_rosetta/gateway/web_run_sidecar.py:82-120`, `:135-184`.
+- Codex Search exposes sidecar results and mapped errors through `src/codex_rosetta/gateway/codex_auxiliary.py:313-341` and `src/codex_rosetta/gateway/codex_search.py:100-104`, `:354-364`, `:527-544`, `:870-897`.
+- Deterministic fake results at current HEAD:
+
+```text
+sidecar_success_reflects_token True
+sidecar_error_reflects_token True
+sidecar_exception_chain_reflects_token True cause_retained True
+provider_200_reflects_token True
+provider_401_reflects_token True
+```
+
+- `tests/gateway/test_web_run_sidecar.py:18-120` and `tests/gateway/test_responses_passthrough.py:59-114` verify ordinary behavior/raw preservation but contain no reflected-configured-token oracle.
+
+### Impact and risk basis
+
+- A malicious or compromised configured upstream can disclose its bearer/API key to any authenticated downstream client and can inject it into subsequent model/tool context.
+- The same reflected data can reach traces, request/error persistence, or exception diagnostics, increasing retention and secondary disclosure risk.
+- The supported boundary is local/trusted LAN rather than public, but the profile explicitly includes compromised/mistaken LAN clients and malicious provider content and classifies confirmed credential exposure as `Must Fix`.
+
+### Existing controls and why they are insufficient
+
+- `UpstreamErrorLogState`, body logs, persistence, metrics, and trace state apply `SecretRedactor` to selected diagnostic copies. They do not transform the downstream response returned by proxy handlers.
+- Tavily now redacts success/error/transport content inside `TavilyHTTPClient`, proving the intended pattern, but provider transport and web-run sidecar clients are sibling omissions.
+- HTTP size limits and redirect denial bound transport behavior but do not remove a credential reflected by the configured destination itself.
+
+### Acceptance criteria
+
+1. Every credential-bearing provider and web-run sidecar return path removes every configured credential actually sent on the request from success bodies, HTTP errors, stream data, transport errors, and retained exception/cause data before any downstream/model/diagnostic exposure.
+2. Both same-protocol passthrough and converted provider paths are covered for non-streaming and streaming behavior. Streaming protection must handle a credential split across arbitrary upstream chunks, not only a token contained in one chunk.
+3. Sidecar `execute` and `search` success objects, structured errors, plain errors, invalid payload diagnostics, and transport exceptions are covered; raw secret-bearing causes are detached or sanitized recursively.
+4. Status codes, provider error schema, SSE ordering/framing, and all non-secret content remain compatible. Raw passthrough may change only where needed to satisfy the configured-token invariant.
+5. Client responses/model context, body/error logs, traces, metrics, and persisted error/request data are all asserted secret-free with nested and embedded reflection fixtures.
+6. Regression tests cover ordinary single keys and all rotated wire keys from AUD-016 without making real calls.
+
+### Verification required for closure
+
+- Focused unit tests for sidecar success/error/exception and provider success/error/stream paths, including split-token SSE chunks and exception tracebacks.
+- Existing passthrough, conversion, streaming, logging, persistence, and redaction suites.
+- Full deterministic suite, lint/type checks, and CodeGraph sync if implementation ownership crosses indexed modules.
+- No real provider/sidecar call is required for deterministic closure; live behavior remains a separate approved-development evidence gap.
+
+### Residual risk and invalidation
+
+- Exact-value redaction intentionally changes otherwise legitimate content equal to a configured credential; this follows the approved no-leak policy.
+- Reopen on any new credential-bearing client, authentication scheme, raw passthrough path, stream framing implementation, or exception propagation change.
+
+### Closure evidence
+
+- `CredentialRedactingTransport` applies exact configured-credential removal to provider passthrough and converted responses, parsed streams, raw SSE bytes across arbitrary chunk splits, HTTP errors, and detached transport exceptions before proxy consumers observe them.
+- `WebRunSidecarHTTPClient`, Codex auxiliary provider calls, and Admin `fetch_upstream_models` apply the same configured-value invariant to success objects, structured/plain/invalid errors, model IDs, logging, and transport failures. Admin discovery derives its redactor from `pinfo.credential_values`, including the key actually selected on the wire.
+- `SecretRedactor.redact()` and `redact_exact()` redact configured values in string and bytes dictionary keys as well as values. If multiple source keys redact to the same key, normal deterministic dictionary semantics apply: the later source item wins, and no original secret key is retained.
+- Regression tests cover success and HTTP errors, passthrough and converted paths, streaming and non-streaming paths, arbitrary cross-chunk raw SSE, nested values, adversarial object keys, every rotated dummy key, traces/logs/metrics/persistence redactors, sidecar execute/search, Admin model discovery, and cause-free exceptions without real calls.
+- Independent phase-separated verification: focused `158 passed`; `conda run -n llm-rosetta make lint` passed; `conda run -n llm-rosetta make test` reported `3542 passed, 5 skipped, 11 warnings`.
+
+All six frozen acceptance criteria are satisfied by current code plus deterministic verification. Status/error schemas and non-secret response/SSE bytes remain covered; only exact configured-credential occurrences are replaced.
+
+## AUD-016 - Rotated provider wire keys are absent from the exact-value redaction inventory
+
+- Severity: Must Fix
+- Decision class: Agent-Fixable
+- Status: Closed in targeted remediation re-audit `20260720-1606`
+- Current state: provider rotation and redaction consume the same canonical ordered `KeyRing` values, while the raw CSV and every selectable key reach all runtime redactors atomically.
+- Confidence: High
+- First detected run: `20260720-1606`
+- Last updated run: `20260720-1606`
+- Owner: Gateway config, transport, and observability owners
+
+### Quality attributes and profile requirements
+
+- Affected attributes: Security, privacy, correctness, modifiability, operability.
+- Profile/control requirement: every configured provider token value used on the supported path must be redacted from diagnostics and untrusted return data; key rotation is an explicitly audited background/runtime behavior.
+- Violated invariant/outcome: the redaction inventory must contain the same canonical credential values the transport can select and send on the wire.
+
+### Failure, abuse, or structural path
+
+```text
+Stimulus/trigger: A provider is configured with "key-A, key-B" and reflects the active key
+                  in an ordinary message or payload field.
+Environment/preconditions: Provider key rotation enabled through the documented comma-delimited
+                           api_key value; logging, tracing, persistence, or response sanitization active.
+Path/components: collect_token_values stores one raw CSV string -> KeyRing independently splits it ->
+                 provider sends key-A -> exact-value redactor knows only "key-A, key-B".
+Expected response: Every trimmed credential selectable by KeyRing is registered with every runtime redactor.
+Observed failure: The active individual key survives sanitization in ordinary fields.
+```
+
+### Evidence and reachability
+
+- `_add_token` and `collect_token_values` retain the provider `api_key` as one exact string (`src/codex_rosetta/observability/redaction.py:43-60`).
+- `SecretRedactor` replaces only registered exact values (`src/codex_rosetta/observability/redaction.py:69-94`).
+- `KeyRing` independently splits commas and trims individual wire keys (`src/codex_rosetta/gateway/transport/provider_info.py:28-45`); `ProviderInfo.auth_headers()` selects one of them (`:91-93`).
+- `GatewayConfig.token_values` feeds error/body logs at startup and trace, persistence, metrics, and all redactors during hot reload (`src/codex_rosetta/gateway/config.py:716-717`; `src/codex_rosetta/gateway/app.py:1092-1097`; `src/codex_rosetta/gateway/admin/routes/_shared.py:145-215`).
+- Deterministic current-HEAD probe:
+
+```text
+registered_exact_individual_keys False False
+registered_raw_csv True
+active_rotated_key rotate-secret-A
+diagnostic_reflects_active_key True
+```
+
+- `tests/observability/test_redaction.py:12-28` covers a single provider key; no test joins key-ring parsing to runtime redactor registration.
+
+### Impact and risk basis
+
+- Any rotated provider key can survive configured-token redaction when reflected in a normal error/message field, allowing it into logs, traces, metrics, persistence, and the return boundaries addressed by AUD-015.
+- The mismatch affects every redaction consumer because they all receive the same incomplete `GatewayConfig.token_values` set.
+- Fixing only one logger or only AUD-015 would leave the root parser divergence intact.
+
+### Existing controls and why they are insufficient
+
+- Token-shaped fields and `Bearer ...` strings are redacted structurally, but a malicious reflection can place the active key in any ordinary string field.
+- Sorting registered tokens longest-first prevents overlap corruption only for values actually present in the set; it cannot infer the keys hidden inside the CSV string.
+- Atomic hot reload propagates the token set consistently, but it consistently propagates the incomplete set.
+
+### Acceptance criteria
+
+1. One canonical parser/contract defines provider credential values for both rotation and redaction; it trims whitespace, ignores empty entries, preserves rotation order, and exposes every value that can be sent on the wire to the redaction inventory.
+2. The raw configured CSV value may remain registered, but every individual selectable key must also be registered. Single-key behavior and existing provider configuration semantics remain unchanged.
+3. Startup and atomic hot reload update error logs, body logs, stream traces, metrics, persistence/error dumps, and AUD-015 return-boundary redactors with the complete new set before the new provider state becomes active.
+4. Tests exercise every rotation position, surrounding whitespace, empty segments, duplicate/overlapping key values, ordinary nested reflection fields, and removal of old keys after successful hot reload without exposing secrets in test failure output.
+5. No logging, Admin response, or persistence artifact reveals the canonical parsed key list.
+
+### Verification required for closure
+
+- Unit tests that bind config parsing, `KeyRing`, `ProviderInfo.auth_headers`, and each prepared runtime redactor to the same dummy rotated credentials.
+- Hot-reload atomicity/rollback tests and the focused/full deterministic validation required for AUD-015.
+- No live provider call is required; real key-rotation behavior remains an explicitly separate development evidence gap.
+
+### Residual risk and invalidation
+
+- Providers may support future credential formats that legitimately contain commas; such a format would require an owner-visible configuration contract change rather than an implicit parser exception.
+- Reopen on provider credential syntax, key-ring selection, config substitution, hot-reload activation, or redaction-consumer changes.
+
+### Closure evidence
+
+- `KeyRing` parses the configured CSV once into an ordered tuple, trimming whitespace, ignoring empty entries, and preserving duplicates and selection order. `ProviderInfo.credential_values` exposes that same tuple; there is no second rotation parser.
+- `GatewayConfig` retains the raw configured CSV through the existing token collector and additionally registers every `ProviderInfo.credential_values` entry. Environment-resolved provider credentials therefore follow the same source of truth.
+- Startup and Admin config prepare/activate/rollback tests prove the complete new set reaches stream trace, upstream/body logs, metrics, persistence, and provider-return redactors atomically; rollback retains the old state and successful activation removes old keys.
+- Tests cover every rotation position, whitespace, empty entries, duplicates, prefix overlap, nested value and object-key reflection, raw CSV retention, environment fallback, and absence of an externally exposed parsed-key list.
+- Independent phase-separated verification: focused `158 passed`; `conda run -n llm-rosetta make lint` passed; `conda run -n llm-rosetta make test` reported `3542 passed, 5 skipped, 11 warnings`.
+
+All five frozen acceptance criteria are satisfied deterministically. No live provider rotation, external log sink, or production persistence artifact was exercised.
 
 ## AUD-004 — Mutable build inputs and missing artifact provenance are accepted release debt
 

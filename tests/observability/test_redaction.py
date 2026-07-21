@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from codex_rosetta.observability.redaction import (
     REDACTED,
     SecretRedactor,
@@ -110,3 +112,80 @@ def test_keeps_encoded_tool_arguments_byte_identical_without_tokens():
     redacted = SecretRedactor().redact(tool_call)
 
     assert redacted["function"]["arguments"] == arguments
+
+
+def test_exact_redaction_preserves_non_secret_fields_and_nested_shapes():
+    redactor = SecretRedactor({"provider-secret"})
+    value = {
+        "token": "ordinary-model-value",
+        "nested": [
+            "before provider-secret after",
+            {"blob": b"\xffprovider-secret\x00"},
+        ],
+    }
+
+    redacted = redactor.redact_exact(value)
+
+    assert redacted == {
+        "token": "ordinary-model-value",
+        "nested": [
+            "before [REDACTED] after",
+            {"blob": b"\xff[REDACTED]\x00"},
+        ],
+    }
+    assert value["nested"][0] == "before provider-secret after"
+
+
+@pytest.mark.parametrize("method_name", ["redact", "redact_exact"])
+def test_configured_tokens_are_redacted_from_dict_keys_with_last_item_wins(
+    method_name: str,
+) -> None:
+    token = "provider-key-secret"
+    value = {
+        token: "secret-key-first",
+        REDACTED: "ordinary-later-value",
+        f"prefix-{token}": "string-key",
+        f"bytes-{token}".encode(): "bytes-key",
+        7: "non-string-key",
+    }
+
+    redacted = getattr(SecretRedactor({token}), method_name)(value)
+
+    assert token not in repr(redacted)
+    assert redacted[REDACTED] == "ordinary-later-value"
+    assert redacted["prefix-[REDACTED]"] == "string-key"
+    assert redacted[b"bytes-[REDACTED]"] == "bytes-key"
+    assert redacted[7] == "non-string-key"
+
+
+def test_wire_redaction_handles_json_escaped_credentials():
+    token = 'provider-"quoted\\key-\N{SNOWMAN}'
+    payload = json.dumps(
+        {"nested": {"credential": token}},
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode()
+
+    redacted = SecretRedactor({token}).redact_wire_bytes(payload)
+
+    assert token.encode() not in redacted
+    assert json.loads(redacted)["nested"]["credential"] == "[REDACTED]"
+
+
+def test_streaming_wire_redaction_covers_every_token_split_and_prefix_overlap():
+    token = b"provider-secret-long"
+    payload = b'event: message\ndata: {"text":"before ' + token + b' after"}\n\n'
+    expected = payload.replace(token, b"[REDACTED]")
+    redactor = SecretRedactor({"provider-secret", token.decode()})
+
+    for split in range(len(payload) + 1):
+        stream = redactor.streaming_redactor()
+        actual = stream.feed(payload[:split])
+        actual += stream.feed(payload[split:])
+        actual += stream.finish()
+        assert actual == expected
+
+    bytewise = redactor.streaming_redactor()
+    actual = b"".join(bytewise.feed(bytes([value])) for value in payload)
+    actual += bytewise.finish()
+    assert actual == expected

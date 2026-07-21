@@ -17,12 +17,16 @@ from codex_rosetta.gateway.admin.routes import config as config_routes
 from codex_rosetta.gateway.config import GatewayConfig
 
 
-def _request(*, allow_redirects: bool = False) -> SimpleNamespace:
+def _request(
+    *,
+    allow_redirects: bool = False,
+    api_key: str = "sk-test",
+) -> SimpleNamespace:
     config = GatewayConfig(
         {
             "providers": {
                 "test-provider": {
-                    "api_key": "sk-test",
+                    "api_key": api_key,
                     "base_url": "https://api.example.test/v1",
                     "api_type": "chat",
                     "allow_redirects": allow_redirects,
@@ -161,3 +165,56 @@ def test_model_discovery_uses_provider_redirect_policy(
 
     assert response.status_code == 200
     assert observed["allow_redirects"] is True
+
+
+@pytest.mark.parametrize("outcome", ["success", "connection_error"])
+def test_model_discovery_redacts_rotated_wire_key(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    outcome: str,
+) -> None:
+    first_key = "admin-model-first-secret"
+    wire_key = "admin-model-wire-secret"
+    request = _request(api_key=f" {first_key}, , {wire_key} ")
+    pinfo = request.app.gateway_config.providers["test-provider"]
+    assert pinfo.auth_headers()["Authorization"] == f"Bearer {first_key}"
+    observed_headers: dict[str, str] = {}
+
+    class _FakeAsyncClient:
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    async def _fake_bounded_request(client, method, url, **kwargs):
+        observed_headers.update(kwargs["headers"])
+        if outcome == "connection_error":
+            raise RuntimeError(f"connection rejected credential={wire_key}")
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"data": [{"id": f"model-{wire_key}"}]},
+        )
+
+    monkeypatch.setattr(config_routes, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(
+        config_routes,
+        "request_bounded_response",
+        _fake_bounded_request,
+    )
+
+    response = asyncio.run(config_routes.fetch_upstream_models(request))
+
+    assert observed_headers["Authorization"] == f"Bearer {wire_key}"
+    response_text = response.body.decode("utf-8")
+    assert first_key not in response_text
+    assert wire_key not in response_text
+    if outcome == "success":
+        assert json.loads(response.body)["models"] == ["model-[REDACTED]"]
+    else:
+        assert "connection rejected credential=[REDACTED]" in response_text
+        assert wire_key not in caplog.text
+        assert "connection rejected credential=[REDACTED]" in caplog.text
