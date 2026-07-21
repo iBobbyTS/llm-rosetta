@@ -38,7 +38,7 @@ authorized the remediation wave documented in
 | AUD-009 | **Recorded:** only exact backend-supported `api_type` values count as present; every other value is inferred from exact preset URL support order, custom defaults to Responses, and no write-back occurs | Protocol selection changes routing behavior, so its fallback order requires owner authority. |
 | AUD-011 | **Recorded:** arbitrary HTTP(S) custom URLs may receive upstream API keys within local/LAN scope; redirects default off but may be explicitly enabled per provider | The egress/key-disclosure boundary and opt-in redirect expansion require owner authority; policy enforcement remains a repairable transport control. |
 | AUD-017 | **Recorded:** configured credentials have no minimum-length requirement; Rosetta still requires a configured Gateway API key and has no unauthenticated mode; ambiguous return collisions must fail closed rather than leak credentials or silently emit corrupted SSE/JSON | Identical bytes cannot always be classified as reflection versus legitimate content, so the owner selected controlled failure while retaining both the no-leak and protocol-integrity requirements. |
-| AUD-020 | Whether every untrusted return boundary protects the complete atomic `GatewayConfig.token_values` inventory or only credentials sent on the active request | Global protection matches the current no-configured-token-leak wording but unrelated short/common credentials can block otherwise legitimate responses; the narrower boundary explicitly accepts cross-provider configured-secret reflection. |
+| AUD-020 | **Recorded:** every untrusted return boundary protects only credentials configured for the active outbound provider or auxiliary client; global diagnostics continue to use `GatewayConfig.token_values` | The owner selected the narrower local/LAN product boundary and explicitly accepted cross-provider/client configured-secret reflection outside the active return gate. |
 
 The remaining `No Action`, deterministic-only, and excluded-runtime statements
 are evidence status or explicit scope limits, not additional remediation
@@ -50,7 +50,7 @@ claims.
 | ID | Severity | Decision class | Status | Root cause | Affected scenarios/areas | Owner/decision | Due/revisit trigger |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | AUD-019 | Must Fix | Agent-Fixable | Closed | Shared return gates now combine exact wire matching with parsed JSON string comparison, including complete SSE `data` payloads | PROVIDER-01/SIDE-01/SCN-03/SCN-04/CTRL-03; raw SSE, raw errors, Tavily, sidecar | Gateway transport/security owner | Reopen if JSON/SSE parsing, return clients, or credential matching changes |
-| AUD-020 | Must Fix | Needs Decision | Open | Return gates are seeded from the active `ProviderInfo.credential_values`, not the complete atomic runtime configured-token inventory | PROVIDER-01/SIDE-01/SCN-03/CTRL-03; provider and auxiliary return-domain ownership | Project owner decision required | Decide global versus active-request credential domain before remediation |
+| AUD-020 | Must Fix | Decision Recorded | Closed | Active-provider/client credential inventory is the authoritative return-gate domain; global configured-token inventory remains diagnostic-only | PROVIDER-01/SIDE-01/SCN-03/CTRL-03; provider and auxiliary return-domain ownership | Project owner decision recorded in profile | Reopen if deployment boundary or credential-domain ownership changes |
 | AUD-017 | Must Fix | Agent-Fixable | Closed | Credential-bearing return boundaries now preserve credential-free values byte-for-byte and fail closed on exact collisions; raw passthrough releases only complete safe SSE events and terminates from a valid event boundary | PROVIDER-01/SIDE-01/SCN-03/SCN-04/CTRL-03; provider, sidecar, search, SSE, and JSON return boundaries | Owner decision recorded; Gateway transport/security owner | Reopen if credential syntax, return clients, parsing, or stream framing changes |
 | AUD-018 | Should Plan | Agent-Fixable | Closed | Admin model discovery validates the provider-specific root, collection, member, and identifier schema before normalization and returns a stable controlled error on mismatch | AUTH-02/SCN-08/SCN-09; Admin provider/model operation | Gateway/Admin owner | Reopen if model-list schema, shim ID ownership, or Admin error handling changes |
 | AUD-002 | Must Fix | Agent-Fixable | Closed | Transactional compaction replacement row/byte/replacement-size quotas now bound supported local/LAN persistence | SCN-06, SCN-07; persistence/observability | Project owner / Gateway persistence owner | Reopen if limits or storage path change |
@@ -89,6 +89,7 @@ claims.
 | AUD-017 | 20260720-1859 / working tree | Provider/auxiliary/Tavily/sidecar/Admin boundaries block collisions; parsed JSON is not rewritten; raw SSE is held by complete event and tested across arbitrary splits, short/common tokens, rotation and framing; focused `187 passed`, full `3576 passed, 5 skipped`, lint and compatibility checks green | Exact matching does not detect encoded, hashed, or covert exfiltration; short/common credentials can intentionally make responses fail closed; no real upstream was exercised | Reopen on credential syntax, client inventory, return parsing, SSE framing, or collision policy change |
 | AUD-018 | 20260720-1859 / working tree | Provider-specific model-list normalization rejects list/scalar/null roots, missing/wrong collections, invalid members/IDs, and preserves OpenAI/Anthropic/Google/custom-ID success cases; focused `187 passed`, full `3576 passed, 5 skipped` | Browser/LAN UX and real provider pagination remain unverified | Reopen on provider model-list schema, shim `model_id_field`, or Admin error contract change |
 | AUD-019 | 20260720-2103 remediation / working tree | Shared JSON-semantic collision checks cover values and keys, Unicode and solidus escapes, surrogate pairs, raw success/error bodies, complete SSE events across arbitrary chunk splits, Tavily, and web-run sidecar responses; focused `105 passed`, full `3591 passed, 5 skipped`, lint and compatibility checks green | Invalid/non-JSON content retains exact wire matching only; arbitrary encoded, hashed, or covert exfiltration is outside the exact-match guarantee | Reopen on JSON/SSE parsing, return clients, wire framing, or credential matching changes |
+| AUD-020 | 20260720-2103 decision closure / working tree | Approved profile defines active outbound provider/client credentials as the return-gate domain; a deterministic transport contract proves an unrelated configured provider credential is returned unchanged while existing active-provider collision tests remain fail-closed | Cross-provider/client credential reflection is accepted within the local/LAN-only boundary; global diagnostics still redact the complete configured-token inventory | Reopen if public deployment, global no-configured-token return semantics, or credential ownership changes |
 
 ## AUD-019 — Semantically equivalent JSON escapes bypass raw credential checks
 
@@ -109,7 +110,7 @@ claims.
 - [x] Safe credential-free wire bytes remain byte-identical.
 - [x] Unicode escape placement, surrogate pairs, solidus, backslash, quote, JSON key/value, arbitrary stream splits, success/error/raw SSE/Tavily/sidecar paths are covered.
 - [x] Invalid or non-JSON content retains exact raw-wire collision detection and existing controlled error behavior without speculative decoding.
-- [x] A phase-separated re-audit restores SCN-04; the overlapping PROVIDER-01/SIDE-01/SCN-03/CTRL-03 cone remains invalidated only by pending AUD-020 semantics.
+- [x] A phase-separated re-audit restores SCN-04; the overlapping PROVIDER-01/SIDE-01/SCN-03/CTRL-03 cone is restored after the separate AUD-020 decision contract.
 
 ### Evidence and residual risk
 
@@ -119,29 +120,37 @@ claims.
 ## AUD-020 — Return credential inventory is active-provider local
 
 - Severity: Must Fix
-- Decision class: Needs Decision
-- Status: Open
+- Decision class: Decision Recorded
+- Status: Closed
 - Confidence: High
 - First detected run: `20260720-2103`
-- Owner: Project owner, then Gateway transport/security owner
+- Owner: Project owner; Gateway transport/security owner maintains the contract
 
-### Failure and impact
+### Observed boundary and impact
 
-`CredentialRedactingTransport` builds its redactor from the active `ProviderInfo.credential_values`. The process already owns the complete atomic configured-token inventory in `GatewayConfig.token_values`, but that inventory is not supplied to provider return gates. A Provider A request can therefore return a configured Provider B key unchanged in parsed and raw bodies.
+`CredentialRedactingTransport` builds its redactor from the active `ProviderInfo.credential_values`. The process separately owns the complete atomic configured-token inventory in `GatewayConfig.token_values` for diagnostics, but that inventory is intentionally not supplied to provider return gates. A Provider A request may therefore return a configured Provider B key unchanged in parsed and raw bodies.
 
 ### Human decision
 
-- Option A, recommended: every untrusted return gate uses the complete atomic runtime configured-token inventory and fails closed on any collision. This matches the current profile wording, but an unrelated short/common configured token can block otherwise legitimate output.
-- Option B: protect only credentials sent on the active request. This avoids cross-route false blocking but explicitly accepts cross-provider or cross-client configured-secret reflection.
-- Decision: pending owner authority.
+- Option A considered: every untrusted return gate uses the complete atomic runtime configured-token inventory and fails closed on any collision. This can make an unrelated short/common configured token block otherwise legitimate output.
+- Option B selected: protect only credentials configured for the active outbound provider/client. This avoids cross-route false blocking and explicitly accepts cross-provider or cross-client configured-secret reflection.
+- Decision: protect only credentials configured for the active outbound provider or auxiliary client. Do not seed return gates from unrelated providers. Global observability/diagnostic redactors continue to use the complete configured-token inventory.
+- Authority/date: Project owner / 2026-07-20.
+- Accepted residual risk: a provider/client may return a credential configured only for another provider/client; this is outside the supported return-gate guarantee under the local/LAN-only profile.
 
 ### Frozen acceptance criteria after decision
 
-- [ ] The authoritative credential domain is documented in the profile and compatibility/security ledgers.
-- [ ] Startup and atomic hot reload/rollback propagate the selected inventory without partial state.
-- [ ] Provider, auxiliary, Tavily, sidecar, Admin, raw/parsed/stream/error paths use the same selected domain.
-- [ ] Cross-provider credentials and short/common-token collision behavior have explicit regression or accepted-risk evidence.
-- [ ] Phase-separated verification updates PROVIDER-01, SIDE-01, SCN-03, and CTRL-03.
+- [x] The authoritative active-provider/client credential domain is documented in the profile and compatibility/security ledgers.
+- [x] Existing startup and atomic hot reload/rollback continue to propagate each provider/client's own canonical inventory without introducing a global return-gate dependency.
+- [x] Provider, auxiliary, Tavily, sidecar, Admin, raw/parsed/stream/error paths retain their current active-client domain.
+- [x] Cross-provider reflection is explicitly accepted and covered by a regression; active short/common-token collisions remain fail-closed.
+- [x] Phase-separated verification restores PROVIDER-01, SIDE-01, SCN-03, and CTRL-03 within the approved domain.
+
+### Closure evidence
+
+- The approved profile and Codex compatibility ledger now distinguish active-client return gates from global diagnostic redaction.
+- `test_non_streaming_ignores_credentials_outside_active_provider` freezes the selected cross-provider behavior, while the existing collision matrix continues to prove active-provider credentials fail closed; focused `19 passed`, full `3592 passed, 5 skipped`, lint and compatibility checks are green.
+- No runtime inventory expansion or real API call was introduced.
 
 ## Omission-remediation re-audit — `20260720-1239`
 

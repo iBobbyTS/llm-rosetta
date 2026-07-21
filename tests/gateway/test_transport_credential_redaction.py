@@ -103,6 +103,34 @@ def test_non_streaming_blocks_every_rotation_position_on_success_and_error():
     asyncio.run(run())
 
 
+def test_non_streaming_ignores_credentials_outside_active_provider() -> None:
+    unrelated_credential = "provider-b-secret"
+
+    class _OtherProviderCredentialTransport(_ReflectingTransport):
+        async def send_request(self, *args: Any, **kwargs: Any) -> UpstreamResponse:
+            payload = {"output": unrelated_credential}
+            return UpstreamResponse(
+                status_code=200,
+                body=payload,
+                raw_content=json.dumps(payload, separators=(",", ":")).encode(),
+            )
+
+    async def run() -> UpstreamResponse:
+        return await CredentialRedactingTransport.wrap(
+            _OtherProviderCredentialTransport()
+        ).send_request(
+            _provider("provider-a-secret"),
+            "openai_responses",
+            {},
+            "test",
+        )
+
+    response = asyncio.run(run())
+
+    assert response.body == {"output": unrelated_credential}
+    assert response.raw_content == b'{"output":"provider-b-secret"}'
+
+
 class _ErrorTransport(_ReflectingTransport):
     async def send_request(
         self, provider_info: ProviderInfo, *args: Any, **kwargs: Any

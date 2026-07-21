@@ -7,7 +7,7 @@
 - Audit Profile：`Approved`
 - 本轮结论：发现阶段新增两个开放发现；随后 owner 授权逐项修复。
 - `AUD-019 / Must Fix / Agent-Fixable / Closed`：共享边界现同时执行 exact-wire 与 parsed-JSON 语义检查，合法但非 canonical 的 JSON escape 无法再绕过 raw SSE/raw error/Tavily/sidecar gate。
-- `AUD-020 / Must Fix / Needs Decision`：返回边界只使用当前 provider 的 `credential_values`，并未使用进程已有的全局 configured-token inventory；另一个已配置 provider/route 的凭据可原样返回。Profile 文案倾向全局 fail-closed，但是否接受由无关短 token 引起的跨 provider 阻断需要 owner 明确确认。
+- `AUD-020 / Decision Recorded / Closed`：owner 明确选择返回边界只使用当前 provider／当前辅助客户端的凭据；全局 configured-token inventory 仅用于 diagnostics。另一个 provider/client 的凭据可原样返回，这一跨域 reflection 风险在 local/LAN-only 边界内被明确接受。
 - live-call gate 与所抽样 Anthropic/Google converter 路径均为 `No Action`；没有执行真实 API 调用。
 
 ## 发现
@@ -24,12 +24,13 @@
 
 全局日志/metrics/persistence redactor 使用 `GatewayConfig.token_values`，但 `CredentialRedactingTransport` 只从当前 `ProviderInfo.credential_values` 构造 return redactor。确定性 probe 中，Provider A 的请求收到已配置 Provider B 的 key 时，parsed body 与 raw body 均原样返回。
 
-需要 owner 确认：
+owner 决策：
 
-- 推荐语义：所有 untrusted return gate 使用原子更新的全局 runtime credential inventory，任一 configured credential 碰撞都 fail closed；代价是另一路由的短/常见 token 也可能阻断当前响应。
-- 较窄语义：只保护本次请求实际发送的 credentials；代价是明确接受跨 provider/跨 client 的 configured-secret reflection。
+- 采用较窄语义：只保护当前 outbound provider/client 配置的 credentials，避免另一路由的短/常见 token 阻断当前响应。
+- 全局 diagnostics redactor 继续使用完整 `GatewayConfig.token_values`；不扩展 return gate inventory。
+- 明确接受跨 provider/跨 client 的 configured-secret reflection，限当前 local/LAN-only profile。
 
-审计者未代替 owner 选择该产品语义，因此状态为 `Open / Needs Decision`。
+该决策已写入 profile、compatibility ledger，并由 cross-provider deterministic regression 固化，因此状态为 `Closed / Decision Recorded`。
 
 ## No Action 结果
 
@@ -49,17 +50,18 @@
 | 两个直接 deterministic probes | 均复现 | 证明现有测试存在 oracle/coverage omission |
 | AUD-019 remediation focused suite | `105 passed` | fake/in-process only |
 | AUD-019 remediation `make lint` / `make test` / compatibility | 通过；`3591 passed, 5 skipped, 11 warnings`；Codex contract 无阻断变化 | integration 被排除，无真实 API |
+| AUD-020 decision-contract focused/full gates | focused `19 passed`; lint 通过；full `3592 passed, 5 skipped, 11 warnings`；Codex contract 无阻断变化 | 仅 deterministic 契约；integration 被排除，无真实 API |
 
 首次 focused 命令误写了不存在的 `tests/gateway/test_web_search.py`，因此 collection 失败且未运行测试；随后使用实际路径 `test_web_search_bridge.py` 重跑并取得上述结果。
 
 ## 覆盖与剩余未知
 
 - `SCN-04`：AUD-019 phase-separated deterministic re-audit 后恢复为 `Fresh`。
-- `PROVIDER-01`、`SIDE-01`、`SCN-03`、`CTRL-03`：仍为 `Invalidated`，原因仅剩 AUD-020 的凭据域决策尚未记录。
+- `PROVIDER-01`、`SIDE-01`、`SCN-03`、`CTRL-03`：AUD-020 决策契约与 deterministic regression 完成后恢复为 `Fresh`。
 - `AGENT-01`、`SCN-11`、`CTRL-06`：保持 `Fresh (deterministic)`。
 - 真实 provider/Codex/Tavily/sidecar、网络 chunk timing、浏览器/LAN、部署、生产 telemetry、恢复与外部 GitHub 设置仍为 `Unknown` 或本轮排除项。
 - 未执行完整 converter matrix、agentabi/live matrix、Docker/Compose smoke 或任何真实 API 调用。
 
 ## 维护性判断
 
-问题集中在共享 return-security boundary 及其 credential inventory ownership。AUD-019 通过共享 `SecretRedactor` 语义入口修复，没有复制 provider-specific escape 规则；AUD-020 的 credential domain 仍须由 owner 决定。
+问题集中在共享 return-security boundary 及其 credential inventory ownership。AUD-019 通过共享 `SecretRedactor` 语义入口修复，没有复制 provider-specific escape 规则；AUD-020 保持现有 active-client ownership，不引入全局 return-gate 耦合。

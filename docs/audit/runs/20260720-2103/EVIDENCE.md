@@ -8,7 +8,7 @@ Repository head/environment: `99218427824047a416030675c19c9ba4908925ac`; macOS, 
 | Unit | Status | Severity | Coverage IDs | Finding IDs | Evidence summary | Gaps |
 | --- | --- | --- | --- | --- | --- | --- |
 | UNIT-001 | Re-audited | Closed | PROVIDER-01, SIDE-01, SCN-03, SCN-04, CTRL-03 | AUD-019 | shared exact-wire plus parsed JSON/SSE semantic checks block equivalent encodings across provider, Tavily, and sidecar return paths | no real upstream; non-JSON covert encodings are outside this finding |
-| UNIT-002 | Reviewed | Must Fix / Needs Decision | PROVIDER-01, SIDE-01, SCN-03, CTRL-03 | AUD-020 | return redaction is seeded only with the active provider's keys, so another configured credential can be returned unchanged | owner must choose global runtime inventory versus a narrower accepted disclosure boundary |
+| UNIT-002 | Re-audited | Decision Recorded / Closed | PROVIDER-01, SIDE-01, SCN-03, CTRL-03 | AUD-020 | return redaction intentionally uses only the active provider/client credentials; cross-provider reflection is accepted and regression-tested, while diagnostics remain global | no live upstream; public deployment remains unsupported |
 | UNIT-003 | Reviewed / No Action | N/A | AGENT-01, SCN-11, CTRL-06 | none | all reachable repository-local real-call runners found in the semantic inventory use the shared approval gate | no live trajectory was executed; atypically named future runners remain an invalidation trigger |
 | UNIT-004 | Sampled / No Action | N/A | converter rotation | none | Anthropic and Google deterministic converter suites passed in the focused run | not a full converter matrix and no provider semantics were exercised live |
 | UNIT-005 | Verified | N/A | repository checks | AUD-019, AUD-020 | focused tests, lint, and full non-integration suite passed; direct probes still reproduce both omissions | deterministic/local evidence only |
@@ -86,17 +86,18 @@ Phase-separated re-audit closes AUD-019 and restores SCN-04. PROVIDER-01, SIDE-0
 
 ```text
 Stimulus: one configured/custom upstream returns a credential configured for another provider/route
-Expected under the approved no-configured-credential-leak wording: controlled failure before downstream release
+Expected under the owner-approved active-provider/client wording: unrelated provider credential remains outside this return gate
 Observed: the credential is outside the active ProviderInfo inventory and is returned unchanged
-Result: Not Satisfied; exact remediation boundary needs owner confirmation
+Result: Satisfied after decision recording
 ```
 
-### Decision boundary
+### Decision closure
 
-- Option A (profile-consistent, stronger): seed every untrusted return gate with the atomic global runtime credential inventory and fail closed on any configured-secret collision. Trade-off: an unrelated short/common credential may block otherwise legitimate output.
-- Option B (narrower): protect only credentials sent on the active request. Trade-off: explicitly accepts cross-provider/cross-client configured-secret reflection.
+- Selected boundary: protect only credentials configured for the active outbound provider or auxiliary client. Do not inject unrelated providers' credentials into a return gate.
+- Global observability, persistence, logging, trace, and metric diagnostics continue to use the complete configured-token inventory.
+- Cross-provider/client reflection is an explicit accepted residual risk within the supported local/LAN-only deployment profile.
 
-The approved profile favors Option A, but the auditor does not select product semantics. The owner must confirm the return-domain boundary before repair.
+The owner selected this boundary on 2026-07-20. The profile, compatibility ledger, and `test_non_streaming_ignores_credentials_outside_active_provider` now freeze the contract without changing runtime inventory ownership.
 
 ---
 
@@ -133,6 +134,7 @@ The focused deterministic run included `tests/converters/anthropic` and `tests/c
 | Main-agent closing `make lint` and `make test` | lint passed; `3576 passed, 5 skipped, 11 warnings in 17.43s` | integration tests ignored; no real API calls |
 | AUD-019 focused remediation suite | `105 passed in 11.24s` | deterministic fakes/in-process only; covers shared redactor, provider raw/error/SSE, Tavily, and web-run sidecar |
 | AUD-019 full remediation gates | lint passed; `3591 passed, 5 skipped, 11 warnings in 18.54s`; Codex compatibility contract has no blocking changes | integration ignored; no real API calls |
+| AUD-020 decision-contract gates | focused `19 passed`; lint passed; full `3592 passed, 5 skipped, 11 warnings in 18.15s`; Codex compatibility contract has no blocking changes | deterministic contract only; integration ignored; no real API calls |
 
 Passing suites do not close AUD-019 or AUD-020: both are reproduced by direct deterministic probes using the public transport wrapper.
 

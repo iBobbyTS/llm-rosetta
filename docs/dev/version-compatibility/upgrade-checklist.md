@@ -382,11 +382,13 @@ The following behavior can be automatically verified using the fixed Codex reque
   huge peer-declared HTTP chunks, oversized no-newline SSE lines, accumulated
   no-delimiter events, converted/raw/web-search client cancellation, upstream
   4xx/5xx and retry boundaries; verify that below-limit raw Responses SSE is
-  byte-identical when credential-free; verify configured Provider credential
+  byte-identical when credential-free; verify active Provider credential
   collisions at every chunk position fail closed without emitting a partial
   risk event; verify semantically equivalent Unicode, surrogate, and solidus
   JSON escapes are also blocked while safe raw bytes remain identical, and
-  that overflow closes the upstream;
+  that overflow closes the upstream; verify a credential configured only for
+  another Provider remains outside the active return gate while global
+  diagnostics still redact it;
 - Inbound request-body default, fixed tiers, Admin persistence/hot reload,
   rollback, unlimited mapping, and a real Codex image-history request above the
   former 50 MB ceiling;
