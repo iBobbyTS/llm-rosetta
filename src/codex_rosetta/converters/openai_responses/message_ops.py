@@ -32,6 +32,7 @@ from ...types.ir import (
 from ...types.ir.messages import MessageMetadata
 from ..base import BaseMessageOps
 from .content_ops import OpenAIResponsesContentOps
+from ._constants import RESPONSES_TOOL_CALL_ITEM_TYPES
 from .tool_ops import OpenAIResponsesToolOps
 
 
@@ -41,6 +42,8 @@ RESPONSES_PASSTHROUGH_ITEM_TYPES = frozenset(
         "tool_search_output",
     }
 )
+
+RESPONSES_UNSUPPORTED_ITEM_TYPES = frozenset({"computer_call_output"})
 
 
 class OpenAIResponsesMessageOps(BaseMessageOps):
@@ -326,16 +329,14 @@ class OpenAIResponsesMessageOps(BaseMessageOps):
             ir_input.append(current_message)
         return {"role": target_role, "content": [part]}
 
-    _TOOL_CALL_TYPES = frozenset(
-        {
-            "function_call",
-            "custom_tool_call",
-            "mcp_call",
-            "shell_call",
-            "computer_call",
-            "code_interpreter_call",
-        }
-    )
+    @staticmethod
+    def _reject_unsupported_item_type(item_type: Any) -> None:
+        if item_type in RESPONSES_UNSUPPORTED_ITEM_TYPES:
+            raise NotImplementedError(
+                "Responses computer_call_output items are not supported by this bridge"
+            )
+
+    _TOOL_CALL_TYPES = RESPONSES_TOOL_CALL_ITEM_TYPES
 
     _TOOL_RESULT_TYPES = frozenset(
         {"function_call_output", "custom_tool_call_output", "mcp_call_output"}
@@ -365,6 +366,7 @@ class OpenAIResponsesMessageOps(BaseMessageOps):
                 item = self._normalize_shorthand_item(item)
 
             item_type = item.get("type") if isinstance(item, dict) else None
+            self._reject_unsupported_item_type(item_type)
 
             if item_type in ("message", "agent_message"):
                 new_message = self._p_provider_message_to_ir(item)

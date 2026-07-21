@@ -12,6 +12,7 @@ from codex_rosetta.types.ir import (
     IRRequest,
     IRResponse,
     Message,
+    ToolCallPart,
     is_text_part,
 )
 
@@ -405,6 +406,22 @@ class TestOpenAIResponsesConverter:
         with pytest.raises(ValueError, match=r"Unsupported tool"):
             self.converter.request_from_provider(provider_request)
 
+    def test_request_from_provider_rejects_computer_call_output(self):
+        """Computer-control outputs are explicitly unsupported by this bridge."""
+        provider_request = {
+            "model": "computer-model",
+            "input": [
+                {
+                    "type": "computer_call_output",
+                    "call_id": "call_comp_123",
+                    "output": {"type": "computer_screenshot", "image_url": "data:"},
+                }
+            ],
+        }
+
+        with pytest.raises(NotImplementedError, match="computer_call_output"):
+            self.converter.request_from_provider(provider_request)
+
     # ==================== response_from_provider ====================
 
     def test_response_from_provider_basic(self):
@@ -501,6 +518,39 @@ class TestOpenAIResponsesConverter:
         assert tc["tool_input"] == {
             "input": "--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n-old\n+new"
         }
+
+    def test_response_computer_call_round_trip(self):
+        """A canonical computer_call remains validated and byte-structural."""
+        provider_response = {
+            "id": "resp_computer",
+            "object": "response",
+            "created_at": 1700000000,
+            "model": "computer-model",
+            "status": "completed",
+            "output": [
+                {
+                    "type": "computer_call",
+                    "id": "comp_123",
+                    "call_id": "call_comp_123",
+                    "action": {
+                        "type": "click",
+                        "x": 100,
+                        "y": 200,
+                        "button": "left",
+                    },
+                    "pending_safety_checks": [],
+                    "status": "completed",
+                }
+            ],
+        }
+
+        ir_response = self.converter.response_from_provider(provider_response)
+        restored = self.converter.response_to_provider(ir_response)
+
+        content = list(ir_response["choices"][0]["message"]["content"])
+        computer_part = cast(ToolCallPart, content[0])
+        assert computer_part["tool_type"] == "computer_use"
+        assert restored["output"] == provider_response["output"]
 
     def test_response_to_provider_restores_custom_tool_from_chat_shape(self):
         """A Chat bridge restores Code Mode ``exec`` as a custom tool call.
