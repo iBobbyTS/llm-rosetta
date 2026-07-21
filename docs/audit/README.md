@@ -11,8 +11,8 @@ second profile under this directory.
 - System map: [`SYSTEM-MAP.md`](SYSTEM-MAP.md)
 - Coverage ledger: [`COVERAGE.md`](COVERAGE.md)
 - Findings ledger: [`FINDINGS.md`](FINDINGS.md)
-- Latest run: [`runs/20260720-2103/REPORT.md`](runs/20260720-2103/REPORT.md)
-- Latest status: AUD-019 is `Closed` after shared JSON-semantic checks blocked equivalent escape spellings. AUD-020 is `Closed / Decision Recorded`: return gates inspect only credentials configured for the active outbound provider or auxiliary client, while global diagnostics retain the complete configured-token inventory. Cross-provider/client reflection is accepted within the local/LAN-only boundary. No real provider/API call occurred.
+- Latest run: [`runs/20260721-1232/REPORT.md`](runs/20260721-1232/REPORT.md)
+- Latest status: AUD-019/AUD-021 and sub-findings AUD-022/AUD-023/AUD-024 are closed at deterministic evidence depth. The owner selected explicit rejection for `computer_call_output`; no generic computer-control support was added. The remediation focused suite reports `248 passed`, the full suite `3624 passed, 5 skipped`, and `make lint` passes. No real provider/API/Codex call or deployment occurred.
 
 Historical run snapshots remain under their original dated directories. They
 are preserved as historical evidence and may contain paths or conclusions that
